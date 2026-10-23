@@ -1,5 +1,5 @@
 import { expect, test } from '@playwright/test';
-import { ROUTES, openPage } from './helpers';
+import { ROUTES, openPage, url } from './helpers';
 
 test.describe('de site als geheel', () => {
   test('geeft op geen enkele pagina een fout in de console', async ({ page }) => {
@@ -11,7 +11,7 @@ test.describe('de site als geheel', () => {
 
     await openPage(page, '/', { lang: 'nl' });
     for (const route of ROUTES) {
-      await page.goto(route);
+      await page.goto(url(route));
       await expect(page.locator('h1')).toBeVisible();
     }
     expect(problemen).toEqual([]);
@@ -45,7 +45,7 @@ test.describe('de site als geheel', () => {
     const href = await page.locator('link[rel="icon"]').getAttribute('href');
     expect(href).toContain('favicon.svg');
 
-    const response = await request.get('/favicon.svg');
+    const response = await request.get(new URL('favicon.svg', page.url()).href);
     expect(response.status()).toBe(200);
     expect(response.headers()['content-type']).toContain('svg');
     expect(await response.text()).toContain('<svg');
