@@ -3,13 +3,17 @@ import { useDocument } from '../document/DocumentContext';
 import { useI18n } from '../i18n/LanguageContext';
 import { format, plural } from '../i18n/format';
 import { formatFileSize } from '../lib/format';
+import { PageEditor } from './PageEditor';
 import { Thumbnail } from './Thumbnail';
 
-/** Het werkgebied van een taak: een PDF openen, en daarna de pagina's ervan. */
-export function Workspace() {
+/**
+ * Het werkgebied van een taak: een PDF openen, en daarna de pagina's ervan. Met
+ * `editable` kun je de pagina's ook kiezen, draaien en verwijderen.
+ */
+export function Workspace({ editable = false }: { editable?: boolean }) {
   const { doc } = useDocument();
 
-  if (doc.status === 'ready') return <OpenDocument />;
+  if (doc.status === 'ready') return <OpenDocument editable={editable} />;
   return <OpenPdf />;
 }
 
@@ -85,12 +89,10 @@ function OpenPdf() {
   );
 }
 
-function OpenDocument() {
-  const { doc, close } = useDocument();
+function OpenDocument({ editable }: { editable: boolean }) {
+  const { doc, close, pages } = useDocument();
   const { t, language } = useI18n();
   if (doc.status !== 'ready') return null;
-
-  const pages = Array.from({ length: doc.pageCount }, (_, i) => i + 1);
 
   return (
     <section class="document" aria-labelledby="document-title">
@@ -100,7 +102,7 @@ function OpenDocument() {
             {doc.name}
           </h2>
           <p class="document__meta">
-            {plural(doc.pageCount, t.document.pagesOne, t.document.pagesOther)} ·{' '}
+            {plural(pages.length, t.document.pagesOne, t.document.pagesOther)} ·{' '}
             {formatFileSize(doc.size, language)}
           </p>
         </div>
@@ -108,17 +110,23 @@ function OpenDocument() {
           {t.document.close}
         </button>
       </div>
-      <ol class="thumbs" aria-label={format(t.document.thumbnails, { name: doc.name })}>
-        {pages.map((pageNumber) => (
-          <li key={`${doc.id}-${pageNumber}`}>
-            <Thumbnail
-              pdf={doc.pdf}
-              pageNumber={pageNumber}
-              label={format(t.document.page, { n: pageNumber })}
-            />
-          </li>
-        ))}
-      </ol>
+      {editable ? (
+        <PageEditor docId={doc.id} name={doc.name} file={doc.file} pdf={doc.pdf} />
+      ) : (
+        <ol class="thumbs" aria-label={format(t.document.thumbnails, { name: doc.name })}>
+          {pages.map((page, index) => (
+            <li key={`${doc.id}-${page.key}`}>
+              <Thumbnail
+                pdf={doc.pdf}
+                pageNumber={page.source + 1}
+                rotation={page.rotation}
+                caption={index + 1}
+                label={format(t.document.page, { n: index + 1 })}
+              />
+            </li>
+          ))}
+        </ol>
+      )}
     </section>
   );
 }

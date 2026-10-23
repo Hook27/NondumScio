@@ -15,7 +15,7 @@ export function TaskPage({ id }: { id: TaskId }) {
         {task.title}
       </h1>
       <p class="lead">{task.description}</p>
-      <Workspace />
+      <Workspace editable={id === 'pages'} />
       <section class="notice" aria-labelledby="coming-soon">
         <h2 id="coming-soon" class="notice__title">
           {t.comingSoon}

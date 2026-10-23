@@ -459,6 +459,80 @@ h1 {
   font-size: 0.8rem;
 }
 
+.button:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+  filter: none;
+}
+
+/* Pagina's bewerken */
+.toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem 1rem;
+  margin: 0 0 0.75rem;
+  padding: 0.75rem;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+}
+
+.toolbar__group {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+}
+
+.toolbar__group--end {
+  margin-left: auto;
+}
+
+.toolbar .button {
+  padding: 0.45rem 0.85rem;
+  font-size: 0.9rem;
+}
+
+.page-editor__status,
+.page-editor__hint,
+.page-editor__saved,
+.page-editor__error {
+  margin: 0 0 0.5rem;
+  font-size: 0.9rem;
+}
+
+.page-editor__status,
+.page-editor__hint {
+  color: var(--text-muted);
+}
+
+.page-editor__error {
+  font-weight: 600;
+}
+
+.page-editor__hint {
+  margin-bottom: 1rem;
+}
+
+.page-option {
+  border-radius: var(--radius);
+  cursor: pointer;
+}
+
+.page-option:focus-visible {
+  outline: 3px solid var(--focus);
+  outline-offset: 3px;
+}
+
+.page-option--selected .thumb__page {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 2px var(--accent);
+}
+
+.page-option--selected figcaption {
+  color: var(--accent);
+  font-weight: 700;
+}
+
 /* Versienummer linksonder */
 .site-footer {
   padding: 0.75rem 1.25rem;

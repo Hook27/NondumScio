@@ -14,10 +14,19 @@ export function Thumbnail({
   pdf,
   pageNumber,
   label,
+  rotation = 0,
+  decorative = false,
+  caption = pageNumber,
 }: {
   pdf: PDFDocumentProxy;
   pageNumber: number;
   label: string;
+  /** Extra draaiing in graden, bovenop de draaiing in de PDF zelf. */
+  rotation?: number;
+  /** Als de omliggende knop of optie de naam al geeft: de afbeelding zelf zwijgt. */
+  decorative?: boolean;
+  /** Het nummer onder de miniatuur; standaard het paginanummer in de PDF. */
+  caption?: number;
 }) {
   const figure = useRef<HTMLElement>(null);
   const canvas = useRef<HTMLCanvasElement>(null);
@@ -34,16 +43,19 @@ export function Thumbnail({
     if (!visible) return;
     let task: RenderTask | null = null;
     let cancelled = false;
+    setRendered(false);
 
     void (async () => {
       const page = await pdf.getPage(pageNumber);
       const target = canvas.current;
       if (cancelled || !target) return;
 
-      const natural = page.getViewport({ scale: 1 });
+      const angle = (((page.rotate + rotation) % 360) + 360) % 360;
+      const natural = page.getViewport({ scale: 1, rotation: angle });
       const size = thumbnailSize(natural, THUMBNAIL_WIDTH);
       const viewport = page.getViewport({
         scale: renderScale(natural.width, THUMBNAIL_WIDTH, window.devicePixelRatio),
+        rotation: angle,
       });
       target.width = Math.round(viewport.width);
       target.height = Math.round(viewport.height);
@@ -67,14 +79,23 @@ export function Thumbnail({
       cancelled = true;
       task?.cancel();
     };
-  }, [visible, pdf, pageNumber]);
+  }, [visible, pdf, pageNumber, rotation]);
 
   return (
-    <figure ref={figure} class="thumb" data-rendered={rendered ? 'true' : 'false'}>
+    <figure
+      ref={figure}
+      class="thumb"
+      data-rendered={rendered ? 'true' : 'false'}
+      data-rotation={rotation}
+    >
       <div class="thumb__page">
-        <canvas ref={canvas} role="img" aria-label={label} />
+        {decorative ? (
+          <canvas ref={canvas} aria-hidden="true" />
+        ) : (
+          <canvas ref={canvas} role="img" aria-label={label} />
+        )}
       </div>
-      <figcaption aria-hidden="true">{pageNumber}</figcaption>
+      <figcaption aria-hidden="true">{caption}</figcaption>
     </figure>
   );
 }
