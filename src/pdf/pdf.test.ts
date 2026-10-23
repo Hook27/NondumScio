@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { classifyLoadError, looksLikePdf } from './detect';
+import { pdfjsAssetOptions } from './loader';
 import { renderScale, thumbnailSize } from './thumbnail';
 
 const text = (value: string) => new TextEncoder().encode(value);
@@ -69,5 +70,23 @@ describe('renderScale', () => {
     expect(renderScale(100, 100, 0.5)).toBe(1);
     expect(renderScale(100, 100, 5)).toBe(3);
     expect(renderScale(100, 100, 0)).toBe(1);
+  });
+});
+
+describe('pdfjsAssetOptions', () => {
+  it('wijst naar de meegeleverde hulpbestanden, met een schuine streep aan het eind', () => {
+    expect(pdfjsAssetOptions('https://pdf.nondumsc.io/#/pages')).toEqual({
+      wasmUrl: 'https://pdf.nondumsc.io/pdfjs/wasm/',
+      cMapUrl: 'https://pdf.nondumsc.io/pdfjs/cmaps/',
+      cMapPacked: true,
+      standardFontDataUrl: 'https://pdf.nondumsc.io/pdfjs/standard_fonts/',
+      iccUrl: 'https://pdf.nondumsc.io/pdfjs/iccs/',
+    });
+  });
+
+  it('werkt ook in een submap, zoals een PR-voorbeeld', () => {
+    expect(pdfjsAssetOptions('https://pdf.nondumsc.io/pr-preview/pr-14/').wasmUrl).toBe(
+      'https://pdf.nondumsc.io/pr-preview/pr-14/pdfjs/wasm/',
+    );
   });
 });

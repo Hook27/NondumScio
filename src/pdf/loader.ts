@@ -32,6 +32,23 @@ function pdfjs() {
   return pdfjsPromise;
 }
 
+/**
+ * Waar pdf.js zijn hulpbestanden vindt (meegeleverd in /pdfjs/, zie
+ * scripts/copy-pdfjs-assets.ts). Ten opzichte van de pagina, zodat het ook werkt in een
+ * submap zoals een PR-voorbeeld. Zonder deze bestanden blijven bijvoorbeeld gescande
+ * pagina's (JBIG2, JPEG 2000) leeg.
+ */
+export function pdfjsAssetOptions(baseUrl: string) {
+  const dir = (name: string) => new URL(`pdfjs/${name}/`, baseUrl).href;
+  return {
+    wasmUrl: dir('wasm'),
+    cMapUrl: dir('cmaps'),
+    cMapPacked: true,
+    standardFontDataUrl: dir('standard_fonts'),
+    iccUrl: dir('iccs'),
+  };
+}
+
 /** Opent een PDF uit bytes. Alles gebeurt in de browser; er gaat niets over het netwerk. */
 export async function loadPdf(bytes: Uint8Array): Promise<LoadedPdf> {
   if (!looksLikePdf(bytes)) throw new PdfLoadError('not-pdf');
@@ -39,7 +56,10 @@ export async function loadPdf(bytes: Uint8Array): Promise<LoadedPdf> {
   const lib = await pdfjs();
   try {
     // pdf.js neemt de bytes over (en maakt ze onbruikbaar); geef daarom een kopie mee.
-    const pdf = await lib.getDocument({ data: bytes.slice() }).promise;
+    const pdf = await lib.getDocument({
+      data: bytes.slice(),
+      ...pdfjsAssetOptions(document.baseURI),
+    }).promise;
     return { pdf, pageCount: pdf.numPages };
   } catch (error) {
     throw new PdfLoadError(classifyLoadError(error));

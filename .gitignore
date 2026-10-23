@@ -3,5 +3,7 @@ dist/
 coverage/
 playwright-report/
 test-results/
+# Gekopieerd uit pdfjs-dist bij dev/build (scripts/copy-pdfjs-assets.ts)
+public/pdfjs/
 *.log
 .DS_Store

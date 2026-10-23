@@ -8,7 +8,9 @@
     "node": ">=24"
   },
   "scripts": {
+    "predev": "node scripts/copy-pdfjs-assets.ts",
     "dev": "vite",
+    "prebuild": "node scripts/copy-pdfjs-assets.ts",
     "build": "tsc --noEmit && vite build",
     "preview": "vite preview",
     "typecheck": "tsc --noEmit",

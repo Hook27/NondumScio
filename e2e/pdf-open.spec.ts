@@ -1,6 +1,6 @@
 import AxeBuilder from '@axe-core/playwright';
 import { expect, test, type Page } from '@playwright/test';
-import { pdfFile } from './fixtures';
+import { makeScanPdf, pdfFile } from './fixtures';
 import { messages, openPage } from './helpers';
 
 const nl = messages.nl;
@@ -38,6 +38,48 @@ test.describe('PDF openen', () => {
       expect(await inkedPixels(page, i)).toBeGreaterThan(500);
     }
     await expect(page.getByRole('img', { name: 'Pagina 2' })).toBeVisible();
+  });
+
+  test('tekent ook een gescande pagina (afbeelding in JPEG 2000)', async ({ page }) => {
+    const waarschuwingen: string[] = [];
+    page.on('console', (message) => {
+      if (/decode image|wasmUrl|failed to initialize/i.test(message.text())) {
+        waarschuwingen.push(message.text());
+      }
+    });
+    await openPage(page, '/#/pages', { lang: 'nl' });
+    await fileInput(page).setInputFiles({
+      name: 'scan.pdf',
+      mimeType: 'application/pdf',
+      buffer: await makeScanPdf(),
+    });
+    await expect(thumbnails(page).first()).toHaveAttribute('data-rendered', 'true');
+
+    // De zwarte balken van de scan moeten in de miniatuur staan.
+    const donker = await page
+      .locator('.thumb canvas')
+      .first()
+      .evaluate((canvas: HTMLCanvasElement) => {
+        const { data } = canvas.getContext('2d')!.getImageData(0, 0, canvas.width, canvas.height);
+        let count = 0;
+        for (let i = 0; i < data.length; i += 4) if (data[i]! < 60) count += 1;
+        return count / (canvas.width * canvas.height);
+      });
+    expect(donker).toBeGreaterThan(0.05);
+    expect(waarschuwingen).toEqual([]);
+  });
+
+  test('levert de hulpbestanden van pdf.js mee', async ({ page, request }) => {
+    await openPage(page, '/', { lang: 'nl' });
+    for (const bestand of [
+      'pdfjs/wasm/jbig2.wasm',
+      'pdfjs/wasm/openjpeg.wasm',
+      'pdfjs/cmaps/UniJIS-UTF16-H.bcmap',
+      'pdfjs/standard_fonts/FoxitFixed.pfb',
+    ]) {
+      const response = await request.get(new URL(bestand, page.url()).href);
+      expect(response.status(), bestand).toBe(200);
+    }
   });
 
   test('een liggende pagina krijgt een lagere miniatuur', async ({ page }) => {
