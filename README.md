@@ -3,6 +3,8 @@
 Een PDF-werkbank die volledig in de browser draait: bestanden worden nooit geüpload naar een server.
 Werktitel; een echte naam volgt later.
 
+Live: https://hook27.github.io/NondumScio/ (wordt automatisch bijgewerkt na elke merge naar `main`).
+
 Status: in aanbouw. Zie [CLAUDE.md](CLAUDE.md) voor de werkafspraak.
 
 ## Ontwikkelen
