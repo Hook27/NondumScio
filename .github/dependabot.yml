@@ -1,0 +1,32 @@
+# Dependabot opent een PR als er een nieuwere versie is van een afhankelijkheid of een
+# GitHub-actie. Zo'n PR doorloopt dezelfde checks; Jörg beoordeelt en merget hem.
+version: 2
+updates:
+  - package-ecosystem: npm
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+    open-pull-requests-limit: 5
+    groups:
+      # Hulpmiddelen voor ontwikkelen en testen samen in één PR.
+      ontwikkelhulpmiddelen:
+        dependency-type: development
+        update-types: [minor, patch]
+      # Wat in de site zelf zit (Preact, pdf.js) samen in één PR.
+      site:
+        dependency-type: production
+        update-types: [minor, patch]
+    commit-message:
+      prefix: 'Afhankelijkheden'
+
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+    groups:
+      acties:
+        patterns: ['*']
+    commit-message:
+      prefix: 'Acties'
