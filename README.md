@@ -13,6 +13,10 @@ Status: in aanbouw. Zie [CLAUDE.md](CLAUDE.md) voor de werkafspraak.
 
 Met pdf.js (Mozilla, Apache-2.0). De bibliotheek wordt pas geladen als je een PDF opent, zodat de startpagina licht blijft; het tekenen gebeurt in een aparte worker. Het bestand wordt in het geheugen van de browser gelezen en nergens naartoe gestuurd (een browsertest controleert dat er geen verzoeken naar andere adressen gaan). Miniaturen worden pas getekend als ze in beeld komen. De hulpbestanden van pdf.js (decodeerders voor gescande pagina's in JBIG2 en JPEG 2000, standaardlettertypen, tekentabellen en kleurprofielen) worden bij `npm run dev` en `npm run build` uit `pdfjs-dist` naar `public/pdfjs/` gekopieerd en met de site meegeleverd; zonder die bestanden blijven bijvoorbeeld scans leeg.
 
+## Pagina's bewerken
+
+Op de taak _Pagina's_ kies je pagina's (klikken, Ctrl/Shift-klik of het toetsenbord) en draai of verwijder je ze, met ongedaan maken. Bewerken verandert alleen een pagina-plan in het geheugen (`src/pages/plan.ts`); pas bij "PDF downloaden" maakt pdf-lib (MIT) daaruit een nieuw bestand (`src/pdf/save.ts`). Het origineel blijft onaangeroerd. pdf-lib wordt pas geladen als je opslaat.
+
 ## Ontwikkelen
 
 Vereist Node 24 (zie `.nvmrc`).
