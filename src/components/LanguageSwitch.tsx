@@ -11,7 +11,7 @@ export function LanguageSwitch() {
           key={code}
           type="button"
           lang={code}
-          aria-label={LANGUAGE_NAMES[code]}
+          aria-label={`${code.toUpperCase()} – ${LANGUAGE_NAMES[code]}`}
           aria-pressed={language === code}
           onClick={() => setLanguage(code)}
         >

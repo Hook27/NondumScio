@@ -50,11 +50,19 @@ function AppContent() {
 
   return (
     <>
-      <a class="skip-link" href="#main">
+      <a
+        class="skip-link"
+        href="#main"
+        onClick={(event) => {
+          // Zonder dit zou #main als route worden gelezen ("pagina niet gevonden").
+          event.preventDefault();
+          document.getElementById('main')?.focus();
+        }}
+      >
         {t.skipToContent}
       </a>
       <Header route={route} />
-      <main id="main" class="site-main">
+      <main id="main" class="site-main" tabIndex={-1}>
         {route.name === 'home' && <Home />}
         {route.name === 'task' && <TaskPage id={route.id} />}
         {route.name === 'notFound' && <NotFound />}

@@ -121,7 +121,7 @@ describe('thema', () => {
   it('heeft een vertaald label in beide talen', async () => {
     render(<App />);
     expect(screen.getByRole('button', { name: messages.nl.theme.dark })).toBeTruthy();
-    fireEvent.click(screen.getByRole('button', { name: 'English' }));
+    fireEvent.click(screen.getByRole('button', { name: /English/ }));
     await waitFor(() =>
       expect(screen.getByRole('button', { name: messages.en.theme.dark })).toBeTruthy(),
     );
