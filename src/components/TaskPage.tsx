@@ -1,12 +1,14 @@
+import { useI18n } from '../i18n/LanguageContext';
 import { hrefFor, type TaskId } from '../router';
-import { strings } from '../strings';
 
 export function TaskPage({ id }: { id: TaskId }) {
-  const task = strings.tasks[id];
+  const { t } = useI18n();
+  const task = t.tasks[id];
+
   return (
     <>
       <p class="back">
-        <a href={hrefFor({ name: 'home' })}>{strings.allTasks}</a>
+        <a href={hrefFor({ name: 'home' })}>{t.allTasks}</a>
       </p>
       <h1 id="page-title" tabIndex={-1}>
         {task.title}
@@ -14,9 +16,9 @@ export function TaskPage({ id }: { id: TaskId }) {
       <p class="lead">{task.description}</p>
       <section class="notice" aria-labelledby="coming-soon">
         <h2 id="coming-soon" class="notice__title">
-          {strings.comingSoon}
+          {t.comingSoon}
         </h2>
-        <p>{strings.comingSoonDetail}</p>
+        <p>{t.comingSoonDetail}</p>
       </section>
     </>
   );

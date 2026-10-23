@@ -24,6 +24,10 @@ npm run build     # productiebuild in dist/
 
 Dezelfde controles draaien in GitHub Actions (job `test`) op elke pull request.
 
+## Talen
+
+De interface is Nederlands en Engels. De teksten staan in `src/i18n/nl.ts` en `src/i18n/en.ts`; het Engelse bestand moet exact dezelfde sleutels hebben (de typecontrole en een test bewaken dat). De taal komt uit de bewaarde keuze, anders uit de browser, anders Engels.
+
 ## Versienummer
 
 Linksonder op de pagina staat het versienummer, gebaseerd op de pull request: `PR.009` is de build van PR 9. Op een voorbeeld is dat het nummer van die PR, op de echte site het nummer van de laatst gemergde PR. Lokaal staat er `dev`. Zie `scripts/app-version.ts`.

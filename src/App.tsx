@@ -4,30 +4,36 @@ import { Header } from './components/Header';
 import { Home } from './components/Home';
 import { NotFound } from './components/NotFound';
 import { TaskPage } from './components/TaskPage';
-import { type Route } from './router';
-import { strings } from './strings';
+import { LanguageProvider, useI18n } from './i18n/LanguageContext';
+import type { Messages } from './i18n/nl';
+import type { Route } from './router';
 import { useRoute } from './useRoute';
 
-function pageTitle(route: Route): string {
+function pageTitle(route: Route, t: Messages): string {
   switch (route.name) {
     case 'home':
-      return `${strings.appName} · ${strings.tagline}`;
+      return `${t.appName} · ${t.tagline}`;
     case 'task':
-      return `${strings.tasks[route.id].title} · ${strings.appName}`;
+      return `${t.tasks[route.id].title} · ${t.appName}`;
     case 'notFound':
-      return `${strings.notFound.title} · ${strings.appName}`;
+      return `${t.notFound.title} · ${t.appName}`;
   }
 }
 
 /**
- * Houdt de paginatitel bij en zet na elke navigatie de focus op de kop, zodat
- * toetsenbord- en schermlezergebruikers weten dat er iets veranderd is.
+ * Houdt de paginatitel bij (ook bij een andere taal) en zet na elke navigatie de
+ * focus op de kop, zodat toetsenbord- en schermlezergebruikers weten dat er iets
+ * veranderd is. Van taal wisselen verplaatst de focus niet.
  */
-function useRouteAnnouncer(route: Route) {
+function usePageTitleAndFocus(route: Route) {
+  const { t } = useI18n();
   const first = useRef(true);
 
   useEffect(() => {
-    document.title = pageTitle(route);
+    document.title = pageTitle(route, t);
+  }, [route, t]);
+
+  useEffect(() => {
     if (first.current) {
       first.current = false;
       return;
@@ -36,14 +42,15 @@ function useRouteAnnouncer(route: Route) {
   }, [route]);
 }
 
-export function App() {
+function AppContent() {
   const route = useRoute();
-  useRouteAnnouncer(route);
+  const { t } = useI18n();
+  usePageTitleAndFocus(route);
 
   return (
     <>
       <a class="skip-link" href="#main">
-        {strings.skipToContent}
+        {t.skipToContent}
       </a>
       <Header route={route} />
       <main id="main" class="site-main">
@@ -53,5 +60,13 @@ export function App() {
       </main>
       <Footer />
     </>
+  );
+}
+
+export function App() {
+  return (
+    <LanguageProvider>
+      <AppContent />
+    </LanguageProvider>
   );
 }

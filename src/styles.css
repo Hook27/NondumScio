@@ -129,6 +129,36 @@ h1[tabindex='-1']:focus {
   color: var(--accent-contrast);
 }
 
+/* Taalwissel */
+.lang-switch {
+  display: flex;
+  gap: 0.25rem;
+  margin-left: auto;
+}
+
+.lang-switch button {
+  min-width: 2.5rem;
+  padding: 0.35rem 0.6rem;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--surface);
+  color: var(--text);
+  font: inherit;
+  font-size: 0.85rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.lang-switch button:hover {
+  border-color: var(--accent);
+}
+
+.lang-switch button[aria-pressed='true'] {
+  border-color: var(--accent);
+  background: var(--accent);
+  color: var(--accent-contrast);
+}
+
 /* Inhoud */
 .site-main {
   flex: 1;
