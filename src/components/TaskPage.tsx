@@ -1,5 +1,6 @@
 import { useI18n } from '../i18n/LanguageContext';
 import { hrefFor, type TaskId } from '../router';
+import { Workspace } from './Workspace';
 
 export function TaskPage({ id }: { id: TaskId }) {
   const { t } = useI18n();
@@ -14,6 +15,7 @@ export function TaskPage({ id }: { id: TaskId }) {
         {task.title}
       </h1>
       <p class="lead">{task.description}</p>
+      <Workspace />
       <section class="notice" aria-labelledby="coming-soon">
         <h2 id="coming-soon" class="notice__title">
           {t.comingSoon}

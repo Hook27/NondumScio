@@ -16,8 +16,26 @@ export const en: Messages = {
     title: 'What do you want to do with your PDF?',
     intro: 'Everything happens in your browser. Your files are never uploaded.',
   },
+  document: {
+    openTitle: 'Open a PDF',
+    openHint:
+      'Drag a file here or choose one. Your file stays on your device and is never sent anywhere.',
+    choose: 'Choose a PDF',
+    dropHere: 'Release to open',
+    loading: 'Opening {name}…',
+    close: 'Close',
+    pagesOne: '1 page',
+    pagesOther: '{n} pages',
+    page: 'Page {n}',
+    thumbnails: 'Pages of {name}',
+    errors: {
+      notPdf: '{name} is not a PDF. Choose a file that ends in .pdf.',
+      password: '{name} is protected with a password. This is not supported yet.',
+      damaged: '{name} could not be opened. The file may be damaged.',
+    },
+  },
   comingSoon: 'Coming soon.',
-  comingSoonDetail: 'This task will be added in a later version.',
+  comingSoonDetail: 'The tools for this task will come in a later version.',
   notFound: {
     title: 'Page not found',
     detail: 'This address does not exist. Go back to the overview to pick a task.',

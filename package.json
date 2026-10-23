@@ -8,7 +8,9 @@
     "node": ">=24"
   },
   "scripts": {
+    "predev": "node scripts/copy-pdfjs-assets.ts",
     "dev": "vite",
+    "prebuild": "node scripts/copy-pdfjs-assets.ts",
     "build": "tsc --noEmit && vite build",
     "preview": "vite preview",
     "typecheck": "tsc --noEmit",
@@ -29,6 +31,7 @@
     "eslint-config-prettier": "^10.1.8",
     "globals": "^17.13.0",
     "jsdom": "^29.1.1",
+    "pdf-lib": "^1.17.1",
     "prettier": "^3.9.10",
     "typescript": "^6.0.3",
     "typescript-eslint": "^8.72.0",
@@ -36,6 +39,7 @@
     "vitest": "^5.0.5"
   },
   "dependencies": {
+    "pdfjs-dist": "^6.4.299",
     "preact": "^11.0.2"
   }
 }

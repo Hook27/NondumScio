@@ -1,5 +1,5 @@
 import { expect, test } from '@playwright/test';
-import { messages, openPage } from './helpers';
+import { messages, openPage, url } from './helpers';
 
 const { nl, en } = messages;
 
@@ -32,13 +32,13 @@ test.describe('taal', () => {
   test('zonder keuze volgt de taal van de browser', async ({ browser }) => {
     const context = await browser.newContext({ locale: 'nl-NL' });
     const page = await context.newPage();
-    await page.goto('/');
+    await page.goto(url('/'));
     await expect(page.getByRole('heading', { level: 1, name: nl.home.title })).toBeVisible();
     await context.close();
 
     const english = await browser.newContext({ locale: 'de-DE' });
     const englishPage = await english.newPage();
-    await englishPage.goto('/');
+    await englishPage.goto(url('/'));
     await expect(englishPage.getByRole('heading', { level: 1, name: en.home.title })).toBeVisible();
     await english.close();
   });
