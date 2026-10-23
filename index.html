@@ -3,8 +3,23 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="color-scheme" content="light dark" />
     <title>Nondum Scio</title>
     <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+    <script>
+      // Past een bewaarde themakeuze toe vóór de eerste weergave, zodat de pagina niet
+      // even in het verkeerde thema oplicht. Houd de sleutel gelijk aan src/theme.ts.
+      (function () {
+        try {
+          var theme = localStorage.getItem('nondumscio:theme');
+          if (theme === 'light' || theme === 'dark') {
+            document.documentElement.dataset.theme = theme;
+          }
+        } catch (error) {
+          /* opslag niet beschikbaar: het systeemthema geldt */
+        }
+      })();
+    </script>
   </head>
   <body>
     <div id="app">

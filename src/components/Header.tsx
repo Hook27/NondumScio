@@ -1,6 +1,7 @@
 import { useI18n } from '../i18n/LanguageContext';
 import { TASK_IDS, hrefFor, type Route } from '../router';
 import { LanguageSwitch } from './LanguageSwitch';
+import { ThemeToggle } from './ThemeToggle';
 
 export function Header({ route }: { route: Route }) {
   const { t } = useI18n();
@@ -29,7 +30,10 @@ export function Header({ route }: { route: Route }) {
             })}
           </ul>
         </nav>
-        <LanguageSwitch />
+        <div class="header-controls">
+          <LanguageSwitch />
+          <ThemeToggle />
+        </div>
       </div>
     </header>
   );

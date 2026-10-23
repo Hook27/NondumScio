@@ -28,6 +28,10 @@ Dezelfde controles draaien in GitHub Actions (job `test`) op elke pull request.
 
 De interface is Nederlands en Engels. De teksten staan in `src/i18n/nl.ts` en `src/i18n/en.ts`; het Engelse bestand moet exact dezelfde sleutels hebben (de typecontrole en een test bewaken dat). De taal komt uit de bewaarde keuze, anders uit de browser, anders Engels.
 
+## Thema
+
+Licht en donker. Zonder keuze volgt de site het thema van je systeem; de knop rechtsboven wisselt en onthoudt je keuze. Alle kleuren staan als variabelen bovenin `src/styles.css`, en een test bewaakt dat de contrasten in beide thema's leesbaar blijven (WCAG, minstens 4,5 : 1 voor tekst).
+
 ## Versienummer
 
 Linksonder op de pagina staat het versienummer, gebaseerd op de pull request: `PR.009` is de build van PR 9. Op een voorbeeld is dat het nummer van die PR, op de echte site het nummer van de laatst gemergde PR. Lokaal staat er `dev`. Zie `scripts/app-version.ts`.

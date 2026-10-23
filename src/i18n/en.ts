@@ -8,6 +8,9 @@ export const en: Messages = {
   mainMenu: 'Main menu',
   version: 'Version',
   language: 'Language',
+  theme: {
+    dark: 'Dark theme',
+  },
   allTasks: '← All tasks',
   home: {
     title: 'What do you want to do with your PDF?',
