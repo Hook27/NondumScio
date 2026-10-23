@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'preact/hooks';
 import type { PDFDocumentProxy, RenderTask } from 'pdfjs-dist';
+import { onceInView } from '../lib/inView';
 import { renderScale, thumbnailSize } from '../pdf/thumbnail';
 
 /** Weergavebreedte van een miniatuur in CSS-pixels. */
@@ -26,21 +27,7 @@ export function Thumbnail({
   useEffect(() => {
     const element = figure.current;
     if (!element) return;
-    if (typeof IntersectionObserver === 'undefined') {
-      setVisible(true);
-      return;
-    }
-    const observer = new IntersectionObserver(
-      (entries) => {
-        if (entries.some((entry) => entry.isIntersecting)) {
-          setVisible(true);
-          observer.disconnect();
-        }
-      },
-      { rootMargin: '300px' },
-    );
-    observer.observe(element);
-    return () => observer.disconnect();
+    return onceInView(element, () => setVisible(true));
   }, []);
 
   useEffect(() => {
@@ -69,6 +56,10 @@ export function Thumbnail({
         if (!cancelled) setRendered(true);
       } catch {
         // Afgebroken (bijvoorbeeld bij sluiten): niets aan de hand.
+      } finally {
+        // De miniatuur staat nu op het canvas; pdf.js mag de uitgepakte pagina
+        // (lettertypen, afbeeldingen van scans) weer uit het geheugen halen.
+        page.cleanup();
       }
     })();
 

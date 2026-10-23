@@ -1,7 +1,7 @@
 import type { PDFDocumentProxy } from 'pdfjs-dist';
 import { classifyLoadError, looksLikePdf, type LoadErrorCode } from './detect';
 
-/** Een geopende PDF. De bytes blijven bewaard voor latere bewerkingen. */
+/** Een geopende PDF. */
 export type LoadedPdf = {
   pdf: PDFDocumentProxy;
   pageCount: number;
@@ -55,9 +55,11 @@ export async function loadPdf(bytes: Uint8Array): Promise<LoadedPdf> {
 
   const lib = await pdfjs();
   try {
-    // pdf.js neemt de bytes over (en maakt ze onbruikbaar); geef daarom een kopie mee.
+    // pdf.js neemt de bytes over (en maakt ze daarna onbruikbaar). Dat is goed: voor latere
+    // bewerkingen bewaren we het bestand zelf, niet deze bytes. Zo staat de PDF maar één keer
+    // in het geheugen.
     const pdf = await lib.getDocument({
-      data: bytes.slice(),
+      data: bytes,
       ...pdfjsAssetOptions(document.baseURI),
     }).promise;
     return { pdf, pageCount: pdf.numPages };

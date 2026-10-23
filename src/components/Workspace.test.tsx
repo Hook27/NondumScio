@@ -11,13 +11,15 @@ import { Workspace } from './Workspace';
 const nl = messages.nl;
 
 /** Een nep-PDF met een aantal pagina's; tekenen gebeurt niet echt (dat testen de browsertests). */
-function fakePdf(pageCount: number): LoadedPdf {
+function fakePdf(pageCount: number) {
   const page = {
     getViewport: ({ scale }: { scale: number }) => ({ width: 595 * scale, height: 842 * scale }),
     render: () => ({ promise: Promise.resolve(), cancel: () => {} }),
+    cleanup: vi.fn(),
   };
   const pdf = { numPages: pageCount, getPage: vi.fn(async () => page) };
-  return { pdf: pdf as unknown as PDFDocumentProxy, pageCount };
+  const loaded: LoadedPdf = { pdf: pdf as unknown as PDFDocumentProxy, pageCount };
+  return Object.assign(loaded, { page });
 }
 
 function pdfFile(name = 'rapport.pdf', size = 2048) {
@@ -26,9 +28,13 @@ function pdfFile(name = 'rapport.pdf', size = 2048) {
 }
 
 function setup({
-  load = vi.fn(async () => fakePdf(3)),
+  load = vi.fn(async (): Promise<LoadedPdf> => fakePdf(3)),
   unload = vi.fn(),
-  language = 'nl' as Language,
+  language = 'nl',
+}: {
+  load?: (bytes: Uint8Array) => Promise<LoadedPdf>;
+  unload?: (pdf: PDFDocumentProxy) => void;
+  language?: Language;
 } = {}) {
   render(
     <LanguageProvider initial={language}>
@@ -37,9 +43,10 @@ function setup({
       </DocumentProvider>
     </LanguageProvider>,
   );
-  const input = document.querySelector<HTMLInputElement>('input[type="file"]')!;
-  const choose = (file: File) => fireEvent.change(input, { target: { files: [file] } });
-  return { load, unload, input, choose };
+  // Elke keer opnieuw zoeken: na sluiten staat er een nieuw bestandsveld.
+  const fileInput = () => document.querySelector<HTMLInputElement>('input[type="file"]')!;
+  const choose = (file: File) => fireEvent.change(fileInput(), { target: { files: [file] } });
+  return { load, unload, input: fileInput(), choose };
 }
 
 afterEach(() => cleanup());
@@ -177,5 +184,28 @@ describe('Workspace', () => {
     choose(pdfFile('report.pdf', 3 * 1024 * 1024));
     expect(await screen.findByText(/3 pages · 3 MB/)).toBeTruthy();
     expect(screen.getByRole('img', { name: 'Page 2' })).toBeTruthy();
+  });
+
+  it('ruimt na het tekenen elke pagina op in pdf.js (zuinig met geheugen)', async () => {
+    const loaded = fakePdf(3);
+    const { choose } = setup({ load: vi.fn(async () => loaded) });
+    choose(pdfFile());
+    await screen.findByRole('heading', { level: 2, name: 'rapport.pdf' });
+    await waitFor(() => expect(loaded.page.cleanup).toHaveBeenCalledTimes(3));
+  });
+
+  it('toont nieuwe miniaturen voor een tweede document met dezelfde naam', async () => {
+    const eerste = fakePdf(3);
+    const tweede = fakePdf(2);
+    const load = vi.fn().mockResolvedValueOnce(eerste).mockResolvedValueOnce(tweede);
+    const { choose } = setup({ load });
+
+    choose(pdfFile('zelfde.pdf'));
+    await screen.findByRole('heading', { level: 2, name: 'zelfde.pdf' });
+    fireEvent.click(screen.getByRole('button', { name: nl.document.close }));
+    choose(pdfFile('zelfde.pdf'));
+
+    await waitFor(() => expect(screen.getAllByRole('listitem')).toHaveLength(2));
+    await waitFor(() => expect(tweede.pdf.getPage).toHaveBeenCalledTimes(2));
   });
 });

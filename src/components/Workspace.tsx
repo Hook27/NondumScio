@@ -7,14 +7,14 @@ import { Thumbnail } from './Thumbnail';
 
 /** Het werkgebied van een taak: een PDF openen, en daarna de pagina's ervan. */
 export function Workspace() {
-  const { document } = useDocument();
+  const { doc } = useDocument();
 
-  if (document.status === 'ready') return <OpenDocument />;
+  if (doc.status === 'ready') return <OpenDocument />;
   return <OpenPdf />;
 }
 
 function OpenPdf() {
-  const { document, open } = useDocument();
+  const { doc, open } = useDocument();
   const { t } = useI18n();
   const [dragging, setDragging] = useState(false);
 
@@ -24,14 +24,14 @@ function OpenPdf() {
   };
 
   const error =
-    document.status === 'error'
+    doc.status === 'error'
       ? format(
           {
             'not-pdf': t.document.errors.notPdf,
             password: t.document.errors.password,
             damaged: t.document.errors.damaged,
-          }[document.code],
-          { name: document.name },
+          }[doc.code],
+          { name: doc.name },
         )
       : null;
 
@@ -71,9 +71,9 @@ function OpenPdf() {
       <label for="pdf-file" class="button">
         {t.document.choose}
       </label>
-      {document.status === 'loading' && (
+      {doc.status === 'loading' && (
         <p class="dropzone__status" role="status">
-          {format(t.document.loading, { name: document.name })}
+          {format(t.document.loading, { name: doc.name })}
         </p>
       )}
       {error && (
@@ -86,33 +86,33 @@ function OpenPdf() {
 }
 
 function OpenDocument() {
-  const { document, close } = useDocument();
+  const { doc, close } = useDocument();
   const { t, language } = useI18n();
-  if (document.status !== 'ready') return null;
+  if (doc.status !== 'ready') return null;
 
-  const pages = Array.from({ length: document.pageCount }, (_, i) => i + 1);
+  const pages = Array.from({ length: doc.pageCount }, (_, i) => i + 1);
 
   return (
     <section class="document" aria-labelledby="document-title">
       <div class="document__bar">
         <div>
           <h2 id="document-title" class="document__name">
-            {document.name}
+            {doc.name}
           </h2>
           <p class="document__meta">
-            {plural(document.pageCount, t.document.pagesOne, t.document.pagesOther)} ·{' '}
-            {formatFileSize(document.size, language)}
+            {plural(doc.pageCount, t.document.pagesOne, t.document.pagesOther)} ·{' '}
+            {formatFileSize(doc.size, language)}
           </p>
         </div>
         <button type="button" class="button button--secondary" onClick={close}>
           {t.document.close}
         </button>
       </div>
-      <ol class="thumbs" aria-label={format(t.document.thumbnails, { name: document.name })}>
+      <ol class="thumbs" aria-label={format(t.document.thumbnails, { name: doc.name })}>
         {pages.map((pageNumber) => (
-          <li key={`${document.name}-${pageNumber}`}>
+          <li key={`${doc.id}-${pageNumber}`}>
             <Thumbnail
-              pdf={document.pdf}
+              pdf={doc.pdf}
               pageNumber={pageNumber}
               label={format(t.document.page, { n: pageNumber })}
             />
