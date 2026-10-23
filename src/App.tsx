@@ -4,6 +4,7 @@ import { Header } from './components/Header';
 import { Home } from './components/Home';
 import { NotFound } from './components/NotFound';
 import { TaskPage } from './components/TaskPage';
+import { DocumentProvider } from './document/DocumentContext';
 import { LanguageProvider, useI18n } from './i18n/LanguageContext';
 import type { Messages } from './i18n/nl';
 import type { Route } from './router';
@@ -76,7 +77,9 @@ export function App() {
   return (
     <ThemeProvider>
       <LanguageProvider>
-        <AppContent />
+        <DocumentProvider>
+          <AppContent />
+        </DocumentProvider>
       </LanguageProvider>
     </ThemeProvider>
   );

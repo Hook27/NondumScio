@@ -19,8 +19,26 @@ export const nl = {
     title: 'Wat wil je doen met je PDF?',
     intro: 'Alles gebeurt in je browser. Je bestanden worden nooit geüpload.',
   },
+  document: {
+    openTitle: 'Open een PDF',
+    openHint:
+      'Sleep een bestand hierheen of kies er een. Je bestand blijft op je apparaat en wordt nergens naartoe gestuurd.',
+    choose: 'Kies een PDF',
+    dropHere: 'Laat los om te openen',
+    loading: '{name} wordt geopend…',
+    close: 'Sluiten',
+    pagesOne: '1 pagina',
+    pagesOther: '{n} pagina’s',
+    page: 'Pagina {n}',
+    thumbnails: 'Pagina’s van {name}',
+    errors: {
+      notPdf: '{name} is geen PDF. Kies een bestand dat eindigt op .pdf.',
+      password: '{name} is beveiligd met een wachtwoord. Dat wordt nog niet ondersteund.',
+      damaged: '{name} kon niet worden geopend. Het bestand is mogelijk beschadigd.',
+    },
+  },
   comingSoon: 'Binnenkort beschikbaar.',
-  comingSoonDetail: 'Deze taak wordt in een volgende versie toegevoegd.',
+  comingSoonDetail: 'De gereedschappen voor deze taak komen in een volgende versie.',
   notFound: {
     title: 'Pagina niet gevonden',
     detail: 'Dit adres bestaat niet. Ga terug naar het overzicht om een taak te kiezen.',

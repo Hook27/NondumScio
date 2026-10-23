@@ -9,6 +9,10 @@ Elke pull request krijgt een live voorbeeld op `https://pdf.nondumsc.io/pr-previ
 
 Status: in aanbouw. Zie [CLAUDE.md](CLAUDE.md) voor de werkafspraak.
 
+## Hoe een PDF wordt geopend
+
+Met pdf.js (Mozilla, Apache-2.0). De bibliotheek wordt pas geladen als je een PDF opent, zodat de startpagina licht blijft; het tekenen gebeurt in een aparte worker. Het bestand wordt in het geheugen van de browser gelezen en nergens naartoe gestuurd (een browsertest controleert dat er geen verzoeken naar andere adressen gaan). Miniaturen worden pas getekend als ze in beeld komen.
+
 ## Ontwikkelen
 
 Vereist Node 24 (zie `.nvmrc`).
