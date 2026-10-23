@@ -79,8 +79,10 @@ a {
   outline-offset: 2px;
 }
 
-/* De kop krijgt focus na het navigeren, maar hoeft daar geen kader bij. */
-h1[tabindex='-1']:focus {
+/* De kop en het hoofdgebied krijgen soms focus via code (na navigeren, via de sla-over-link),
+   maar hoeven daar geen kader bij. */
+h1[tabindex='-1']:focus,
+main[tabindex='-1']:focus {
   outline: none;
 }
 

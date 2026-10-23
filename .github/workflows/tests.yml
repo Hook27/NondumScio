@@ -34,3 +34,32 @@ jobs:
         run: npm test
       - name: Build
         run: npm run build
+
+  # Browsertests: de echte productiebuild in een echte browser, op desktop en telefoon.
+  e2e:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+      - run: npm ci
+      - name: Browser onthouden tussen runs
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
+      - name: Browser installeren
+        run: npx playwright install --with-deps chromium
+      - name: Browsertests
+        run: npm run e2e
+      - name: Rapport bewaren bij een fout
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-rapport
+          path: |
+            playwright-report/
+            test-results/
+          retention-days: 7

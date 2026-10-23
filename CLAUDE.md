@@ -26,4 +26,4 @@ geen force-push, geen verwijderen.
 
 - Nederlands in gesprek, commitberichten en PR-teksten.
 - Bij een niet-triviale wijziging eerst een kort plan, pas bouwen na akkoord.
-- Draai de test lokaal vóór de PR: `bash tests/test_readme.sh`.
+- Draai lokaal vóór de PR: `npm test`, en bij zichtbare wijzigingen ook `npm run e2e`.

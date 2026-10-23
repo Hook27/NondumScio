@@ -85,6 +85,16 @@ describe('App', () => {
     expect(screen.getByRole('main').id).toBe('main');
   });
 
+  it('brengt de sla-over-link de focus naar de inhoud zonder van pagina te wisselen', async () => {
+    goTo('#/merge');
+    renderApp();
+    fireEvent.click(screen.getByRole('link', { name: nl.skipToContent }));
+
+    expect(document.activeElement).toBe(screen.getByRole('main'));
+    expect(window.location.hash).toBe('#/merge');
+    expect(screen.getByRole('heading', { level: 1, name: nl.tasks.merge.title })).toBeTruthy();
+  });
+
   it('toont het versienummer linksonder in de voettekst', () => {
     renderApp();
     const footer = screen.getByRole('contentinfo');
@@ -141,8 +151,8 @@ describe('taalkeuze', () => {
   it('heeft een groep met twee knoppen en toont welke actief is', () => {
     renderApp('nl');
     const group = screen.getByRole('group', { name: nl.language });
-    const dutch = within(group).getByRole('button', { name: 'Nederlands' });
-    const english = within(group).getByRole('button', { name: 'English' });
+    const dutch = within(group).getByRole('button', { name: /Nederlands/ });
+    const english = within(group).getByRole('button', { name: /English/ });
     expect(dutch.getAttribute('aria-pressed')).toBe('true');
     expect(english.getAttribute('aria-pressed')).toBe('false');
     expect(dutch.getAttribute('lang')).toBe('nl');
@@ -152,7 +162,7 @@ describe('taalkeuze', () => {
   it('wisselt alles mee: teksten, menu, titel, lang-attribuut en bewaarde keuze', async () => {
     goTo('#/merge');
     renderApp('nl');
-    fireEvent.click(screen.getByRole('button', { name: 'English' }));
+    fireEvent.click(screen.getByRole('button', { name: /English/ }));
 
     await waitFor(() =>
       expect(screen.getByRole('heading', { level: 1, name: en.tasks.merge.title })).toBeTruthy(),
@@ -163,28 +173,28 @@ describe('taalkeuze', () => {
     expect(document.title).toBe(`${en.tasks.merge.title} · ${en.appName}`);
     expect(document.documentElement.lang).toBe('en');
     expect(window.localStorage.getItem(STORAGE_KEY)).toBe('en');
-    expect(screen.getByRole('button', { name: 'English' }).getAttribute('aria-pressed')).toBe(
+    expect(screen.getByRole('button', { name: /English/ }).getAttribute('aria-pressed')).toBe(
       'true',
     );
-    expect(screen.getByRole('button', { name: 'Nederlands' }).getAttribute('aria-pressed')).toBe(
+    expect(screen.getByRole('button', { name: /Nederlands/ }).getAttribute('aria-pressed')).toBe(
       'false',
     );
   });
 
   it('blijft op de plek: wisselen van taal verplaatst de focus niet', async () => {
     renderApp('nl');
-    const english = screen.getByRole('button', { name: 'English' });
+    const english = screen.getByRole('button', { name: /English/ });
     english.focus();
     fireEvent.click(english);
     await waitFor(() =>
       expect(screen.getByRole('heading', { level: 1, name: en.home.title })).toBeTruthy(),
     );
-    expect(document.activeElement).toBe(screen.getByRole('button', { name: 'English' }));
+    expect(document.activeElement).toBe(screen.getByRole('button', { name: /English/ }));
   });
 
   it('onthoudt de keuze bij een nieuwe start', async () => {
     renderApp('nl');
-    fireEvent.click(screen.getByRole('button', { name: 'English' }));
+    fireEvent.click(screen.getByRole('button', { name: /English/ }));
     await waitFor(() =>
       expect(screen.getByRole('heading', { level: 1, name: en.home.title })).toBeTruthy(),
     );
@@ -196,7 +206,7 @@ describe('taalkeuze', () => {
 
   it('kan terug naar Nederlands', async () => {
     renderApp('en');
-    fireEvent.click(screen.getByRole('button', { name: 'Nederlands' }));
+    fireEvent.click(screen.getByRole('button', { name: /Nederlands/ }));
     await waitFor(() =>
       expect(screen.getByRole('heading', { level: 1, name: nl.home.title })).toBeTruthy(),
     );
