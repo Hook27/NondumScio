@@ -1,24 +1,57 @@
 name: deploy
 
-# Bouwt de site en zet hem op GitHub Pages. Op een pull request wordt alleen
-# gebouwd (om te bewijzen dat het pakket klopt); publiceren gebeurt alleen na
-# een merge naar main.
+# Elke pull request krijgt een live voorbeeld op /pr-preview/pr-<nummer>/; na een
+# merge naar main wordt de echte site bijgewerkt. Beide staan op de branch
+# `gh-pages`, die GitHub Pages publiceert op https://pdf.nondumsc.io/.
 on:
-  pull_request:
   push:
     branches: [main]
+  pull_request:
+    types: [opened, reopened, synchronize, closed]
   workflow_dispatch:
 
 permissions:
-  contents: read
+  contents: write # gh-pages bijwerken
+  pull-requests: write # opmerking met de voorbeeldlink
 
-# Eén uitrol tegelijk, en een lopende uitrol nooit halverwege afbreken.
+# Alle uitrollen na elkaar: ze schrijven allemaal naar dezelfde branch.
 concurrency:
-  group: pages-${{ github.ref }}
+  group: gh-pages
   cancel-in-progress: false
 
+env:
+  SITE_URL: https://pdf.nondumsc.io
+
 jobs:
-  build:
+  preview:
+    # Alleen voor PR's uit deze repo; een fork krijgt geen schrijfrechten.
+    if: >-
+      github.event_name == 'pull_request' &&
+      github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        if: github.event.action != 'closed'
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+      - name: Bouwen
+        if: github.event.action != 'closed'
+        run: |
+          npm ci
+          npm run build
+      # rossjrw/pr-preview-action v1.8.1
+      - uses: rossjrw/pr-preview-action@ffa7509e91a3ec8dfc2e5536c4d5c1acdf7a6de9
+        with:
+          source-dir: dist
+          umbrella-dir: pr-preview
+          pages-base-url: pdf.nondumsc.io
+          # Geen externe QR-dienst: de link zou daar naartoe gestuurd worden.
+          qr-code: 'false'
+
+  deploy:
+    if: github.event_name != 'pull_request'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -26,31 +59,28 @@ jobs:
         with:
           node-version-file: .nvmrc
           cache: npm
-      - run: npm ci
-      - run: npm run build
-      - uses: actions/configure-pages@v5
-        if: github.event_name != 'pull_request'
-      - uses: actions/upload-pages-artifact@v4
-        with:
-          path: dist
-
-  deploy:
-    if: github.event_name != 'pull_request'
-    needs: build
-    runs-on: ubuntu-latest
-    permissions:
-      pages: write
-      id-token: write
-    environment:
-      name: github-pages
-      url: ${{ steps.deployment.outputs.page_url }}
-    steps:
-      - id: deployment
-        uses: actions/deploy-pages@v4
-      - name: Rooktest op de live site
-        env:
-          PAGE_URL: ${{ steps.deployment.outputs.page_url }}
+      - name: Bouwen
         run: |
-          curl --fail --silent --show-error --location \
-            --retry 6 --retry-delay 5 --retry-all-errors "$PAGE_URL" \
-            | grep --quiet 'Nondum Scio'
+          npm ci
+          npm run build
+          echo "$GITHUB_SHA" > dist/version.txt
+      # JamesIves/github-pages-deploy-action v4.9.0
+      - uses: JamesIves/github-pages-deploy-action@fa24774553152dd7873cd16ebd8d959b010c5445
+        with:
+          branch: gh-pages
+          folder: dist
+          # De voorbeelden van open PR's blijven staan.
+          clean-exclude: pr-preview/
+      - name: Rooktest op de live site
+        run: |
+          for i in $(seq 1 30); do
+            live=$(curl --silent --location "$SITE_URL/version.txt" || true)
+            if [ "$live" = "$GITHUB_SHA" ]; then
+              echo "Live: $GITHUB_SHA"
+              exit 0
+            fi
+            echo "Poging $i: live is '$live', verwacht '$GITHUB_SHA'"
+            sleep 10
+          done
+          echo "De nieuwe versie kwam niet live binnen 5 minuten" >&2
+          exit 1
