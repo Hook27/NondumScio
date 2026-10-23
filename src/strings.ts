@@ -9,6 +9,7 @@ export const strings = {
   tagline: 'PDF-werkbank in je browser',
   skipToContent: 'Naar de inhoud',
   mainMenu: 'Hoofdmenu',
+  version: 'Versie',
   allTasks: '← Alle taken',
   home: {
     title: 'Wat wil je doen met je PDF?',

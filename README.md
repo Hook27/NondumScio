@@ -23,3 +23,7 @@ npm run build     # productiebuild in dist/
 ```
 
 Dezelfde controles draaien in GitHub Actions (job `test`) op elke pull request.
+
+## Versienummer
+
+Linksonder op de pagina staat het versienummer, gebaseerd op de pull request: `PR.009` is de build van PR 9. Op een voorbeeld is dat het nummer van die PR, op de echte site het nummer van de laatst gemergde PR. Lokaal staat er `dev`. Zie `scripts/app-version.ts`.

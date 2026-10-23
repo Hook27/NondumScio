@@ -1,4 +1,5 @@
 import { useEffect, useRef } from 'preact/hooks';
+import { Footer } from './components/Footer';
 import { Header } from './components/Header';
 import { Home } from './components/Home';
 import { NotFound } from './components/NotFound';
@@ -50,6 +51,7 @@ export function App() {
         {route.name === 'task' && <TaskPage id={route.id} />}
         {route.name === 'notFound' && <NotFound />}
       </main>
+      <Footer />
     </>
   );
 }
