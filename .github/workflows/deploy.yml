@@ -39,6 +39,9 @@ jobs:
       - name: Bouwen
         if: github.event.action != 'closed'
         run: |
+          # Het versienummer volgt het PR-nummer, bijvoorbeeld PR.009.
+          export VITE_APP_VERSION="$(node scripts/app-version.ts --pr "${{ github.event.number }}")"
+          echo "Versie: $VITE_APP_VERSION"
           npm ci
           npm run build
       # rossjrw/pr-preview-action v1.8.1
@@ -61,6 +64,9 @@ jobs:
           cache: npm
       - name: Bouwen
         run: |
+          # Na een merge staat het PR-nummer in de eerste regel van de merge-commit.
+          export VITE_APP_VERSION="$(node scripts/app-version.ts --subject "$(git log -1 --pretty=%s)" --sha "$GITHUB_SHA")"
+          echo "Versie: $VITE_APP_VERSION"
           npm ci
           npm run build
           echo "$GITHUB_SHA" > dist/version.txt

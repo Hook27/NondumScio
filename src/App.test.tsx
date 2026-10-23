@@ -2,6 +2,7 @@
 import { cleanup, render, screen, waitFor, within } from '@testing-library/preact';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { App } from './App';
+import { Footer } from './components/Footer';
 import { TASK_IDS } from './router';
 import { strings } from './strings';
 
@@ -72,5 +73,19 @@ describe('App', () => {
     const skip = screen.getByRole('link', { name: strings.skipToContent });
     expect(skip.getAttribute('href')).toBe('#main');
     expect(screen.getByRole('main').id).toBe('main');
+  });
+
+  it('toont het versienummer linksonder in de voettekst', () => {
+    render(<App />);
+    const footer = screen.getByRole('contentinfo');
+    expect(within(footer).getByText('dev')).toBeTruthy();
+  });
+});
+
+describe('Footer', () => {
+  it('toont het opgegeven versienummer met een uitleg bij de muis', () => {
+    render(<Footer version="PR.009" />);
+    const version = screen.getByText('PR.009');
+    expect(version.getAttribute('title')).toBe(`${strings.version} PR.009`);
   });
 });
