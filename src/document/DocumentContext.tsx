@@ -1,5 +1,13 @@
 import { createContext, type ComponentChildren } from 'preact';
-import { useCallback, useContext, useEffect, useMemo, useRef, useState } from 'preact/hooks';
+import {
+  useCallback,
+  useContext,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+} from 'preact/hooks';
 import type { PDFDocumentProxy } from 'pdfjs-dist';
 import { looksLikePdf, type LoadErrorCode } from '../pdf/detect';
 import {
@@ -135,9 +143,15 @@ export function DocumentProvider({
     doc.status === 'ready' && savedPages !== null && !samePlan(history.present, savedPages);
 
   // Wie de pagina sluit met niet-gedownloade wijzigingen, krijgt een waarschuwing van de browser.
-  useEffect(() => {
+  // Bewust direct bij het tekenen (layout-effect): zo staat de waarschuwing aan op het
+  // moment dat "Gewijzigd" in beeld komt, ook als iemand meteen daarna het tabblad sluit.
+  useLayoutEffect(() => {
     if (!unsaved) return;
-    const warn = (event: BeforeUnloadEvent) => event.preventDefault();
+    const warn = (event: BeforeUnloadEvent) => {
+      event.preventDefault();
+      // Voor oudere browsers, die alleen naar returnValue kijken.
+      event.returnValue = '';
+    };
     window.addEventListener('beforeunload', warn);
     return () => window.removeEventListener('beforeunload', warn);
   }, [unsaved]);

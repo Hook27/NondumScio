@@ -106,6 +106,7 @@ test.describe('pagina’s bewerken', () => {
     await openThreePages(page);
     await options(page).nth(0).click();
     await toolbarButton(page, nl.pages.remove).click();
+    await expect(page.locator('.page-editor__status')).toContainText(nl.pages.unsaved);
 
     const dialoog = new Promise<string>((resolve) =>
       page.once('dialog', (dialog) => {
