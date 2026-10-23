@@ -44,6 +44,8 @@ jobs:
           echo "Versie: $VITE_APP_VERSION"
           npm ci
           npm run build
+          # Deze twee horen alleen in de hoofdmap van de site, niet in een voorbeeld.
+          rm -f dist/CNAME dist/.nojekyll
       # rossjrw/pr-preview-action v1.8.1
       - uses: rossjrw/pr-preview-action@ffa7509e91a3ec8dfc2e5536c4d5c1acdf7a6de9
         with:
@@ -90,3 +92,17 @@ jobs:
           done
           echo "De nieuwe versie kwam niet live binnen 5 minuten" >&2
           exit 1
+      - name: Restanten van gesloten voorbeelden opruimen
+        run: |
+          git fetch origin gh-pages:refs/remotes/origin/gh-pages
+          git worktree add -B gh-pages "$RUNNER_TEMP/gh-pages" origin/gh-pages
+          removed=$(node scripts/prune-previews.ts "$RUNNER_TEMP/gh-pages/pr-preview")
+          if [ -z "$removed" ]; then
+            echo "Niets op te ruimen"
+            exit 0
+          fi
+          echo "Opgeruimd: $removed"
+          cd "$RUNNER_TEMP/gh-pages"
+          git add -A
+          git -c user.name="github-actions[bot]"             -c user.email="41898282+github-actions[bot]@users.noreply.github.com"             commit -m "Restanten van gesloten voorbeelden opruimen"
+          git push origin gh-pages
