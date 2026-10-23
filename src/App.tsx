@@ -7,6 +7,7 @@ import { TaskPage } from './components/TaskPage';
 import { LanguageProvider, useI18n } from './i18n/LanguageContext';
 import type { Messages } from './i18n/nl';
 import type { Route } from './router';
+import { ThemeProvider } from './ThemeContext';
 import { useRoute } from './useRoute';
 
 function pageTitle(route: Route, t: Messages): string {
@@ -65,8 +66,10 @@ function AppContent() {
 
 export function App() {
   return (
-    <LanguageProvider>
-      <AppContent />
-    </LanguageProvider>
+    <ThemeProvider>
+      <LanguageProvider>
+        <AppContent />
+      </LanguageProvider>
+    </ThemeProvider>
   );
 }

@@ -1,6 +1,9 @@
-/* Ontwerpwaarden. Alle kleuren staan hier, zodat het donkere thema later alleen
-   deze waarden hoeft te vervangen. */
+/* Ontwerpwaarden. Alle kleuren staan hier; de componenten gebruiken alleen deze
+   variabelen. Het donkere thema volgt het systeem, tenzij de gebruiker koos
+   (data-theme op <html>). De donkere waarden staan daarom op twee plekken: houd ze gelijk
+   (een test bewaakt dat). */
 :root {
+  color-scheme: light;
   --bg: #f6f7f9;
   --surface: #ffffff;
   --text: #1c2333;
@@ -12,6 +15,34 @@
   --radius: 10px;
   --shadow: 0 1px 2px rgb(20 28 48 / 6%);
   --font: system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme='light']) {
+    color-scheme: dark;
+    --bg: #14171d;
+    --surface: #1c2029;
+    --text: #e6e9f0;
+    --text-muted: #a3acbd;
+    --border: #2e3442;
+    --accent: #8aa6f4;
+    --accent-contrast: #0f1420;
+    --focus: #9db6ff;
+    --shadow: 0 1px 2px rgb(0 0 0 / 40%);
+  }
+}
+
+:root[data-theme='dark'] {
+  color-scheme: dark;
+  --bg: #14171d;
+  --surface: #1c2029;
+  --text: #e6e9f0;
+  --text-muted: #a3acbd;
+  --border: #2e3442;
+  --accent: #8aa6f4;
+  --accent-contrast: #0f1420;
+  --focus: #9db6ff;
+  --shadow: 0 1px 2px rgb(0 0 0 / 40%);
 }
 
 *,
@@ -129,11 +160,41 @@ h1[tabindex='-1']:focus {
   color: var(--accent-contrast);
 }
 
-/* Taalwissel */
+/* Taalwissel en themaknop */
+.header-controls {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-left: auto;
+}
+
 .lang-switch {
   display: flex;
   gap: 0.25rem;
-  margin-left: auto;
+}
+
+.theme-toggle {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 2.2rem;
+  height: 2.2rem;
+  padding: 0;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--surface);
+  color: var(--text);
+  cursor: pointer;
+}
+
+.theme-toggle:hover {
+  border-color: var(--accent);
+}
+
+.theme-toggle[aria-pressed='true'] {
+  border-color: var(--accent);
+  background: var(--accent);
+  color: var(--accent-contrast);
 }
 
 .lang-switch button {

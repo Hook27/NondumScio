@@ -1,3 +1,4 @@
+import { readItem, writeItem, type StorageLike } from '../lib/storage';
 import { en } from './en';
 import { nl, type Messages } from './nl';
 
@@ -33,32 +34,10 @@ export function detectLanguage(
   return 'en';
 }
 
-type StorageLike = Pick<Storage, 'getItem' | 'setItem'>;
-
-function defaultStorage(): StorageLike | null {
-  try {
-    return window.localStorage;
-  } catch {
-    // Opslag kan geblokkeerd zijn (privémodus, strenge instellingen).
-    return null;
-  }
+export function readStoredLanguage(storage?: StorageLike | null): string | null {
+  return readItem(STORAGE_KEY, storage);
 }
 
-export function readStoredLanguage(storage: StorageLike | null = defaultStorage()): string | null {
-  try {
-    return storage?.getItem(STORAGE_KEY) ?? null;
-  } catch {
-    return null;
-  }
-}
-
-export function storeLanguage(
-  language: Language,
-  storage: StorageLike | null = defaultStorage(),
-): void {
-  try {
-    storage?.setItem(STORAGE_KEY, language);
-  } catch {
-    // Niet kunnen bewaren is geen reden om de pagina te laten falen.
-  }
+export function storeLanguage(language: Language, storage?: StorageLike | null): void {
+  writeItem(STORAGE_KEY, language, storage);
 }

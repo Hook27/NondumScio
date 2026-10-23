@@ -11,6 +11,9 @@ export const nl = {
   mainMenu: 'Hoofdmenu',
   version: 'Versie',
   language: 'Taal',
+  theme: {
+    dark: 'Donker thema',
+  },
   allTasks: '← Alle taken',
   home: {
     title: 'Wat wil je doen met je PDF?',
