@@ -32,6 +32,10 @@ Dezelfde controles draaien in GitHub Actions (job `test`) op elke pull request.
 
 `npm run e2e` draait de browsertests (Playwright) tegen de echte productiebuild, op desktop en telefoon: navigatie, taal, thema, en een automatische toegankelijkheidscontrole (axe, WCAG 2.1 A en AA) van elke pagina in elke taal en elk thema. Eenmalig de browser installeren met `npm run e2e:install`. In GitHub draait dit als job `e2e`; bij een fout wordt een rapport met opnames bewaard.
 
+## Updates
+
+Dependabot kijkt elke maandag of er nieuwere versies zijn van de npm-pakketten en de GitHub-acties, en opent daarvoor een PR (kleine updates gebundeld). Zo'n PR doorloopt dezelfde checks en wordt, zoals elke PR, beoordeeld en gemerged door Jörg. Voor Dependabot-PR's wordt geen live voorbeeld gemaakt.
+
 ## Talen
 
 De interface is Nederlands en Engels. De teksten staan in `src/i18n/nl.ts` en `src/i18n/en.ts`; het Engelse bestand moet exact dezelfde sleutels hebben (de typecontrole en een test bewaken dat). De taal komt uit de bewaarde keuze, anders uit de browser, anders Engels.

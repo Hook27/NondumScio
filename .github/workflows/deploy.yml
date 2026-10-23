@@ -14,24 +14,25 @@ permissions:
   contents: write # gh-pages bijwerken
   pull-requests: write # opmerking met de voorbeeldlink
 
-# Alle uitrollen na elkaar: ze schrijven allemaal naar dezelfde branch.
-concurrency:
-  group: gh-pages
-  cancel-in-progress: false
-
 env:
   SITE_URL: https://pdf.nondumsc.io
 
 jobs:
   preview:
-    # Alleen voor PR's uit deze repo; een fork krijgt geen schrijfrechten.
+    # Alleen voor PR's uit deze repo; een fork krijgt geen schrijfrechten. Dependabot ook
+    # niet (GitHub geeft zijn PR's alleen leesrechten): die PR's bekijk je via de checks.
     if: >-
       github.event_name == 'pull_request' &&
-      github.event.pull_request.head.repo.full_name == github.repository
+      github.event.pull_request.head.repo.full_name == github.repository &&
+      github.actor != 'dependabot[bot]'
     runs-on: ubuntu-latest
+    # Per PR één wachtrij: een nieuwere push op dezelfde PR vervangt een wachtende oudere.
+    concurrency:
+      group: preview-${{ github.event.number }}
+      cancel-in-progress: false
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
         if: github.event.action != 'closed'
         with:
           node-version-file: .nvmrc
@@ -58,9 +59,13 @@ jobs:
   deploy:
     if: github.event_name != 'pull_request'
     runs-on: ubuntu-latest
+    # Een eigen wachtrij voor main: voorbeelden van PR's kunnen deze uitrol niet wegdrukken.
+    concurrency:
+      group: deploy-main
+      cancel-in-progress: false
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
         with:
           node-version-file: .nvmrc
           cache: npm
@@ -103,6 +108,15 @@ jobs:
           fi
           echo "Opgeruimd: $removed"
           cd "$RUNNER_TEMP/gh-pages"
+          # Naam en e-mail ook nodig voor het bijwerken (rebase) hieronder.
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add -A
-          git -c user.name="github-actions[bot]"             -c user.email="41898282+github-actions[bot]@users.noreply.github.com"             commit -m "Restanten van gesloten voorbeelden opruimen"
-          git push origin gh-pages
+          git commit -m "Restanten van gesloten voorbeelden opruimen"
+          # Pushte een voorbeeld tegelijk naar gh-pages? Dan bijwerken en opnieuw proberen.
+          for poging in 1 2 3; do
+            if git push origin gh-pages; then exit 0; fi
+            echo "Push geweigerd (poging $poging), bijwerken en opnieuw"
+            git pull --rebase origin gh-pages
+          done
+          exit 1
