@@ -1,15 +1,16 @@
-import type { TaskId } from './router';
+import type { TaskId } from '../router';
 
 /**
- * Alle teksten van de interface op één plek. Voorlopig alleen Nederlands;
- * in de volgende PR komt hier de Engelse vertaling bij.
+ * De Nederlandse teksten van de interface. Dit bestand bepaalt de vorm: het
+ * Engelse bestand (en.ts) moet precies dezelfde sleutels hebben.
  */
-export const strings = {
+export const nl = {
   appName: 'Nondum Scio',
   tagline: 'PDF-werkbank in je browser',
   skipToContent: 'Naar de inhoud',
   mainMenu: 'Hoofdmenu',
   version: 'Versie',
+  language: 'Taal',
   allTasks: '← Alle taken',
   home: {
     title: 'Wat wil je doen met je PDF?',
@@ -47,6 +48,9 @@ export const strings = {
       description: 'Maak tekst definitief onleesbaar, zodat hij niet meer terug te halen is.',
     },
   },
-} as const satisfies Record<string, unknown> & {
+} satisfies Record<string, unknown> & {
   tasks: Record<TaskId, { title: string; description: string }>;
 };
+
+/** De vorm van een volledige set teksten, voor elke taal. */
+export type Messages = typeof nl;

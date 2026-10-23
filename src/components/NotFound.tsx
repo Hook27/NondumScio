@@ -1,15 +1,17 @@
+import { useI18n } from '../i18n/LanguageContext';
 import { hrefFor } from '../router';
-import { strings } from '../strings';
 
 export function NotFound() {
+  const { t } = useI18n();
+
   return (
     <>
       <h1 id="page-title" tabIndex={-1}>
-        {strings.notFound.title}
+        {t.notFound.title}
       </h1>
-      <p class="lead">{strings.notFound.detail}</p>
+      <p class="lead">{t.notFound.detail}</p>
       <p>
-        <a href={hrefFor({ name: 'home' })}>{strings.allTasks}</a>
+        <a href={hrefFor({ name: 'home' })}>{t.allTasks}</a>
       </p>
     </>
   );
