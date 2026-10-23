@@ -4,28 +4,36 @@ import type { PDFDocumentProxy } from 'pdfjs-dist';
 import { looksLikePdf, type LoadErrorCode } from '../pdf/detect';
 import { PdfLoadError, closePdf, loadPdf, type LoadedPdf } from '../pdf/loader';
 
-/** Het document dat open staat. Het blijft open als je van taak wisselt. */
-export type DocumentState =
+/**
+ * Het document dat open staat. Het blijft open als je van taak wisselt.
+ * (Bewust niet `document` genoemd: die naam is van de browser.)
+ */
+export type DocState =
   | { status: 'empty' }
   | { status: 'loading'; name: string }
   | {
       status: 'ready';
+      /** Uniek per geopend document, ook als twee bestanden dezelfde naam hebben. */
+      id: number;
       name: string;
       size: number;
-      /** De originele bytes, voor latere bewerkingen. */
-      bytes: Uint8Array;
+      /**
+       * Het bestand zelf, voor latere bewerkingen. Een `File` wijst naar de gegevens op je
+       * apparaat; zo staat de PDF niet nog een keer in het geheugen naast de kopie van pdf.js.
+       */
+      file: File;
       pdf: PDFDocumentProxy;
       pageCount: number;
     }
   | { status: 'error'; name: string; code: LoadErrorCode };
 
-type DocumentApi = {
-  document: DocumentState;
+type DocApi = {
+  doc: DocState;
   open: (file: File) => Promise<void>;
   close: () => void;
 };
 
-const DocumentContext = createContext<DocumentApi | null>(null);
+const DocContext = createContext<DocApi | null>(null);
 
 export function DocumentProvider({
   children,
@@ -38,7 +46,7 @@ export function DocumentProvider({
   /** Alleen voor tests: vervang het sluiten. */
   unload?: (pdf: PDFDocumentProxy) => void;
 }) {
-  const [document, setDocument] = useState<DocumentState>({ status: 'empty' });
+  const [doc, setDoc] = useState<DocState>({ status: 'empty' });
   // Elk openverzoek krijgt een nummer; een trager, ouder verzoek mag een nieuwer niet overschrijven.
   const latest = useRef(0);
   const current = useRef<PDFDocumentProxy | null>(null);
@@ -51,7 +59,7 @@ export function DocumentProvider({
   const open = useCallback(
     async (file: File) => {
       const request = ++latest.current;
-      setDocument({ status: 'loading', name: file.name });
+      setDoc({ status: 'loading', name: file.name });
 
       try {
         const bytes = new Uint8Array(await file.arrayBuffer());
@@ -63,11 +71,12 @@ export function DocumentProvider({
         }
         release();
         current.current = loaded.pdf;
-        setDocument({
+        setDoc({
           status: 'ready',
+          id: request,
           name: file.name,
           size: file.size,
-          bytes,
+          file,
           pdf: loaded.pdf,
           pageCount: loaded.pageCount,
         });
@@ -75,7 +84,7 @@ export function DocumentProvider({
         if (request !== latest.current) return;
         release();
         const code = error instanceof PdfLoadError ? error.code : 'damaged';
-        setDocument({ status: 'error', name: file.name, code });
+        setDoc({ status: 'error', name: file.name, code });
       }
     },
     [load, unload, release],
@@ -84,18 +93,18 @@ export function DocumentProvider({
   const close = useCallback(() => {
     latest.current += 1;
     release();
-    setDocument({ status: 'empty' });
+    setDoc({ status: 'empty' });
   }, [release]);
 
   // Ruim het document op als de app verdwijnt.
   useEffect(() => release, [release]);
 
-  const value = useMemo(() => ({ document, open, close }), [document, open, close]);
-  return <DocumentContext.Provider value={value}>{children}</DocumentContext.Provider>;
+  const value = useMemo(() => ({ doc, open, close }), [doc, open, close]);
+  return <DocContext.Provider value={value}>{children}</DocContext.Provider>;
 }
 
-export function useDocument(): DocumentApi {
-  const value = useContext(DocumentContext);
+export function useDocument(): DocApi {
+  const value = useContext(DocContext);
   if (!value) throw new Error('useDocument moet binnen een DocumentProvider worden gebruikt');
   return value;
 }

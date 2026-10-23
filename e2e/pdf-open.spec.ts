@@ -105,6 +105,25 @@ test.describe('PDF openen', () => {
     await expect(thumbnails(page).last()).toHaveAttribute('data-rendered', 'true');
   });
 
+  test('gebruikt één gedeelde kijker, ook bij honderden pagina’s', async ({ page }) => {
+    await page.addInitScript(() => {
+      const Original = window.IntersectionObserver;
+      const teller = window as unknown as { kijkers: number };
+      teller.kijkers = 0;
+      window.IntersectionObserver = class extends Original {
+        constructor(callback: IntersectionObserverCallback, options?: IntersectionObserverInit) {
+          super(callback, options);
+          teller.kijkers += 1;
+        }
+      } as typeof IntersectionObserver;
+    });
+    await openPage(page, '/#/pages', { lang: 'nl' });
+    await fileInput(page).setInputFiles(await pdfFile('dik.pdf', 300));
+    await expect(thumbnails(page)).toHaveCount(300);
+    await expect(thumbnails(page).first()).toHaveAttribute('data-rendered', 'true');
+    expect(await page.evaluate(() => (window as unknown as { kijkers: number }).kijkers)).toBe(1);
+  });
+
   test('het document blijft open als je van taak wisselt, en sluiten werkt', async ({ page }) => {
     await openPage(page, '/#/split', { lang: 'nl' });
     await fileInput(page).setInputFiles(await pdfFile('blijft.pdf', 2));
