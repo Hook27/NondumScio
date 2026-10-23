@@ -8,10 +8,29 @@ on:
 permissions:
   contents: read
 
+# Een nieuwe push op dezelfde branch annuleert de oude run.
+concurrency:
+  group: tests-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
+  # De naam `test` is de verplichte check in de ruleset van main: niet hernoemen.
   test:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Run tests
-        run: bash tests/test_readme.sh
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+      - run: npm ci
+      - name: Opmaak
+        run: npm run format:check
+      - name: Lint
+        run: npm run lint
+      - name: Typecontrole
+        run: npm run typecheck
+      - name: Unit-tests
+        run: npm test
+      - name: Build
+        run: npm run build
