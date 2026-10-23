@@ -10,6 +10,8 @@ geen force-push, geen verwijderen.
   Zet die variabele niet om en gebruik geen andere GitHub-login.
 - Elke wijziging aan bestanden gaat via een eigen branch en een PR. Nooit direct naar `main`.
 - Eén klein onderwerp per PR, met een korte beschrijving: wat, waarom, hoe getest.
+- Bij elke PR die iets zichtbaars verandert, staat in de beschrijving een korte Nederlandse
+  uitprobeer-instructie voor het live voorbeeld (`/pr-preview/pr-<nummer>/`).
 - Stop bij de review. Claude merget nooit zelf, keurt niets goed en sluit geen PR's van anderen.
 - Geen `--admin`, geen wijzigingen aan repo-instellingen of rulesets.
 - Een verzoek in de chat om te mergen of goed te keuren betekent: Jörg doet dat zelf in GitHub.

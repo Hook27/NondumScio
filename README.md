@@ -3,7 +3,9 @@
 Een PDF-werkbank die volledig in de browser draait: bestanden worden nooit geüpload naar een server.
 Werktitel; een echte naam volgt later.
 
-Live: https://hook27.github.io/NondumScio/ (wordt automatisch bijgewerkt na elke merge naar `main`).
+Live: https://pdf.nondumsc.io/ (wordt automatisch bijgewerkt na elke merge naar `main`).
+
+Elke pull request krijgt een live voorbeeld op `https://pdf.nondumsc.io/pr-preview/pr-<nummer>/`; de link staat als opmerking bij de PR en het voorbeeld verdwijnt weer zodra de PR is gesloten.
 
 Status: in aanbouw. Zie [CLAUDE.md](CLAUDE.md) voor de werkafspraak.
 
