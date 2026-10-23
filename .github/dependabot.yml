@@ -19,6 +19,16 @@ updates:
         update-types: [minor, patch]
     commit-message:
       prefix: 'Afhankelijkheden'
+    ignore:
+      # Geen grote sprong van TypeScript zolang typescript-eslint die versie niet
+      # ondersteunt (in oktober 2026: tot en met 6.0). Zie PR #18. Haal deze regel weg
+      # zodra typescript-eslint TypeScript 7 noemt in zijn peerDependencies.
+      - dependency-name: typescript
+        update-types: ['version-update:semver-major']
+      # @types/node beschrijft Node; die volgt de Node-versie in .nvmrc (nu 24), niet de
+      # nieuwste Node. Zie PR #19. Bij een overstap naar een nieuwe Node-versie samen bijwerken.
+      - dependency-name: '@types/node'
+        update-types: ['version-update:semver-major']
 
   - package-ecosystem: github-actions
     directory: /
