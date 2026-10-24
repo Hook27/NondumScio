@@ -736,6 +736,84 @@ h1 {
   bottom: calc(-0.25rem - 2px);
 }
 
+/* Pagina's per bestand: bereikveld en knop op een eigen regel, de miniaturen eronder. */
+.merge-pages {
+  flex-basis: 100%;
+}
+
+.merge-pages__bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem 0.75rem;
+}
+
+/* Label, veld en melding doen mee in de balk; de melding komt op een eigen regel eronder. */
+.merge-range {
+  display: contents;
+}
+
+.merge-range__label {
+  color: var(--text-muted);
+  font-size: 0.9rem;
+}
+
+.merge-range__input {
+  width: 11rem;
+  padding: 0.45rem 0.6rem;
+  background: var(--bg);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  font: inherit;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  cursor: text;
+  user-select: text;
+}
+
+/* Fout: een dikkere rand en een vette melding (geen aparte foutkleur in dit thema). */
+.merge-range__input[aria-invalid='true'] {
+  border: 2px solid var(--text);
+}
+
+.merge-range__error {
+  order: 1;
+  flex-basis: 100%;
+  margin: 0;
+  font-size: 0.9rem;
+  font-weight: 600;
+}
+
+.merge-pick {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(7rem, 1fr));
+  gap: 0.75rem;
+  margin: 0.75rem 0 0;
+  padding: 0;
+  border: 0;
+  cursor: default;
+}
+
+.merge-pick__page {
+  position: relative;
+  cursor: pointer;
+}
+
+.merge-pick__page--off .thumb {
+  opacity: 0.4;
+}
+
+.merge-pick__check {
+  position: absolute;
+  top: 0.4rem;
+  right: 0.4rem;
+  z-index: 1;
+  width: 1.4rem;
+  height: 1.4rem;
+  accent-color: var(--accent);
+  cursor: pointer;
+}
+
 .merge-list__position {
   min-width: 1.6rem;
   color: var(--text-muted);

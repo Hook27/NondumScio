@@ -147,6 +147,72 @@ describe('Samenvoegen', () => {
     expect(vi.mocked(downloadPdf).mock.calls[0]![1]).toBe('bijlage (samengevoegd).pdf');
   });
 
+  it('kiest per bestand pagina’s met een bereik, en dat is ongedaan te maken', async () => {
+    setup();
+    choose([pdfFile('a.pdf', 2), pdfFile('b.pdf', 5)]);
+    await screen.findByRole('list', { name: nl.merge.files });
+    const field = screen.getByLabelText('Pagina’s kiezen uit b.pdf') as HTMLInputElement;
+    expect(field.value).toBe('1-5');
+
+    fireEvent.input(field, { target: { value: '4, 1-2' } });
+    fireEvent.keyDown(field, { key: 'Enter' });
+    expect(field.value).toBe('1-2, 4');
+    expect(within(list()).getAllByRole('listitem')[1]!.textContent).toContain('3 van 5 pagina’s');
+    expect(document.querySelector('.document__meta')!.textContent).toContain('5 pagina’s');
+
+    fireEvent.click(button(nl.pages.undo));
+    expect(field.value).toBe('1-5');
+  });
+
+  it('meldt een verkeerd bereik en laat de keuze dan zoals hij was', async () => {
+    setup();
+    choose([pdfFile('a.pdf', 3)]);
+    await screen.findByRole('list', { name: nl.merge.files });
+    const field = screen.getByLabelText('Pagina’s kiezen uit a.pdf') as HTMLInputElement;
+
+    fireEvent.input(field, { target: { value: '2-7' } });
+    fireEvent.blur(field);
+    expect(screen.getByRole('alert').textContent).toBe(
+      'Pagina 7 bestaat niet: dit bestand heeft 3 pagina’s.',
+    );
+    expect(field.getAttribute('aria-invalid')).toBe('true');
+    expect((button(nl.pages.undo) as HTMLButtonElement).disabled).toBe(true);
+
+    // Escape zet het veld terug.
+    fireEvent.keyDown(field, { key: 'Escape' });
+    expect(field.value).toBe('1-3');
+    expect(screen.queryByRole('alert')).toBeNull();
+
+    fireEvent.input(field, { target: { value: '' } });
+    fireEvent.keyDown(field, { key: 'Enter' });
+    expect(screen.getByRole('alert').textContent).toContain('Kies minstens één pagina');
+  });
+
+  it('kiest pagina’s met vinkjes bij de miniaturen, maar laat er minstens één staan', async () => {
+    setup();
+    choose([pdfFile('a.pdf', 3)]);
+    await screen.findByRole('list', { name: nl.merge.files });
+    const toggle = button(`${nl.merge.showPages}: a.pdf`);
+    expect(toggle.getAttribute('aria-expanded')).toBe('false');
+    fireEvent.click(toggle);
+
+    const group = screen.getByRole('group', { name: 'Miniaturen van a.pdf' });
+    const boxes = within(group).getAllByRole('checkbox') as HTMLInputElement[];
+    expect(boxes.map((box) => box.checked)).toEqual([true, true, true]);
+
+    fireEvent.click(boxes[1]!);
+    fireEvent.click(boxes[2]!);
+    const field = screen.getByLabelText('Pagina’s kiezen uit a.pdf') as HTMLInputElement;
+    expect(field.value).toBe('1');
+    // De laatste pagina kan niet uit; aanzetten kan weer wel.
+    expect(boxes[0]!.disabled).toBe(true);
+    fireEvent.click(boxes[2]!);
+    expect(field.value).toBe('1, 3');
+
+    fireEvent.click(button(`${nl.merge.hidePages}: a.pdf`));
+    expect(screen.queryByRole('group', { name: 'Miniaturen van a.pdf' })).toBeNull();
+  });
+
   it('toont bij Pagina’s alle pagina’s van alle bestanden, met de bestandsnaam', async () => {
     setup('pages');
     choose([pdfFile('a.pdf', 1), pdfFile('b.pdf', 2)]);

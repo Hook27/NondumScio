@@ -12,6 +12,7 @@ import {
   movePagesBy,
   pickPages,
   samePlan,
+  setDocPages,
   normalizeRotation,
   record,
   redo,
@@ -318,6 +319,59 @@ describe('meerdere bestanden', () => {
     const pages = merged();
     const mixed = [pages[0]!, pages[2]!, pages[1]!, pages[3]!, pages[4]!, pages[5]!];
     expect(docs(moveDocTo(mixed, 1, 2))).toEqual([2, 2, 2, 1, 1, 3]);
+  });
+
+  describe('pagina’s per bestand kiezen', () => {
+    /** Nieuwe sleutels vanaf 100, zoals de documentstatus die doortelt. */
+    const keys = () => {
+      let next = 100;
+      return () => next++;
+    };
+    const plan = (pages: ReturnType<typeof merged>) => pages.map((p) => `${p.doc}:${p.source + 1}`);
+
+    it('laat pagina’s weg en houdt de rest op zijn plek', () => {
+      const result = setDocPages(merged(), 2, new Set([0, 2]), keys());
+      expect(plan(result)).toEqual(['1:1', '1:2', '2:1', '2:3', '3:1']);
+    });
+
+    it('zet een pagina terug op volgorde van paginanummer, met een nieuwe sleutel', () => {
+      const fewer = setDocPages(merged(), 2, new Set([0, 2]), keys());
+      const back = setDocPages(fewer, 2, new Set([0, 1, 2]), keys());
+      expect(plan(back)).toEqual(['1:1', '1:2', '2:1', '2:2', '2:3', '3:1']);
+      expect(back[3]!.key).toBe(100);
+      // Ook vooraan en achteraan in het bestand.
+      const middle = setDocPages(merged(), 2, new Set([1]), keys());
+      expect(plan(setDocPages(middle, 2, new Set([0, 1, 2]), keys()))).toEqual(plan(merged()));
+    });
+
+    it('houdt draaiing en plek van pagina’s die blijven, ook als ze door elkaar staan', () => {
+      const pages = merged();
+      // A1 B1 A2 B2 B3 C1, met B1 gedraaid.
+      const mixed = [
+        { ...pages[2]!, rotation: 90 as const },
+        pages[0]!,
+        pages[1]!,
+        pages[3]!,
+        pages[4]!,
+        pages[5]!,
+      ];
+      const result = setDocPages(mixed, 2, new Set([0, 2]), keys());
+      expect(plan(result)).toEqual(['2:1', '1:1', '1:2', '2:3', '3:1']);
+      expect(result[0]!.rotation).toBe(90);
+    });
+
+    it('zet nieuwe pagina’s op de plek van het bestand als er niets van over is', () => {
+      const result = setDocPages(merged(), 2, new Set([1]), keys());
+      const swapped = setDocPages(result, 2, new Set([0]), keys());
+      expect(plan(swapped)).toEqual(['1:1', '1:2', '2:1', '3:1']);
+    });
+
+    it('verandert niets bij een lege keuze, een onbekend bestand of dezelfde keuze', () => {
+      const pages = merged();
+      expect(setDocPages(pages, 2, new Set(), keys())).toBe(pages);
+      expect(setDocPages(pages, 9, new Set([0]), keys())).toBe(pages);
+      expect(setDocPages(pages, 2, new Set([0, 1, 2]), keys())).toBe(pages);
+    });
   });
 
   it('vergelijkt ook het bestand bij samePlan', () => {
