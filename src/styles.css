@@ -250,6 +250,30 @@ h1 {
   margin: 0 0 1rem;
 }
 
+/* Kop van een taak: terug, titel en korte uitleg op één regel. */
+.task-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0.15rem 1rem;
+  margin: 0 0 1rem;
+}
+
+.task-head__back {
+  font-size: 0.9rem;
+}
+
+.task-head__title {
+  margin: 0;
+  font-size: 1.4rem;
+}
+
+.task-head__lead {
+  margin: 0;
+  color: var(--text-muted);
+  font-size: 0.95rem;
+}
+
 .card-grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(15rem, 1fr));
@@ -349,6 +373,50 @@ h1 {
   filter: none;
 }
 
+/* Knop met alleen een symbool */
+.button--icon {
+  width: 2.25rem;
+  height: 2.25rem;
+  padding: 0;
+}
+
+.toolbar .button--icon {
+  padding: 0;
+}
+
+.icon {
+  display: block;
+  flex: none;
+}
+
+/* Draagt de hover-tekst. Een knop die uit staat laat de muis door naar dit omhulsel,
+   zodat de hover-tekst ook dan verschijnt. */
+.tip-anchor {
+  display: inline-flex;
+}
+
+.tip-anchor > button:disabled {
+  pointer-events: none;
+}
+
+.tip-anchor:has(> button:disabled) {
+  cursor: not-allowed;
+}
+
+.tooltip {
+  position: fixed;
+  z-index: 50;
+  max-width: 18rem;
+  padding: 0.3rem 0.55rem;
+  background: var(--text);
+  color: var(--bg);
+  border-radius: 6px;
+  box-shadow: 0 4px 12px rgb(0 0 0 / 25%);
+  font-size: 0.8rem;
+  line-height: 1.35;
+  pointer-events: none;
+}
+
 /* Het verborgen bestandsveld krijgt de focus; laat dat zien op het label ernaast. */
 .visually-hidden:focus-visible + .button {
   outline: 3px solid var(--focus);
@@ -396,15 +464,18 @@ h1 {
 
 .document__bar {
   display: flex;
-  flex-wrap: wrap;
   align-items: center;
   justify-content: space-between;
   gap: 0.75rem;
-  margin: 0 0 1rem;
-  padding: 0.9rem 1.1rem;
+  margin: 0 0 0.75rem;
+  padding: 0.6rem 0.8rem;
   background: var(--surface);
   border: 1px solid var(--border);
   border-radius: var(--radius);
+}
+
+.document__info {
+  min-width: 0;
 }
 
 .document__name {
@@ -492,25 +563,63 @@ h1 {
   font-size: 0.9rem;
 }
 
+/* De balk met bewerkingen blijft bovenaan hangen als je verder scrolt. */
+.toolbar--tools {
+  position: sticky;
+  top: 0;
+  z-index: 3;
+  gap: 0.5rem 0.75rem;
+  padding: 0.6rem;
+}
+
+/* De knoppen met tekst (toevoegen, downloaden) op een eigen regel. */
+.toolbar__group--wide {
+  flex-basis: 100%;
+}
+
+.tools-status {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  margin: 0 0 0.5rem;
+}
+
+.tools-status .page-editor__status {
+  margin: 0;
+}
+
+.info-panel {
+  margin: 0 0 0.75rem;
+  padding: 0.6rem 0.8rem;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  color: var(--text-muted);
+  font-size: 0.9rem;
+}
+
+.info-panel p {
+  margin: 0 0 0.4rem;
+}
+
+.info-panel p:last-child {
+  margin: 0;
+}
+
 .page-editor__status,
-.page-editor__hint,
 .page-editor__saved,
 .page-editor__error {
   margin: 0 0 0.5rem;
   font-size: 0.9rem;
 }
 
-.page-editor__status,
-.page-editor__hint {
+.page-editor__status {
   color: var(--text-muted);
 }
 
 .page-editor__error {
   font-weight: 600;
-}
-
-.page-editor__hint {
-  margin-bottom: 1rem;
 }
 
 .page-option {
@@ -674,14 +783,10 @@ h1 {
 }
 
 /* Samenvoegen */
-.merge__hint {
-  margin: 0 0 0.75rem;
-  color: var(--text-muted);
-  font-size: 0.9rem;
-}
-
 .merge-list {
   display: grid;
+  /* minmax(0, …): een lange bestandsnaam mag de lijst niet breder maken dan het vak. */
+  grid-template-columns: minmax(0, 1fr);
   gap: 0.5rem;
   margin: 0 0 1rem;
   padding: 0;
@@ -690,11 +795,7 @@ h1 {
 
 .merge-list__item {
   position: relative;
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 0.5rem 0.75rem;
-  padding: 0.6rem 0.75rem;
+  padding: 0.5rem 0.6rem;
   background: var(--surface);
   border: 1px solid var(--border);
   border-radius: var(--radius);
@@ -736,18 +837,6 @@ h1 {
   bottom: calc(-0.25rem - 2px);
 }
 
-/* Pagina's per bestand: bereikveld en knop op een eigen regel, de miniaturen eronder. */
-.merge-pages {
-  flex-basis: 100%;
-}
-
-.merge-pages__bar {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 0.5rem 0.75rem;
-}
-
 /* Label, veld en melding doen mee in de balk; de melding komt op een eigen regel eronder. */
 .merge-range {
   display: contents;
@@ -759,8 +848,8 @@ h1 {
 }
 
 .merge-range__input {
-  width: 11rem;
-  padding: 0.45rem 0.6rem;
+  width: 7.5rem;
+  padding: 0.35rem 0.5rem;
   background: var(--bg);
   color: var(--text);
   border: 1px solid var(--border);
@@ -786,9 +875,9 @@ h1 {
 
 .merge-pick {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(7rem, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(9rem, 1fr));
   gap: 0.75rem;
-  margin: 0.75rem 0 0;
+  margin: 0;
   padding: 0;
   border: 0;
   cursor: default;
@@ -815,17 +904,40 @@ h1 {
 }
 
 .merge-list__position {
-  min-width: 1.6rem;
+  min-width: 1.2rem;
   color: var(--text-muted);
   font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
   text-align: right;
 }
 
+.merge-list__head {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+/* Lange namen worden afgekapt; de hele naam staat in de hover-tekst. */
 .merge-list__name {
   flex: 1;
-  min-width: 10rem;
+  min-width: 0;
+  overflow: hidden;
   font-weight: 600;
-  overflow-wrap: anywhere;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.merge-list__tools {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.4rem 0.5rem;
+  margin-top: 0.4rem;
+}
+
+/* Het bestand waarvan rechts de pagina's met vinkjes staan. */
+.merge-list__item--picking {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 1px var(--accent);
 }
 
 .merge-list__pages {
@@ -835,12 +947,8 @@ h1 {
 
 .merge-list__actions {
   display: flex;
-  gap: 0.3rem;
-}
-
-.button--icon {
-  min-width: 2.4rem;
-  padding: 0.4rem 0.6rem;
+  gap: 0.25rem;
+  margin-left: auto;
 }
 
 .file-errors {
@@ -862,6 +970,106 @@ h1 {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+/* Kop van een vak (rechts: resultaat of pagina's kiezen) */
+.pane-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  margin: 0 0 0.75rem;
+}
+
+.pane-head__title {
+  margin: 0;
+  font-size: 1.05rem;
+}
+
+/* Krijgt de focus via code als het vak wisselt; een kader is daar niet nodig. */
+.pane-head__title:focus {
+  outline: none;
+}
+
+.pane-head__meta {
+  margin: 0;
+  color: var(--text-muted);
+  font-size: 0.85rem;
+}
+
+/* Smal scherm: alles onder elkaar. De vakken doen niet mee in de opbouw (display: contents),
+   zodat de knoppenbalk blijft hangen boven de pagina's, niet alleen boven het gereedschap. */
+@media (max-width: 56.2rem) {
+  .workspace__tools,
+  .workspace__tools > .page-editor,
+  .workspace__tools > .merge {
+    display: contents;
+  }
+
+  .workspace {
+    display: flex;
+    flex-direction: column;
+  }
+
+  /* Zo weinig mogelijk regels voor de vaste knoppenbalk: alles loopt door. */
+  .toolbar__group--wide {
+    flex-basis: auto;
+  }
+}
+
+/* Breed scherm: splitscherm. De pagina zelf scrolt niet meer; elk vak scrolt los, zodat het
+   gereedschap links altijd in beeld blijft. */
+@media (min-width: 56.25rem) {
+  #app:has(.workspace) {
+    height: 100vh;
+    height: 100dvh;
+    min-height: 0;
+    overflow: hidden;
+  }
+
+  #app:has(.workspace) .site-header__inner,
+  #app:has(.workspace) .site-main {
+    max-width: 110rem;
+  }
+
+  #app:has(.workspace) .site-main {
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+    padding: 0.75rem 1.25rem 0;
+  }
+
+  #app:has(.workspace) .task-head {
+    margin-bottom: 0.75rem;
+  }
+
+  #app:has(.workspace) .site-footer {
+    padding: 0.25rem 1.25rem;
+  }
+
+  .workspace {
+    flex: 1;
+    display: grid;
+    grid-template-columns: minmax(22rem, 28rem) minmax(0, 1fr);
+    gap: 1.25rem;
+    min-height: 0;
+  }
+
+  /* Een beetje ruimte rondom, zodat het focuskader niet wordt afgeknipt. */
+  .workspace__tools,
+  .workspace__view {
+    min-height: 0;
+    overflow-y: auto;
+    padding: 4px 6px 1rem 4px;
+  }
+
+  .workspace__view .pane-head {
+    position: sticky;
+    top: -4px;
+    z-index: 2;
+    padding: 4px 0 0.5rem;
+    background: var(--bg);
+  }
 }
 
 /* Versienummer linksonder */

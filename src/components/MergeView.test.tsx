@@ -193,8 +193,11 @@ describe('Samenvoegen', () => {
     choose([pdfFile('a.pdf', 3)]);
     await screen.findByRole('list', { name: nl.merge.files });
     const toggle = button(`${nl.merge.showPages}: a.pdf`);
-    expect(toggle.getAttribute('aria-expanded')).toBe('false');
+    expect(toggle.getAttribute('aria-pressed')).toBe('false');
     fireEvent.click(toggle);
+    // Het rechtervak toont nu de pagina's van dit bestand, en de kop daarvan krijgt de focus.
+    expect(toggle.getAttribute('aria-pressed')).toBe('true');
+    await waitFor(() => expect(document.activeElement?.textContent).toBe('a.pdf: pagina’s kiezen'));
 
     const group = screen.getByRole('group', { name: 'Miniaturen van a.pdf' });
     const boxes = within(group).getAllByRole('checkbox') as HTMLInputElement[];
@@ -209,8 +212,10 @@ describe('Samenvoegen', () => {
     fireEvent.click(boxes[2]!);
     expect(field.value).toBe('1, 3');
 
-    fireEvent.click(button(`${nl.merge.hidePages}: a.pdf`));
+    fireEvent.click(button(nl.merge.showResult));
     expect(screen.queryByRole('group', { name: 'Miniaturen van a.pdf' })).toBeNull();
+    expect(screen.getByRole('heading', { name: nl.merge.result })).toBeTruthy();
+    expect(toggle.getAttribute('aria-pressed')).toBe('false');
   });
 
   it('toont bij Pagina’s alle pagina’s van alle bestanden, met de bestandsnaam', async () => {
