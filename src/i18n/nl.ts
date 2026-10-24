@@ -82,6 +82,22 @@ export const nl = {
     download: 'Samengevoegde PDF downloaden',
     saveTitle: 'Samengevoegde PDF opslaan',
     suffix: 'samengevoegd',
+    pagesHint:
+      'Per bestand kies je welke pagina’s meedoen: typ een bereik zoals 1-3, 5 en druk op Enter, of klap de miniaturen uit en zet vinkjes.',
+    pagesLabel: 'Pagina’s',
+    pagesOfFile: 'kiezen uit {name}',
+    pagesChosen: '{n} van {total} pagina’s',
+    showPages: 'Miniaturen tonen',
+    hidePages: 'Miniaturen verbergen',
+    pick: 'Miniaturen van {name}',
+    keepPage:
+      'Er moet minstens één pagina van dit bestand overblijven. Een heel bestand weghalen doe je met ✕.',
+    rangeErrors: {
+      empty: 'Kies minstens één pagina. Een heel bestand weghalen doe je met ✕.',
+      invalid: '“{part}” is geen paginanummer of bereik. Typ bijvoorbeeld 1-3, 5.',
+      outOfRangeOne: 'Pagina {page} bestaat niet: dit bestand heeft 1 pagina.',
+      outOfRangeOther: 'Pagina {page} bestaat niet: dit bestand heeft {n} pagina’s.',
+    },
   },
   saveDialog: {
     saveTitle: 'PDF opslaan',

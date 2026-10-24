@@ -40,24 +40,30 @@ async function openMerge(page: Page, theme: 'light' | 'dark' = 'light') {
   await expect(list(page).getByRole('listitem')).toHaveCount(3, OPEN_TIMEOUT);
 }
 
-/** Een punt in een bestand in de lijst: bovenin, in het midden of onderin (op het greepje of naast de knoppen). */
-async function point(
-  page: Page,
-  index: number,
-  where: 'top' | 'middle' | 'bottom',
-  handle = false,
-) {
+/**
+ * Een punt in een bestand in de lijst: het greepje (om op te pakken), of bovenin of onderin
+ * het vak (om los te laten). Scrollt niet: zet eerst de lijst in beeld met `showList`, anders
+ * kloppen eerder berekende punten niet meer.
+ */
+async function point(page: Page, index: number, where: 'handle' | 'top' | 'bottom') {
   const item = list(page).getByRole('listitem').nth(index);
-  await item.scrollIntoViewIfNeeded();
-  const box = (await (handle ? item.locator('.drag-handle') : item).boundingBox())!;
-  const y = { top: 0.15, middle: 0.5, bottom: 0.85 }[where];
-  // Met de muis links in het vak (naast de naam), niet op de knoppen.
-  return { x: handle ? box.x + box.width / 2 : box.x + 60, y: box.y + box.height * y };
+  if (where === 'handle') {
+    const box = (await item.locator('.drag-handle').boundingBox())!;
+    return { x: box.x + box.width / 2, y: box.y + box.height / 2 };
+  }
+  const box = (await item.boundingBox())!;
+  return { x: box.x + 20, y: box.y + (where === 'top' ? 6 : box.height - 6) };
+}
+
+/** Zet de hele lijst in beeld, zodat alle punten tijdens het slepen blijven kloppen. */
+async function showList(page: Page) {
+  await list(page).evaluate((el) => el.scrollIntoView({ block: 'center' }));
 }
 
 /** Sleept met de muis een bestand naar boven- of onderin een ander bestand. */
 async function dragTo(page: Page, from: number, to: number, where: 'top' | 'bottom') {
-  const start = await point(page, from, 'middle');
+  await showList(page);
+  const start = await point(page, from, 'handle');
   const end = await point(page, to, where);
   await page.mouse.move(start.x, start.y);
   await page.mouse.down();
@@ -67,7 +73,8 @@ async function dragTo(page: Page, from: number, to: number, where: 'top' | 'bott
 
 /** Sleept met de vinger aan het greepje (echte aanraakgebeurtenissen via Chromium). */
 async function touchDragTo(page: Page, from: number, to: number, where: 'top' | 'bottom') {
-  const start = await point(page, from, 'middle', true);
+  await showList(page);
+  const start = await point(page, from, 'handle');
   const end = await point(page, to, where);
   const cdp = await page.context().newCDPSession(page);
   const touch = (type: 'touchStart' | 'touchMove' | 'touchEnd', x: number, y: number) =>
@@ -150,7 +157,8 @@ test.describe('samenvoegen', () => {
   }) => {
     test.skip(isMobile, 'Op een telefoon sleep je aan het greepje (aparte test)');
     await openMerge(page);
-    const start = await point(page, 2, 'middle');
+    await showList(page);
+    const start = await point(page, 2, 'handle');
     const over = await point(page, 0, 'top');
     const marker = list(page).locator(
       '.merge-list__item--drop-before, .merge-list__item--drop-after',
@@ -188,6 +196,50 @@ test.describe('samenvoegen', () => {
       'offerte.pdf',
       'bijlage.pdf',
     ]);
+  });
+
+  test('per bestand pagina’s kiezen met een bereik', async ({ page }) => {
+    await openMerge(page);
+    const field = page.getByLabel('Pagina’s kiezen uit voorwaarden.pdf');
+    await expect(field).toHaveValue('1-3');
+    await field.fill('3, 1');
+    await field.press('Enter');
+    await expect(field).toHaveValue('1, 3');
+    await expect(list(page).getByRole('listitem').nth(2)).toContainText('2 van 3 pagina’s');
+
+    // Een pagina die niet bestaat: een melding, en er verandert niets.
+    const other = page.getByLabel('Pagina’s kiezen uit offerte.pdf');
+    await other.fill('2-4');
+    await other.press('Enter');
+    await expect(page.getByRole('alert')).toHaveText(
+      'Pagina 4 bestaat niet: dit bestand heeft 2 pagina’s.',
+    );
+    await other.press('Escape');
+
+    const result = await readDownload(page, nl.merge.download);
+    expect(result.widths).toEqual([300, 310, 500, 700, 720]);
+  });
+
+  test('per bestand pagina’s kiezen met vinkjes bij de miniaturen', async ({ page }) => {
+    await openMerge(page);
+    await page.getByRole('button', { name: `${nl.merge.showPages}: offerte.pdf` }).click();
+    const group = page.getByRole('group', { name: 'Miniaturen van offerte.pdf' });
+    await expect(group.getByRole('checkbox')).toHaveCount(2);
+    // De miniaturen houden de verhouding van de pagina, ook in de smallere kolommen.
+    await expect(group.locator('.thumb[data-rendered="true"]')).toHaveCount(2);
+    const ratios = await group
+      .locator('canvas')
+      .evaluateAll((canvases: HTMLCanvasElement[]) =>
+        canvases.map((c) => [c.clientWidth / c.clientHeight, c.width / c.height]),
+      );
+    for (const [shown, page] of ratios) expect(shown!).toBeCloseTo(page!, 1);
+    await group.getByRole('checkbox').nth(1).uncheck();
+    await expect(page.getByLabel('Pagina’s kiezen uit offerte.pdf')).toHaveValue('1');
+    // De laatste pagina van een bestand blijft staan.
+    await expect(group.getByRole('checkbox').first()).toBeDisabled();
+
+    const result = await readDownload(page, nl.merge.download);
+    expect(result.widths).toEqual([300, 500, 700, 710, 720]);
   });
 
   test('een bestand weghalen en dat ongedaan maken', async ({ page }) => {
@@ -265,6 +317,12 @@ test.describe('samenvoegen', () => {
   for (const theme of ['light', 'dark'] as const) {
     test(`is toegankelijk (${theme})`, async ({ page }) => {
       await openMerge(page, theme);
+      // Ook de uitgeklapte miniaturen met vinkjes en een foutmelding bij het bereik.
+      await page.getByRole('button', { name: `${nl.merge.showPages}: bijlage.pdf` }).click();
+      const field = page.getByLabel('Pagina’s kiezen uit offerte.pdf');
+      await field.fill('x');
+      await field.press('Enter');
+      await expect(page.getByRole('alert')).toBeVisible();
       await expect(page.locator('.thumb[data-rendered="true"]').first()).toBeVisible();
       const result = await new AxeBuilder({ page })
         .withTags(['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa'])

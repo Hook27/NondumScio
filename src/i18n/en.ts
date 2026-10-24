@@ -78,6 +78,21 @@ export const en: Messages = {
     download: 'Download merged PDF',
     saveTitle: 'Save merged PDF',
     suffix: 'merged',
+    pagesHint:
+      'For each file you choose which pages take part: type a range such as 1-3, 5 and press Enter, or expand the thumbnails and tick them.',
+    pagesLabel: 'Pages',
+    pagesOfFile: 'to use from {name}',
+    pagesChosen: '{n} of {total} pages',
+    showPages: 'Show thumbnails',
+    hidePages: 'Hide thumbnails',
+    pick: 'Thumbnails of {name}',
+    keepPage: 'At least one page of this file must remain. To leave out a whole file, use ✕.',
+    rangeErrors: {
+      empty: 'Choose at least one page. To leave out a whole file, use ✕.',
+      invalid: '“{part}” is not a page number or range. Type for example 1-3, 5.',
+      outOfRangeOne: 'Page {page} does not exist: this file has 1 page.',
+      outOfRangeOther: 'Page {page} does not exist: this file has {n} pages.',
+    },
   },
   saveDialog: {
     saveTitle: 'Save PDF',

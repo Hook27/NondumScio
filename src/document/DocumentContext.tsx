@@ -18,6 +18,7 @@ import {
   redo as redoHistory,
   removeDoc,
   samePlan,
+  setDocPages,
   startHistory,
   undo as undoHistory,
   type History,
@@ -74,6 +75,8 @@ type DocApi = {
   moveSource: (id: number, step: -1 | 1) => void;
   /** Een bestand als blok naar plek `target` in de bestandenlijst (slepen). */
   moveSourceTo: (id: number, target: number) => void;
+  /** Welke pagina's van een bestand meedoen (paginanummers in het bestand, vanaf 0). */
+  setSourcePages: (id: number, sources: ReadonlySet<number>) => void;
   /** Een bewerking vastleggen; kan ongedaan worden gemaakt. */
   edit: (next: PageItem[]) => void;
   undo: () => void;
@@ -244,6 +247,16 @@ export function DocumentProvider({
     (id: number, step: -1 | 1) => setHistory((h) => record(h, moveDoc(h.present, id, step))),
     [],
   );
+  const setSourcePages = useCallback(
+    (id: number, sources: ReadonlySet<number>) =>
+      setHistory((h) =>
+        record(
+          h,
+          setDocPages(h.present, id, sources, () => nextKey.current++),
+        ),
+      ),
+    [],
+  );
   const moveSourceTo = useCallback(
     (id: number, target: number) => setHistory((h) => record(h, moveDocTo(h.present, id, target))),
     [],
@@ -289,6 +302,7 @@ export function DocumentProvider({
       removeSource,
       moveSource,
       moveSourceTo,
+      setSourcePages,
       edit,
       undo,
       redo,
@@ -308,6 +322,7 @@ export function DocumentProvider({
     removeSource,
     moveSource,
     moveSourceTo,
+    setSourcePages,
     edit,
     undo,
     redo,

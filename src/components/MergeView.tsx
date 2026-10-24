@@ -4,6 +4,7 @@ import { useUndoShortcuts } from '../document/useUndoShortcuts';
 import { useI18n } from '../i18n/LanguageContext';
 import { format, plural } from '../i18n/format';
 import { PdfSaveError, buildPdf, downloadPdf, editedFileName, readSources } from '../pdf/save';
+import { MergePages } from './MergePages';
 import { SaveDialog } from './SaveDialog';
 import { useDragReorder } from './useDragReorder';
 
@@ -28,6 +29,7 @@ export function MergeView() {
     removeSource,
     moveSource,
     moveSourceTo,
+    setSourcePages,
     undo,
     redo,
     canUndo,
@@ -51,7 +53,11 @@ export function MergeView() {
 
   const first = activeSources[0];
   const suggestion = first ? editedFileName(first.name, t.merge.suffix) : '';
-  const countOf = (id: number) => pages.filter((page) => page.doc === id).length;
+  // Per bestand: welke pagina's meedoen en met welke extra draaiing.
+  const chosenOf = (id: number) =>
+    new Set(pages.filter((page) => page.doc === id).map((page) => page.source));
+  const rotationsOf = (id: number) =>
+    new Map(pages.filter((page) => page.doc === id).map((page) => [page.source, page.rotation]));
 
   const saveAs = async (fileName: string) => {
     setAsking(false);
@@ -72,6 +78,7 @@ export function MergeView() {
   return (
     <div class="merge">
       <p class="merge__hint">{t.merge.hint}</p>
+      <p class="merge__hint">{t.merge.pagesHint}</p>
       <ol
         ref={list}
         class={`merge-list${dragged !== null ? ' merge-list--dragging' : ''}`}
@@ -88,6 +95,7 @@ export function MergeView() {
           ]
             .filter(Boolean)
             .join(' ');
+          const chosen = chosenOf(source.id);
           return (
             <li key={source.id} class={classes} data-index={index} {...handlers(source.id)}>
               {/* Alleen voor muis en vinger; met het toetsenbord gaan de pijlknoppen. */}
@@ -99,7 +107,9 @@ export function MergeView() {
               </span>
               <span class="merge-list__name">{source.name}</span>
               <span class="merge-list__pages">
-                {plural(countOf(source.id), t.document.pagesOne, t.document.pagesOther)}
+                {chosen.size < source.pageCount
+                  ? format(t.merge.pagesChosen, { n: chosen.size, total: source.pageCount })
+                  : plural(chosen.size, t.document.pagesOne, t.document.pagesOther)}
               </span>
               <span class="merge-list__actions">
                 <button
@@ -137,6 +147,12 @@ export function MergeView() {
                   ✕
                 </button>
               </span>
+              <MergePages
+                source={source}
+                chosen={chosen}
+                rotations={rotationsOf(source.id)}
+                onChange={(sources) => setSourcePages(source.id, sources)}
+              />
             </li>
           );
         })}

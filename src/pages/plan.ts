@@ -167,6 +167,53 @@ export function moveDocTo(pages: PageItem[], doc: number, target: number): PageI
   );
 }
 
+/**
+ * Bepaalt welke pagina's van een bestand in het plan staan (`sources`: paginanummers in het
+ * bestand, vanaf 0), voor het bereikveld en de vinkjes bij Samenvoegen. Pagina's die blijven,
+ * houden hun plek en draaiing. Een nieuwe pagina komt direct na de pagina van hetzelfde bestand
+ * met het hoogste lagere nummer (of vóór die met het laagste hogere), en anders op de plek waar
+ * het bestand stond. De volgorde verander je bij Pagina's. Een lege keuze verandert niets: een
+ * heel bestand weghalen gaat met `removeDoc`.
+ */
+export function setDocPages(
+  pages: PageItem[],
+  doc: number,
+  sources: ReadonlySet<number>,
+  newKey: () => number,
+): PageItem[] {
+  const firstIndex = pages.findIndex((page) => page.doc === doc);
+  if (sources.size === 0 || firstIndex < 0) return pages;
+  const present = new Set(pages.filter((page) => page.doc === doc).map((page) => page.source));
+  const result = pages.filter((page) => page.doc !== doc || sources.has(page.source));
+  const added = [...sources].filter((source) => !present.has(source)).sort((a, b) => a - b);
+  if (added.length === 0 && result.length === pages.length) return pages;
+
+  for (const source of added) {
+    let at = -1;
+    let lower = -1;
+    let higher = Infinity;
+    result.forEach((page, i) => {
+      if (page.doc !== doc) return;
+      if (page.source < source && page.source > lower) {
+        lower = page.source;
+        at = i + 1;
+      }
+    });
+    if (at < 0) {
+      result.forEach((page, i) => {
+        if (page.doc === doc && page.source > source && page.source < higher) {
+          higher = page.source;
+          at = i;
+        }
+      });
+    }
+    // Van de oude pagina's is niets over: op de plek van het bestand (alles ervoor bleef staan).
+    if (at < 0) at = firstIndex;
+    result.splice(at, 0, { key: newKey(), doc, source, rotation: 0 });
+  }
+  return result;
+}
+
 /** Of twee plannen hetzelfde resultaat geven (zelfde pagina's, volgorde en draaiing). */
 export function samePlan(a: readonly PageItem[], b: readonly PageItem[]): boolean {
   return (
