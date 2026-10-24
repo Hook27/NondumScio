@@ -127,12 +127,25 @@ export function DocumentProvider({
    */
   const loadFiles = useCallback(
     async (files: File[]) => {
+      const openFile = async (file: File) => {
+        const bytes = new Uint8Array(await file.arrayBuffer());
+        if (!looksLikePdf(bytes)) throw new PdfLoadError('not-pdf');
+        return load(bytes);
+      };
+      // Een eenmalige storing (bijvoorbeeld pdf.js dat onder zware belasting niet op tijd
+      // opstart) mag een goed bestand niet als beschadigd laten melden: dan nog één keer
+      // proberen, met verse bytes (pdf.js neemt de vorige over). Geen PDF of een wachtwoord
+      // verandert niet bij opnieuw proberen.
+      const openWithRetry = async (file: File) => {
+        try {
+          return await openFile(file);
+        } catch (error) {
+          if (error instanceof PdfLoadError && error.code !== 'damaged') throw error;
+          return openFile(file);
+        }
+      };
       const results = await Promise.allSettled(
-        files.map(async (file) => {
-          const bytes = new Uint8Array(await file.arrayBuffer());
-          if (!looksLikePdf(bytes)) throw new PdfLoadError('not-pdf');
-          return { file, result: await load(bytes) };
-        }),
+        files.map(async (file) => ({ file, result: await openWithRetry(file) })),
       );
       const sources: Source[] = [];
       const errors: FileError[] = [];

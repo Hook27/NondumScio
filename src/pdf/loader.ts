@@ -25,10 +25,17 @@ function pdfjs() {
   pdfjsPromise ??= Promise.all([
     import('pdfjs-dist'),
     import('pdfjs-dist/build/pdf.worker.min.mjs?url'),
-  ]).then(([lib, worker]) => {
-    lib.GlobalWorkerOptions.workerSrc = worker.default;
-    return lib;
-  });
+  ])
+    .then(([lib, worker]) => {
+      lib.GlobalWorkerOptions.workerSrc = worker.default;
+      return lib;
+    })
+    .catch((error: unknown) => {
+      // Mislukt het laden een keer (bijvoorbeeld een haperend netwerk), dan niet voor altijd
+      // onthouden: de volgende poging laadt opnieuw.
+      pdfjsPromise = null;
+      throw error;
+    });
   return pdfjsPromise;
 }
 
