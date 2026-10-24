@@ -6,6 +6,7 @@ import {
   docOrder,
   keysOfDoc,
   moveDoc,
+  moveDocTo,
   removeDoc,
   movePages,
   movePagesBy,
@@ -293,6 +294,30 @@ describe('meerdere bestanden', () => {
     expect(docOrder(mixed)).toEqual([1, 2, 3]);
     // B omhoog: alle pagina's van B komen als blok vóór A.
     expect(docs(moveDoc(mixed, 2, -1))).toEqual([2, 2, 2, 1, 1, 3]);
+  });
+
+  it('zet een bestand in één keer op een andere plek (slepen)', () => {
+    // C (plek 3) naar voren, B naar achteren, A tussen B en C.
+    expect(docs(moveDocTo(merged(), 3, 0))).toEqual([3, 1, 1, 2, 2, 2]);
+    expect(docs(moveDocTo(merged(), 2, 3))).toEqual([1, 1, 3, 2, 2, 2]);
+    expect(docs(moveDocTo(merged(), 1, 2))).toEqual([2, 2, 2, 1, 1, 3]);
+    // Buiten de lijst telt als vooraan of achteraan.
+    expect(docs(moveDocTo(merged(), 3, -5))).toEqual([3, 1, 1, 2, 2, 2]);
+    expect(docs(moveDocTo(merged(), 1, 99))).toEqual([2, 2, 2, 3, 1, 1]);
+  });
+
+  it('verandert niets bij loslaten op de eigen plek of bij een onbekend bestand', () => {
+    const pages = merged();
+    expect(moveDocTo(pages, 2, 1)).toBe(pages);
+    expect(moveDocTo(pages, 2, 2)).toBe(pages);
+    expect(moveDocTo(pages, 9, 0)).toBe(pages);
+  });
+
+  it('verplaatst bij door elkaar staande pagina’s het hele bestand als blok', () => {
+    // A1 B1 A2 B2 B3 C1; A naar plek 2 (tussen B en C).
+    const pages = merged();
+    const mixed = [pages[0]!, pages[2]!, pages[1]!, pages[3]!, pages[4]!, pages[5]!];
+    expect(docs(moveDocTo(mixed, 1, 2))).toEqual([2, 2, 2, 1, 1, 3]);
   });
 
   it('vergelijkt ook het bestand bij samePlan', () => {

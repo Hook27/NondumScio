@@ -1,10 +1,11 @@
-import { useState } from 'preact/hooks';
+import { useRef, useState } from 'preact/hooks';
 import { useDocument } from '../document/DocumentContext';
 import { useUndoShortcuts } from '../document/useUndoShortcuts';
 import { useI18n } from '../i18n/LanguageContext';
 import { format, plural } from '../i18n/format';
 import { PdfSaveError, buildPdf, downloadPdf, editedFileName, readSources } from '../pdf/save';
 import { SaveDialog } from './SaveDialog';
+import { useDragReorder } from './useDragReorder';
 
 type SaveState =
   | { status: 'idle' }
@@ -26,6 +27,7 @@ export function MergeView() {
     adding,
     removeSource,
     moveSource,
+    moveSourceTo,
     undo,
     redo,
     canUndo,
@@ -37,6 +39,15 @@ export function MergeView() {
   const [asking, setAsking] = useState(false);
   const [save, setSave] = useState<SaveState>({ status: 'idle' });
   useUndoShortcuts(undo, redo);
+
+  // Slepen: een bestand oppakken en op een andere plek in de lijst loslaten.
+  const list = useRef<HTMLOListElement>(null);
+  const { dragged, dropAt, handlers } = useDragReorder<number>({
+    list,
+    itemSelector: '.merge-list__item',
+    direction: 'vertical',
+    onDrop: (id, target) => moveSourceTo(id, target),
+  });
 
   const first = activeSources[0];
   const suggestion = first ? editedFileName(first.name, t.merge.suffix) : '';
@@ -61,54 +72,74 @@ export function MergeView() {
   return (
     <div class="merge">
       <p class="merge__hint">{t.merge.hint}</p>
-      <ol class="merge-list" aria-label={t.merge.files}>
-        {activeSources.map((source, index) => (
-          <li key={source.id} class="merge-list__item">
-            <span class="merge-list__position" aria-hidden="true">
-              {index + 1}
-            </span>
-            <span class="merge-list__name">{source.name}</span>
-            <span class="merge-list__pages">
-              {plural(countOf(source.id), t.document.pagesOne, t.document.pagesOther)}
-            </span>
-            <span class="merge-list__actions">
-              <button
-                type="button"
-                class="button button--secondary button--icon"
-                aria-label={format(t.merge.moveUp, { name: source.name })}
-                title={format(t.merge.moveUp, { name: source.name })}
-                disabled={index === 0}
-                onClick={() => moveSource(source.id, -1)}
-              >
-                ↑
-              </button>
-              <button
-                type="button"
-                class="button button--secondary button--icon"
-                aria-label={format(t.merge.moveDown, { name: source.name })}
-                title={format(t.merge.moveDown, { name: source.name })}
-                disabled={index === activeSources.length - 1}
-                onClick={() => moveSource(source.id, 1)}
-              >
-                ↓
-              </button>
-              <button
-                type="button"
-                class="button button--secondary button--icon"
-                aria-label={format(t.merge.remove, { name: source.name })}
-                title={
-                  activeSources.length === 1
-                    ? t.merge.keepOne
-                    : format(t.merge.remove, { name: source.name })
-                }
-                disabled={activeSources.length === 1}
-                onClick={() => removeSource(source.id)}
-              >
-                ✕
-              </button>
-            </span>
-          </li>
-        ))}
+      <ol
+        ref={list}
+        class={`merge-list${dragged !== null ? ' merge-list--dragging' : ''}`}
+        aria-label={t.merge.files}
+      >
+        {activeSources.map((source, index) => {
+          const classes = [
+            'merge-list__item',
+            dragged === source.id && 'merge-list__item--dragging',
+            dropAt === index && 'merge-list__item--drop-before',
+            dropAt === activeSources.length &&
+              index === activeSources.length - 1 &&
+              'merge-list__item--drop-after',
+          ]
+            .filter(Boolean)
+            .join(' ');
+          return (
+            <li key={source.id} class={classes} data-index={index} {...handlers(source.id)}>
+              {/* Alleen voor muis en vinger; met het toetsenbord gaan de pijlknoppen. */}
+              <span class="drag-handle merge-list__handle" aria-hidden="true">
+                ⠿
+              </span>
+              <span class="merge-list__position" aria-hidden="true">
+                {index + 1}
+              </span>
+              <span class="merge-list__name">{source.name}</span>
+              <span class="merge-list__pages">
+                {plural(countOf(source.id), t.document.pagesOne, t.document.pagesOther)}
+              </span>
+              <span class="merge-list__actions">
+                <button
+                  type="button"
+                  class="button button--secondary button--icon"
+                  aria-label={format(t.merge.moveUp, { name: source.name })}
+                  title={format(t.merge.moveUp, { name: source.name })}
+                  disabled={index === 0}
+                  onClick={() => moveSource(source.id, -1)}
+                >
+                  ↑
+                </button>
+                <button
+                  type="button"
+                  class="button button--secondary button--icon"
+                  aria-label={format(t.merge.moveDown, { name: source.name })}
+                  title={format(t.merge.moveDown, { name: source.name })}
+                  disabled={index === activeSources.length - 1}
+                  onClick={() => moveSource(source.id, 1)}
+                >
+                  ↓
+                </button>
+                <button
+                  type="button"
+                  class="button button--secondary button--icon"
+                  aria-label={format(t.merge.remove, { name: source.name })}
+                  title={
+                    activeSources.length === 1
+                      ? t.merge.keepOne
+                      : format(t.merge.remove, { name: source.name })
+                  }
+                  disabled={activeSources.length === 1}
+                  onClick={() => removeSource(source.id)}
+                >
+                  ✕
+                </button>
+              </span>
+            </li>
+          );
+        })}
       </ol>
 
       <div class="toolbar" role="toolbar" aria-label={t.merge.files}>

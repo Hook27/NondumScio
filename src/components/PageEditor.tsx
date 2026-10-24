@@ -22,6 +22,7 @@ import {
 } from '../pages/selection';
 import { PdfSaveError, buildPdf, downloadPdf, editedFileName, readSources } from '../pdf/save';
 import { SaveDialog } from './SaveDialog';
+import { useDragReorder } from './useDragReorder';
 import { Thumbnail } from './Thumbnail';
 
 type SaveState =
@@ -29,19 +30,6 @@ type SaveState =
   | { status: 'saving' }
   | { status: 'saved'; fileName: string }
   | { status: 'error'; code: 'encrypted' | 'failed' };
-
-/** Zo ver moet de muis bewegen voordat een klik een sleepbeweging wordt (in pixels). */
-const DRAG_THRESHOLD = 6;
-
-type Drag = {
-  pointerId: number;
-  keys: ReadonlySet<number>;
-  /** De pagina waarop het slepen begon. */
-  key: number;
-  x: number;
-  y: number;
-  active: boolean;
-};
 
 /**
  * Pagina's kiezen, draaien, verwijderen, verplaatsen en uitpakken, met ongedaan maken, en
@@ -71,13 +59,6 @@ export function PageEditor() {
   const [active, setActive] = useState(0);
   const [save, setSave] = useState<SaveState>({ status: 'idle' });
   const list = useRef<HTMLDivElement>(null);
-  const drag = useRef<Drag | null>(null);
-  // Na een sleepbeweging volgt nog een klik; die mag de selectie niet veranderen.
-  const suppressClick = useRef(false);
-  // De laatste plek die het streepje aanwees; daar komen de pagina's bij loslaten terecht.
-  const lastDrop = useRef<number | null>(null);
-  const [dropAt, setDropAt] = useState<number | null>(null);
-  const [dragging, setDragging] = useState(false);
 
   const order = pages.map((page) => page.key);
   const selected = selection.keys;
@@ -216,109 +197,19 @@ export function PageEditor() {
 
   /* Slepen: met de muis de hele miniatuur, op een aanraakscherm het greepje. */
 
-  /** Waar de pagina's terechtkomen als je hier loslaat (0 = vooraan), of `null`. */
-  const dropIndexAt = (x: number, y: number): number | null => {
-    const element = document
-      .elementFromPoint(x, y)
-      ?.closest<HTMLElement>('.thumbs--selectable [role="option"]');
-    if (!element || !list.current?.contains(element)) return null;
-    const index = Number(element.dataset.index);
-    const box = element.getBoundingClientRect();
-    return x < box.left + box.width / 2 ? index : index + 1;
-  };
-
-  /** Of de muis of vinger ver buiten de miniaturen is (dan breekt loslaten het slepen af). */
-  const farOutside = (x: number, y: number) => {
-    const box = list.current?.getBoundingClientRect();
-    if (!box) return true;
-    const margin = 48;
-    return (
-      x < box.left - margin ||
-      x > box.right + margin ||
-      y < box.top - margin ||
-      y > box.bottom + margin
-    );
-  };
-
-  /** Werkt de plek van het streepje bij: een nieuwe plek, de vorige, of geen (ver buiten). */
-  const updateDrop = (x: number, y: number) => {
-    const index = dropIndexAt(x, y);
-    if (index !== null) lastDrop.current = index;
-    else if (farOutside(x, y)) lastDrop.current = null;
-    setDropAt(lastDrop.current);
-    return lastDrop.current;
-  };
-
-  const endDrag = () => {
-    drag.current = null;
-    lastDrop.current = null;
-    setDragging(false);
-    setDropAt(null);
-  };
-
-  // Escape breekt het slepen af.
-  useEffect(() => {
-    if (!dragging) return;
-    const onKey = (event: KeyboardEvent) => {
-      if (event.key !== 'Escape') return;
-      suppressClick.current = true;
-      endDrag();
-    };
-    document.addEventListener('keydown', onKey);
-    return () => document.removeEventListener('keydown', onKey);
-  }, [dragging]);
-
-  const onPointerDown = (event: PointerEvent, key: number) => {
-    if (event.button !== 0) return;
-    const fromHandle = (event.target as HTMLElement | null)?.closest('.drag-handle');
-    // Op een aanraakscherm alleen via het greepje, zodat gewoon scrollen blijft werken.
-    if (event.pointerType === 'touch' && !fromHandle) return;
-    drag.current = {
-      pointerId: event.pointerId,
-      keys: selected.has(key) ? new Set(selected) : new Set([key]),
-      key,
-      x: event.clientX,
-      y: event.clientY,
-      active: false,
-    };
-    // Nog niet "vangen": een gewone klik (bijvoorbeeld op het vinkje) moet zijn eigen
-    // doel houden. Dat gebeurt pas als het echt slepen wordt.
-  };
-
-  const onPointerMove = (event: PointerEvent) => {
-    const current = drag.current;
-    if (!current || current.pointerId !== event.pointerId) return;
-    if (!current.active) {
-      const distance = Math.hypot(event.clientX - current.x, event.clientY - current.y);
-      if (distance < DRAG_THRESHOLD) return;
-      current.active = true;
-      // Vanaf nu volgen alle bewegingen deze sleepactie, ook buiten de miniatuur.
-      (event.currentTarget as HTMLElement).setPointerCapture?.(event.pointerId);
-      setDragging(true);
-      if (!selected.has(current.key)) setSelection({ keys: current.keys, anchor: current.key });
-    }
-    event.preventDefault();
-    updateDrop(event.clientX, event.clientY);
-    // Bij de rand van het venster meeschuiven, maar alleen als er in die richting nog
-    // miniaturen buiten beeld staan; anders zou de pagina onder de muis wegschuiven.
-    const box = list.current?.getBoundingClientRect();
-    if (!box) return;
-    if (event.clientY < 40 && box.top < 0) window.scrollBy(0, -16);
-    else if (event.clientY > window.innerHeight - 40 && box.bottom > window.innerHeight) {
-      window.scrollBy(0, 16);
-    }
-  };
-
-  const onPointerUp = (event: PointerEvent) => {
-    const current = drag.current;
-    if (!current || current.pointerId !== event.pointerId) return;
-    if (current.active) {
-      suppressClick.current = true;
-      const target = updateDrop(event.clientX, event.clientY);
-      if (target !== null) apply(movePages(pages, current.keys, target));
-    }
-    endDrag();
-  };
+  // De pagina's die meegaan: de gekozen pagina's, of alleen de opgepakte als die niet gekozen is.
+  const moving = useRef<ReadonlySet<number>>(new Set());
+  const { dragged, dropAt, handlers, consumeClick } = useDragReorder<number>({
+    list,
+    itemSelector: '.thumbs--selectable [role="option"]',
+    direction: 'grid',
+    onStart: (key) => {
+      moving.current = selected.has(key) ? new Set(selected) : new Set([key]);
+      if (!selected.has(key)) setSelection({ keys: moving.current, anchor: key });
+    },
+    onDrop: (_key, target) => apply(movePages(pages, moving.current, target)),
+  });
+  const dragging = dragged !== null;
 
   const removable = canRemove(pages, selected);
 
@@ -490,15 +381,9 @@ export function PageEditor() {
               aria-selected={isSelected}
               aria-label={label}
               tabIndex={index === active ? 0 : -1}
-              onPointerDown={(event) => onPointerDown(event, page.key)}
-              onPointerMove={onPointerMove}
-              onPointerUp={onPointerUp}
-              onPointerCancel={endDrag}
+              {...handlers(page.key)}
               onClick={(event) => {
-                if (suppressClick.current) {
-                  suppressClick.current = false;
-                  return;
-                }
+                if (consumeClick()) return;
                 setActive(index);
                 // Het vinkje werkt als Ctrl-klik: erbij of eraf, zonder de rest te wissen.
                 // Zo kun je ook op een telefoon (zonder Ctrl of Shift) meer pagina's kiezen.

@@ -146,6 +146,27 @@ export function moveDoc(pages: PageItem[], doc: number, step: -1 | 1): PageItem[
   return movePages(pages, keys, last + 1);
 }
 
+/**
+ * Zet alle pagina's van een bestand als blok op plek `target` in de bestandenlijst (0 =
+ * vooraan, het aantal bestanden = achteraan; de plek telt in de huidige volgorde, alsof het
+ * bestand er nog staat), voor slepen. Het blok komt vóór de eerste pagina van het bestand
+ * dat op die plek staat. Loslaten op de eigen plek verandert niets.
+ */
+export function moveDocTo(pages: PageItem[], doc: number, target: number): PageItem[] {
+  const order = docOrder(pages);
+  const index = order.indexOf(doc);
+  if (index < 0) return pages;
+  const clamped = Math.max(0, Math.min(target, order.length));
+  if (clamped === index || clamped === index + 1) return pages;
+  const keys = keysOfDoc(pages, doc);
+  const before = order[clamped];
+  return movePages(
+    pages,
+    keys,
+    before === undefined ? pages.length : pages.findIndex((page) => page.doc === before),
+  );
+}
+
 /** Of twee plannen hetzelfde resultaat geven (zelfde pagina's, volgorde en draaiing). */
 export function samePlan(a: readonly PageItem[], b: readonly PageItem[]): boolean {
   return (

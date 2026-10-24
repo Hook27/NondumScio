@@ -72,7 +72,7 @@ export const nl = {
   },
   merge: {
     files: 'Bestanden in volgorde',
-    hint: 'De bestanden worden in deze volgorde samengevoegd. Losse pagina’s verschuiven of weglaten doe je bij Pagina’s.',
+    hint: 'De bestanden worden in deze volgorde samengevoegd. Sleep een bestand naar een andere plek (op een telefoon aan het greepje ⠿) of gebruik de pijlen. Losse pagina’s verschuiven of weglaten doe je bij Pagina’s.',
     add: 'Bestand toevoegen',
     adding: 'Bezig met toevoegen…',
     moveUp: '{name} omhoog',

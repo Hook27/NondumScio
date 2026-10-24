@@ -13,6 +13,7 @@ import {
   docOrder,
   initialPages,
   moveDoc,
+  moveDocTo,
   record,
   redo as redoHistory,
   removeDoc,
@@ -71,6 +72,8 @@ type DocApi = {
   removeSource: (id: number) => void;
   /** Een bestand als blok een plek omhoog (-1) of omlaag (1). */
   moveSource: (id: number, step: -1 | 1) => void;
+  /** Een bestand als blok naar plek `target` in de bestandenlijst (slepen). */
+  moveSourceTo: (id: number, target: number) => void;
   /** Een bewerking vastleggen; kan ongedaan worden gemaakt. */
   edit: (next: PageItem[]) => void;
   undo: () => void;
@@ -241,6 +244,10 @@ export function DocumentProvider({
     (id: number, step: -1 | 1) => setHistory((h) => record(h, moveDoc(h.present, id, step))),
     [],
   );
+  const moveSourceTo = useCallback(
+    (id: number, target: number) => setHistory((h) => record(h, moveDocTo(h.present, id, target))),
+    [],
+  );
 
   const markSaved = useCallback(() => setSavedPages(history.present), [history.present]);
   const unsaved =
@@ -281,6 +288,7 @@ export function DocumentProvider({
       sourceOf: (page: PageItem) => byId.get(page.doc),
       removeSource,
       moveSource,
+      moveSourceTo,
       edit,
       undo,
       redo,
@@ -299,6 +307,7 @@ export function DocumentProvider({
     history,
     removeSource,
     moveSource,
+    moveSourceTo,
     edit,
     undo,
     redo,

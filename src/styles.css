@@ -689,6 +689,7 @@ h1 {
 }
 
 .merge-list__item {
+  position: relative;
   display: flex;
   flex-wrap: wrap;
   align-items: center;
@@ -697,6 +698,42 @@ h1 {
   background: var(--surface);
   border: 1px solid var(--border);
   border-radius: var(--radius);
+  cursor: grab;
+  user-select: none;
+}
+
+/* Het greepje staat hier gewoon in de rij, niet over een miniatuur heen. */
+.merge-list__handle {
+  position: static;
+}
+
+.merge-list--dragging .merge-list__item,
+.merge-list--dragging .drag-handle {
+  cursor: grabbing;
+}
+
+.merge-list__item--dragging {
+  opacity: 0.5;
+}
+
+/* Een streepje laat zien waar het gesleepte bestand terechtkomt. */
+.merge-list__item--drop-before::before,
+.merge-list__item--drop-after::after {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 0;
+  height: 4px;
+  background: var(--accent);
+  border-radius: 2px;
+}
+
+.merge-list__item--drop-before::before {
+  top: calc(-0.25rem - 2px);
+}
+
+.merge-list__item--drop-after::after {
+  bottom: calc(-0.25rem - 2px);
 }
 
 .merge-list__position {

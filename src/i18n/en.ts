@@ -68,7 +68,7 @@ export const en: Messages = {
   },
   merge: {
     files: 'Files in order',
-    hint: 'The files are merged in this order. To move or leave out single pages, go to Pages.',
+    hint: 'The files are merged in this order. Drag a file to another place (on a phone by the handle ⠿) or use the arrows. To move or leave out single pages, go to Pages.',
     add: 'Add file',
     adding: 'Adding…',
     moveUp: 'Move {name} up',
