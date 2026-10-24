@@ -34,7 +34,7 @@ Dezelfde controles draaien in GitHub Actions (job `test`) op elke pull request.
 
 ## Browsertests
 
-`npm run e2e` draait de browsertests (Playwright) tegen de echte productiebuild, op desktop en telefoon: navigatie, taal, thema, en een automatische toegankelijkheidscontrole (axe, WCAG 2.1 A en AA) van elke pagina in elke taal en elk thema. Eenmalig de browser installeren met `npm run e2e:install`. In GitHub draait dit als job `e2e`; bij een fout wordt een rapport met opnames bewaard.
+`npm run e2e` draait de browsertests (Playwright) tegen de echte productiebuild, op desktop en telefoon: navigatie, taal, thema, en een automatische toegankelijkheidscontrole (axe, WCAG 2.1 A en AA) van elke pagina in elke taal en elk thema. Eenmalig de browser installeren met `npm run e2e:install`. In GitHub draait dit als job `e2e`, in de kant-en-klare Playwright-omgeving van Microsoft (`mcr.microsoft.com/playwright`), waarin de browser al zit; bij een fout wordt een rapport met opnames bewaard. Werk je Playwright bij (of doet Dependabot dat), zet dan ook de versie van die omgeving in `.github/workflows/tests.yml` gelijk. Een test (`scripts/playwright-container.test.ts`) meldt het als dat vergeten is.
 
 ## Updates
 
