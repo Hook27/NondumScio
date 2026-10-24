@@ -46,6 +46,10 @@ async function openEditor(pageCount = 3) {
 const options = () => screen.getAllByRole('option');
 const button = (name: string) => screen.getByRole('button', { name: new RegExp(name) });
 const status = () => document.querySelector('.page-editor__status')!.textContent;
+/** De nummers onder de miniaturen: altijd 1, 2, 3, … (de plek). */
+const captions = () => options().map((o) => o.querySelector('figcaption')!.textContent);
+/** Welke pagina van het origineel (1, 2, …) op elke plek staat. */
+const sourcePages = () => options().map((o) => Number(o.getAttribute('data-source')));
 
 beforeEach(() => {
   vi.mocked(buildPdf).mockClear();
@@ -191,5 +195,101 @@ describe('PageEditor', () => {
     const list = screen.getByRole('listbox', { name: /Pagina’s van rapport\.pdf/ });
     expect(list.getAttribute('aria-multiselectable')).toBe('true');
     expect(within(list).getAllByRole('option')[0]!.getAttribute('aria-label')).toBe('Pagina 1');
+  });
+
+  it('schuift gekozen pagina’s met de knoppen naar voren en naar achteren', async () => {
+    await openEditor(4);
+    fireEvent.click(options()[2]!);
+    fireEvent.click(button(nl.pages.moveEarlier));
+    // Pagina 3 staat nu op plek 2; de kenmerkende tekst is het oude paginanummer.
+    expect(captions()).toEqual(['1', '2', '3', '4']);
+    expect(sourcePages()).toEqual([1, 3, 2, 4]);
+    expect(options()[1]!.getAttribute('aria-selected')).toBe('true');
+
+    fireEvent.click(button(nl.pages.moveLater));
+    fireEvent.click(button(nl.pages.moveLater));
+    expect(sourcePages()).toEqual([1, 2, 4, 3]);
+    expect((button(nl.pages.moveLater) as HTMLButtonElement).disabled).toBe(false);
+    fireEvent.click(button(nl.pages.moveLater)); // al achteraan: niets
+    expect(sourcePages()).toEqual([1, 2, 4, 3]);
+
+    // Elke stap is apart terug te draaien.
+    fireEvent.click(button(nl.pages.undo));
+    expect(sourcePages()).toEqual([1, 2, 3, 4]);
+    fireEvent.click(button(nl.pages.undo));
+    expect(sourcePages()).toEqual([1, 3, 2, 4]);
+  });
+
+  it('verplaatst met Alt + pijltje, en de focus gaat mee', async () => {
+    await openEditor(3);
+    options()[0]!.focus();
+    // Zoals in de browser: de toets komt binnen bij de pagina die de focus heeft.
+    fireEvent.keyDown(document.activeElement!, { key: 'ArrowRight', altKey: true });
+    expect(sourcePages()).toEqual([2, 1, 3]);
+    await waitFor(() => expect(document.activeElement).toBe(options()[1]));
+    expect(options()[1]!.getAttribute('aria-selected')).toBe('true');
+
+    fireEvent.keyDown(document.activeElement!, { key: 'ArrowLeft', altKey: true });
+    expect(sourcePages()).toEqual([1, 2, 3]);
+    await waitFor(() => expect(document.activeElement).toBe(options()[0]));
+  });
+
+  it('pakt de gekozen pagina’s uit als nieuwe PDF, zonder het document te veranderen', async () => {
+    await openEditor(5);
+    fireEvent.click(options()[1]!);
+    fireEvent.click(options()[3]!, { ctrlKey: true });
+    fireEvent.click(options()[4]!, { ctrlKey: true });
+    fireEvent.click(button(nl.pages.extract));
+
+    await waitFor(() => expect(downloadPdf).toHaveBeenCalledTimes(1));
+    const [, picked] = vi.mocked(buildPdf).mock.calls[0]!;
+    expect(picked.map((p) => p.source)).toEqual([1, 3, 4]);
+    expect(vi.mocked(downloadPdf).mock.calls[0]![1]).toBe("rapport (pagina's 2, 4-5).pdf");
+    expect(options()).toHaveLength(5);
+    expect(status()).not.toContain(nl.pages.unsaved);
+  });
+
+  it('kan alleen uitpakken als er iets gekozen is', async () => {
+    await openEditor(2);
+    expect((button(nl.pages.extract) as HTMLButtonElement).disabled).toBe(true);
+    fireEvent.click(options()[0]!);
+    expect((button(nl.pages.extract) as HTMLButtonElement).disabled).toBe(false);
+  });
+
+  it('heeft een greepje per pagina om te slepen, verborgen voor schermlezers', async () => {
+    await openEditor(2);
+    const handles = document.querySelectorAll('.drag-handle');
+    expect(handles).toHaveLength(2);
+    expect(handles[0]!.getAttribute('aria-hidden')).toBe('true');
+  });
+
+  it('kiest met het vinkje meer pagina’s, zonder Ctrl of Shift (zoals op een telefoon)', async () => {
+    await openEditor(4);
+    const box = (index: number) => options()[index]!.querySelector('.select-box')!;
+    fireEvent.click(box(0));
+    fireEvent.click(box(2));
+    fireEvent.click(box(3));
+    expect(options().map((o) => o.getAttribute('aria-selected'))).toEqual([
+      'true',
+      'false',
+      'true',
+      'true',
+    ]);
+    expect(box(2).textContent).toBe('✓');
+
+    // Nog eens op een vinkje: die pagina eraf, de rest blijft.
+    fireEvent.click(box(2));
+    expect(status()).toContain('2 van 4 gekozen');
+    // Een gewone klik op de pagina kiest weer alleen die ene.
+    fireEvent.click(options()[1]!);
+    expect(status()).toContain('1 van 4 gekozen');
+  });
+
+  it('heeft het vinkje alleen voor het oog: de keuze staat in de optie zelf', async () => {
+    await openEditor(1);
+    const box = options()[0]!.querySelector('.select-box')!;
+    expect(box.getAttribute('aria-hidden')).toBe('true');
+    fireEvent.click(box);
+    expect(options()[0]!.getAttribute('aria-selected')).toBe('true');
   });
 });

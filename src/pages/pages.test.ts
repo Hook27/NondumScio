@@ -4,6 +4,9 @@ import {
   canRemove,
   initialPages,
   isChanged,
+  movePages,
+  movePagesBy,
+  pickPages,
   samePlan,
   normalizeRotation,
   record,
@@ -13,6 +16,7 @@ import {
   startHistory,
   undo,
 } from './plan';
+import { formatRanges } from './ranges';
 import { emptySelection, keepExisting, selectAll, selectByClick } from './selection';
 
 const keys = (...values: number[]) => new Set(values);
@@ -169,5 +173,81 @@ describe('selecteren', () => {
     expect([...kept.keys]).toEqual([1]);
     expect(kept.anchor).toBeNull();
     expect(keepExisting(kept, [0, 1, 2])).toBe(kept);
+  });
+});
+
+describe('verplaatsen', () => {
+  const sources = (pages: ReturnType<typeof initialPages>) => pages.map((p) => p.source);
+
+  it('zet één pagina op een nieuwe plek, vooruit en achteruit', () => {
+    const pages = initialPages(5);
+    expect(sources(movePages(pages, keys(3), 1))).toEqual([0, 3, 1, 2, 4]);
+    expect(sources(movePages(pages, keys(1), 4))).toEqual([0, 2, 3, 1, 4]);
+    expect(sources(movePages(pages, keys(1), 5))).toEqual([0, 2, 3, 4, 1]);
+    expect(sources(movePages(pages, keys(4), 0))).toEqual([4, 0, 1, 2, 3]);
+  });
+
+  it('verplaatst meerdere pagina’s als één blok, in hun eigen volgorde', () => {
+    const pages = initialPages(6);
+    expect(sources(movePages(pages, keys(4, 1), 0))).toEqual([1, 4, 0, 2, 3, 5]);
+    expect(sources(movePages(pages, keys(0, 2), 6))).toEqual([1, 3, 4, 5, 0, 2]);
+    expect(sources(movePages(pages, keys(1, 4), 3))).toEqual([0, 2, 1, 4, 3, 5]);
+  });
+
+  it('houdt de draaiing en de sleutel van een pagina vast', () => {
+    const pages = rotatePages(initialPages(3), keys(2), 90);
+    const moved = movePages(pages, keys(2), 0);
+    expect(moved[0]).toEqual({ key: 2, source: 2, rotation: 90 });
+  });
+
+  it('geeft hetzelfde plan terug als er niets verandert', () => {
+    const pages = initialPages(4);
+    expect(movePages(pages, keys(), 2)).toBe(pages);
+    expect(movePages(pages, keys(1), 1)).toBe(pages);
+    expect(movePages(pages, keys(1), 2)).toBe(pages);
+    expect(movePages(pages, keys(1, 2), 2)).toBe(pages);
+    expect(movePages(pages, keys(9), 0)).toBe(pages);
+  });
+
+  it('begrenst een plek buiten het document', () => {
+    const pages = initialPages(3);
+    expect(sources(movePages(pages, keys(1), -5))).toEqual([1, 0, 2]);
+    expect(sources(movePages(pages, keys(1), 99))).toEqual([0, 2, 1]);
+  });
+
+  it('schuift één plek naar voren of naar achteren', () => {
+    const pages = initialPages(5);
+    expect(sources(movePagesBy(pages, keys(2), -1))).toEqual([0, 2, 1, 3, 4]);
+    expect(sources(movePagesBy(pages, keys(2), 1))).toEqual([0, 1, 3, 2, 4]);
+    expect(sources(movePagesBy(pages, keys(2, 3), 1))).toEqual([0, 1, 4, 2, 3]);
+    expect(sources(movePagesBy(pages, keys(1, 3), -1))).toEqual([1, 3, 0, 2, 4]);
+  });
+
+  it('kan niet voorbij het begin of het einde', () => {
+    const pages = initialPages(3);
+    expect(movePagesBy(pages, keys(0), -1)).toBe(pages);
+    expect(movePagesBy(pages, keys(2), 1)).toBe(pages);
+    expect(movePagesBy(pages, keys(), 1)).toBe(pages);
+  });
+});
+
+describe('uitpakken', () => {
+  it('kiest de gekozen pagina’s in de huidige volgorde', () => {
+    const pages = movePages(initialPages(5), keys(4), 0);
+    expect(pickPages(pages, keys(1, 4)).map((p) => p.source)).toEqual([4, 1]);
+    expect(pickPages(pages, keys())).toEqual([]);
+  });
+});
+
+describe('formatRanges', () => {
+  it('schrijft reeksen kort op', () => {
+    expect(formatRanges([2, 3, 4])).toBe('2-4');
+    expect(formatRanges([1, 3, 5, 6])).toBe('1, 3, 5-6');
+    expect(formatRanges([7])).toBe('7');
+    expect(formatRanges([])).toBe('');
+  });
+
+  it('negeert volgorde en dubbele nummers', () => {
+    expect(formatRanges([6, 5, 1, 5, 2])).toBe('1-2, 5-6');
   });
 });

@@ -3,7 +3,16 @@ import type { PDFDocumentProxy } from 'pdfjs-dist';
 import { useDocument } from '../document/DocumentContext';
 import { useI18n } from '../i18n/LanguageContext';
 import { format } from '../i18n/format';
-import { canRemove, removePages, rotatePages, type PageItem } from '../pages/plan';
+import {
+  canRemove,
+  movePages,
+  movePagesBy,
+  pickPages,
+  removePages,
+  rotatePages,
+  type PageItem,
+} from '../pages/plan';
+import { formatRanges } from '../pages/ranges';
 import {
   emptySelection,
   keepExisting,
@@ -27,9 +36,22 @@ function typingIn(target: EventTarget | null) {
   );
 }
 
+/** Zo ver moet de muis bewegen voordat een klik een sleepbeweging wordt (in pixels). */
+const DRAG_THRESHOLD = 6;
+
+type Drag = {
+  pointerId: number;
+  keys: ReadonlySet<number>;
+  /** De pagina waarop het slepen begon. */
+  key: number;
+  x: number;
+  y: number;
+  active: boolean;
+};
+
 /**
- * Pagina's kiezen, draaien en verwijderen, met ongedaan maken, en het resultaat als nieuwe
- * PDF downloaden. Het origineel blijft onaangeroerd.
+ * Pagina's kiezen, draaien, verwijderen, verplaatsen en uitpakken, met ongedaan maken, en
+ * het resultaat als nieuwe PDF downloaden. Het origineel blijft onaangeroerd.
  */
 export function PageEditor({
   docId,
@@ -48,6 +70,13 @@ export function PageEditor({
   const [active, setActive] = useState(0);
   const [save, setSave] = useState<SaveState>({ status: 'idle' });
   const list = useRef<HTMLDivElement>(null);
+  const drag = useRef<Drag | null>(null);
+  // Na een sleepbeweging volgt nog een klik; die mag de selectie niet veranderen.
+  const suppressClick = useRef(false);
+  // De laatste plek die het streepje aanwees; daar komen de pagina's bij loslaten terecht.
+  const lastDrop = useRef<number | null>(null);
+  const [dropAt, setDropAt] = useState<number | null>(null);
+  const [dragging, setDragging] = useState(false);
 
   const order = pages.map((page) => page.key);
   const selected = selection.keys;
@@ -66,6 +95,21 @@ export function PageEditor({
   const rotate = (delta: number) => apply(rotatePages(pages, selected, delta));
   const remove = () => {
     if (canRemove(pages, selected)) apply(removePages(pages, selected));
+  };
+
+  /**
+   * Eén plek naar voren of naar achteren. Met `focusKey` gaat de toetsenbordfocus mee met
+   * die pagina naar haar nieuwe plek.
+   */
+  const moveBy = (keys: ReadonlySet<number>, step: -1 | 1, focusKey?: number) => {
+    const next = movePagesBy(pages, keys, step);
+    if (next === pages) return;
+    apply(next);
+    if (focusKey !== undefined) {
+      const index = next.findIndex((page) => page.key === focusKey);
+      // Pas na het tekenen van de nieuwe volgorde.
+      requestAnimationFrame(() => focusOption(index));
+    }
   };
 
   // Ctrl+Z en Ctrl+Y (of Ctrl+Shift+Z) werken overal op de pagina, behalve in tekstvelden.
@@ -100,7 +144,25 @@ export function PageEditor({
   };
 
   const onListKey = (event: KeyboardEvent) => {
-    const key = pages[active]?.key;
+    // De pagina waar de toetsenbordfocus echt staat (betrouwbaarder dan de bewaarde plek,
+    // die vlak na een verplaatsing nog niet bijgewerkt kan zijn).
+    const focused = (event.target as HTMLElement | null)?.closest<HTMLElement>('[role="option"]');
+    const current = focused ? Number(focused.dataset.index) : active;
+    const key = pages[current]?.key;
+    if (event.altKey && ['ArrowLeft', 'ArrowUp', 'ArrowRight', 'ArrowDown'].includes(event.key)) {
+      event.preventDefault();
+      if (key === undefined) return;
+      const step = event.key === 'ArrowLeft' || event.key === 'ArrowUp' ? -1 : 1;
+      // De gekozen pagina's; is de pagina met focus niet gekozen, dan alleen die.
+      if (selected.has(key)) {
+        moveBy(selected, step, key);
+      } else {
+        const only = new Set([key]);
+        setSelection({ keys: only, anchor: key });
+        moveBy(only, step, key);
+      }
+      return;
+    }
     const moves: Record<string, number> = {
       ArrowRight: 1,
       ArrowLeft: -1,
@@ -111,7 +173,7 @@ export function PageEditor({
     };
     if (event.key in moves) {
       event.preventDefault();
-      const target = Math.max(0, Math.min(active + moves[event.key]!, pages.length - 1));
+      const target = Math.max(0, Math.min(current + moves[event.key]!, pages.length - 1));
       focusOption(target);
       if (event.shiftKey) {
         setSelection((current) =>
@@ -145,6 +207,129 @@ export function PageEditor({
     } catch (error) {
       setSave({ status: 'error', code: error instanceof PdfSaveError ? error.code : 'failed' });
     }
+  };
+
+  const extract = async () => {
+    const picked = pickPages(pages, selected);
+    if (picked.length === 0) return;
+    setSave({ status: 'saving' });
+    try {
+      const bytes = await buildPdf(new Uint8Array(await file.arrayBuffer()), picked);
+      const positions = pages.flatMap((page, i) => (selected.has(page.key) ? [i + 1] : []));
+      const suffix = format(t.pages.extractSuffix, { ranges: formatRanges(positions) });
+      const fileName = editedFileName(name, suffix);
+      downloadPdf(bytes, fileName);
+      // Het document zelf is niet veranderd: "niet gedownload" blijft wat het was.
+      setSave({ status: 'saved', fileName });
+    } catch (error) {
+      setSave({ status: 'error', code: error instanceof PdfSaveError ? error.code : 'failed' });
+    }
+  };
+
+  /* Slepen: met de muis de hele miniatuur, op een aanraakscherm het greepje. */
+
+  /** Waar de pagina's terechtkomen als je hier loslaat (0 = vooraan), of `null`. */
+  const dropIndexAt = (x: number, y: number): number | null => {
+    const element = document
+      .elementFromPoint(x, y)
+      ?.closest<HTMLElement>('.thumbs--selectable [role="option"]');
+    if (!element || !list.current?.contains(element)) return null;
+    const index = Number(element.dataset.index);
+    const box = element.getBoundingClientRect();
+    return x < box.left + box.width / 2 ? index : index + 1;
+  };
+
+  /** Of de muis of vinger ver buiten de miniaturen is (dan breekt loslaten het slepen af). */
+  const farOutside = (x: number, y: number) => {
+    const box = list.current?.getBoundingClientRect();
+    if (!box) return true;
+    const margin = 48;
+    return (
+      x < box.left - margin ||
+      x > box.right + margin ||
+      y < box.top - margin ||
+      y > box.bottom + margin
+    );
+  };
+
+  /** Werkt de plek van het streepje bij: een nieuwe plek, de vorige, of geen (ver buiten). */
+  const updateDrop = (x: number, y: number) => {
+    const index = dropIndexAt(x, y);
+    if (index !== null) lastDrop.current = index;
+    else if (farOutside(x, y)) lastDrop.current = null;
+    setDropAt(lastDrop.current);
+    return lastDrop.current;
+  };
+
+  const endDrag = () => {
+    drag.current = null;
+    lastDrop.current = null;
+    setDragging(false);
+    setDropAt(null);
+  };
+
+  // Escape breekt het slepen af.
+  useEffect(() => {
+    if (!dragging) return;
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key !== 'Escape') return;
+      suppressClick.current = true;
+      endDrag();
+    };
+    document.addEventListener('keydown', onKey);
+    return () => document.removeEventListener('keydown', onKey);
+  }, [dragging]);
+
+  const onPointerDown = (event: PointerEvent, key: number) => {
+    if (event.button !== 0) return;
+    const fromHandle = (event.target as HTMLElement | null)?.closest('.drag-handle');
+    // Op een aanraakscherm alleen via het greepje, zodat gewoon scrollen blijft werken.
+    if (event.pointerType === 'touch' && !fromHandle) return;
+    drag.current = {
+      pointerId: event.pointerId,
+      keys: selected.has(key) ? new Set(selected) : new Set([key]),
+      key,
+      x: event.clientX,
+      y: event.clientY,
+      active: false,
+    };
+    // Nog niet "vangen": een gewone klik (bijvoorbeeld op het vinkje) moet zijn eigen
+    // doel houden. Dat gebeurt pas als het echt slepen wordt.
+  };
+
+  const onPointerMove = (event: PointerEvent) => {
+    const current = drag.current;
+    if (!current || current.pointerId !== event.pointerId) return;
+    if (!current.active) {
+      const distance = Math.hypot(event.clientX - current.x, event.clientY - current.y);
+      if (distance < DRAG_THRESHOLD) return;
+      current.active = true;
+      // Vanaf nu volgen alle bewegingen deze sleepactie, ook buiten de miniatuur.
+      (event.currentTarget as HTMLElement).setPointerCapture?.(event.pointerId);
+      setDragging(true);
+      if (!selected.has(current.key)) setSelection({ keys: current.keys, anchor: current.key });
+    }
+    event.preventDefault();
+    updateDrop(event.clientX, event.clientY);
+    // Bij de rand van het venster meeschuiven, maar alleen als er in die richting nog
+    // miniaturen buiten beeld staan; anders zou de pagina onder de muis wegschuiven.
+    const box = list.current?.getBoundingClientRect();
+    if (!box) return;
+    if (event.clientY < 40 && box.top < 0) window.scrollBy(0, -16);
+    else if (event.clientY > window.innerHeight - 40 && box.bottom > window.innerHeight) {
+      window.scrollBy(0, 16);
+    }
+  };
+
+  const onPointerUp = (event: PointerEvent) => {
+    const current = drag.current;
+    if (!current || current.pointerId !== event.pointerId) return;
+    if (current.active) {
+      suppressClick.current = true;
+      const target = updateDrop(event.clientX, event.clientY);
+      if (target !== null) apply(movePages(pages, current.keys, target));
+    }
+    endDrag();
   };
 
   const removable = canRemove(pages, selected);
@@ -197,6 +382,26 @@ export function PageEditor({
           </button>
         </div>
         <div class="toolbar__group">
+          <button
+            type="button"
+            class="button button--secondary"
+            disabled={selected.size === 0}
+            aria-keyshortcuts="Alt+ArrowLeft"
+            onClick={() => moveBy(selected, -1)}
+          >
+            <span aria-hidden="true">←</span> {t.pages.moveEarlier}
+          </button>
+          <button
+            type="button"
+            class="button button--secondary"
+            disabled={selected.size === 0}
+            aria-keyshortcuts="Alt+ArrowRight"
+            onClick={() => moveBy(selected, 1)}
+          >
+            {t.pages.moveLater} <span aria-hidden="true">→</span>
+          </button>
+        </div>
+        <div class="toolbar__group">
           <button type="button" class="button button--secondary" disabled={!canUndo} onClick={undo}>
             {t.pages.undo}
           </button>
@@ -205,6 +410,15 @@ export function PageEditor({
           </button>
         </div>
         <div class="toolbar__group toolbar__group--end">
+          <button
+            type="button"
+            class="button button--secondary"
+            disabled={selected.size === 0 || save.status === 'saving'}
+            title={t.pages.extractTitle}
+            onClick={() => void extract()}
+          >
+            {t.pages.extract}
+          </button>
           <button
             type="button"
             class="button"
@@ -235,7 +449,7 @@ export function PageEditor({
 
       <div
         ref={list}
-        class="thumbs thumbs--selectable"
+        class={`thumbs thumbs--selectable${dragging ? ' thumbs--dragging' : ''}`}
         role="listbox"
         aria-multiselectable="true"
         aria-label={format(t.pages.list, { name })}
@@ -243,6 +457,15 @@ export function PageEditor({
       >
         {pages.map((page, index) => {
           const isSelected = selected.has(page.key);
+          const classes = [
+            'page-option',
+            isSelected && 'page-option--selected',
+            dragging && isSelected && 'page-option--dragging',
+            dropAt === index && 'page-option--drop-before',
+            dropAt === pages.length && index === pages.length - 1 && 'page-option--drop-after',
+          ]
+            .filter(Boolean)
+            .join(' ');
           const label = [
             format(t.document.page, { n: index + 1 }),
             page.rotation ? format(t.pages.rotated, { n: page.rotation }) : '',
@@ -253,20 +476,43 @@ export function PageEditor({
             <div
               key={`${docId}-${page.key}`}
               role="option"
-              class={`page-option${isSelected ? ' page-option--selected' : ''}`}
+              class={classes}
+              data-index={index}
+              data-source={page.source + 1}
               aria-selected={isSelected}
               aria-label={label}
               tabIndex={index === active ? 0 : -1}
+              onPointerDown={(event) => onPointerDown(event, page.key)}
+              onPointerMove={onPointerMove}
+              onPointerUp={onPointerUp}
+              onPointerCancel={endDrag}
               onClick={(event) => {
+                if (suppressClick.current) {
+                  suppressClick.current = false;
+                  return;
+                }
                 setActive(index);
+                // Het vinkje werkt als Ctrl-klik: erbij of eraf, zonder de rest te wissen.
+                // Zo kun je ook op een telefoon (zonder Ctrl of Shift) meer pagina's kiezen.
+                const viaCheckbox = (event.target as HTMLElement | null)?.closest('.select-box');
                 setSelection((current) =>
                   selectByClick(current, order, page.key, {
-                    toggle: event.ctrlKey || event.metaKey,
-                    range: event.shiftKey,
+                    toggle: Boolean(viaCheckbox) || event.ctrlKey || event.metaKey,
+                    range: !viaCheckbox && event.shiftKey,
                   }),
                 );
               }}
             >
+              <span class="drag-handle" aria-hidden="true">
+                ⠿
+              </span>
+              {/* Alleen voor het oog: de keuze zelf staat al in aria-selected van de optie. */}
+              <span
+                class={`select-box${isSelected ? ' select-box--checked' : ''}`}
+                aria-hidden="true"
+              >
+                {isSelected ? '✓' : ''}
+              </span>
               <Thumbnail
                 pdf={pdf}
                 pageNumber={page.source + 1}

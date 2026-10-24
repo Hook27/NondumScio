@@ -52,6 +52,48 @@ export function canRemove(pages: PageItem[], keys: ReadonlySet<number>): boolean
   return keys.size > 0 && pages.some((page) => !keys.has(page.key));
 }
 
+/**
+ * Verplaatst de gekozen pagina's naar plek `target` (0 = vooraan, `pages.length` =
+ * achteraan; de plek telt in de huidige volgorde, alsof de gekozen pagina's er nog staan).
+ * Meerdere pagina's komen als één blok terecht, in hun onderlinge volgorde. Verandert er
+ * niets, dan komt hetzelfde plan terug (en telt het niet als stap voor ongedaan maken).
+ */
+export function movePages(
+  pages: PageItem[],
+  keys: ReadonlySet<number>,
+  target: number,
+): PageItem[] {
+  if (keys.size === 0) return pages;
+  const clamped = Math.max(0, Math.min(target, pages.length));
+  const moving = pages.filter((page) => keys.has(page.key));
+  if (moving.length === 0) return pages;
+  const rest = pages.filter((page) => !keys.has(page.key));
+  const before = pages.slice(0, clamped).filter((page) => !keys.has(page.key)).length;
+  const next = [...rest.slice(0, before), ...moving, ...rest.slice(before)];
+  return next.every((page, i) => page === pages[i]) ? pages : next;
+}
+
+/**
+ * Schuift de gekozen pagina's één plek naar voren (`-1`) of naar achteren (`1`), voor de
+ * knoppen en Alt+pijltje. Verspreid gekozen pagina's worden daarbij één blok.
+ */
+export function movePagesBy(
+  pages: PageItem[],
+  keys: ReadonlySet<number>,
+  step: -1 | 1,
+): PageItem[] {
+  const positions = pages.flatMap((page, i) => (keys.has(page.key) ? [i] : []));
+  if (positions.length === 0) return pages;
+  const first = positions[0]!;
+  const last = positions.at(-1)!;
+  return step < 0 ? movePages(pages, keys, first - 1) : movePages(pages, keys, last + 2);
+}
+
+/** De gekozen pagina's, in de huidige volgorde: de inhoud voor "uitpakken". */
+export function pickPages(pages: PageItem[], keys: ReadonlySet<number>): PageItem[] {
+  return pages.filter((page) => keys.has(page.key));
+}
+
 /** Of het plan afwijkt van het origineel (dan is er iets op te slaan). */
 export function isChanged(pages: PageItem[], originalCount: number): boolean {
   return (

@@ -514,8 +514,85 @@ h1 {
 }
 
 .page-option {
+  position: relative;
   border-radius: var(--radius);
   cursor: pointer;
+  user-select: none;
+}
+
+/* Greepje om te slepen; op een aanraakscherm de enige plek waar slepen begint. */
+.drag-handle {
+  position: absolute;
+  top: 0.4rem;
+  left: 0.4rem;
+  z-index: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.75rem;
+  height: 1.75rem;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  color: var(--text-muted);
+  font-size: 0.95rem;
+  line-height: 1;
+  cursor: grab;
+  touch-action: none;
+}
+
+/* Vinkje om pagina's erbij of eraf te kiezen, ook zonder Ctrl of Shift (telefoon). */
+.select-box {
+  position: absolute;
+  top: 0.4rem;
+  right: 0.4rem;
+  z-index: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 2rem;
+  height: 2rem;
+  background: var(--surface);
+  border: 2px solid var(--text-muted);
+  border-radius: 6px;
+  color: var(--accent-contrast);
+  font-size: 1.1rem;
+  font-weight: 700;
+  line-height: 1;
+}
+
+.select-box--checked {
+  background: var(--accent);
+  border-color: var(--accent);
+}
+
+.thumbs--dragging .page-option,
+.thumbs--dragging .drag-handle {
+  cursor: grabbing;
+}
+
+.page-option--dragging {
+  opacity: 0.5;
+}
+
+/* Een streepje laat zien waar de gesleepte pagina's terechtkomen. */
+.page-option--drop-before::before,
+.page-option--drop-after::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  bottom: 1.6rem;
+  width: 4px;
+  background: var(--accent);
+  border-radius: 2px;
+}
+
+.page-option--drop-before::before {
+  left: -0.6rem;
+}
+
+.page-option--drop-after::after {
+  right: -0.6rem;
 }
 
 .page-option:focus-visible {
