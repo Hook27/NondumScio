@@ -3,7 +3,7 @@ import { readFileSync } from 'node:fs';
 import { expect, test, type Page } from '@playwright/test';
 import { PDFDocument } from 'pdf-lib';
 import { makeSizedPdf } from './fixtures';
-import { messages, openPage } from './helpers';
+import { downloadVia, messages, openPage } from './helpers';
 
 const nl = messages.nl;
 const options = (page: Page) => page.getByRole('option');
@@ -51,10 +51,7 @@ test.describe('pagina’s bewerken', () => {
     const box = await thumb.boundingBox();
     expect(box!.width).toBeGreaterThan(box!.height);
 
-    const [download] = await Promise.all([
-      page.waitForEvent('download'),
-      toolbarButton(page, nl.pages.save).click(),
-    ]);
+    const download = await downloadVia(page, toolbarButton(page, nl.pages.save));
     expect(download.suggestedFilename()).toBe('drie (bewerkt).pdf');
     const result = await readDownload(await download.path());
     expect(result.widths).toEqual([300, 500]);

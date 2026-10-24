@@ -21,6 +21,7 @@ import {
   type Selection,
 } from '../pages/selection';
 import { PdfSaveError, buildPdf, downloadPdf, editedFileName } from '../pdf/save';
+import { SaveDialog } from './SaveDialog';
 import { Thumbnail } from './Thumbnail';
 
 type SaveState =
@@ -196,30 +197,29 @@ export function PageEditor({
     }
   };
 
-  const download = async () => {
-    setSave({ status: 'saving' });
-    try {
-      const bytes = await buildPdf(new Uint8Array(await file.arrayBuffer()), pages);
-      const fileName = editedFileName(name, t.pages.editedSuffix);
-      downloadPdf(bytes, fileName);
-      markSaved();
-      setSave({ status: 'saved', fileName });
-    } catch (error) {
-      setSave({ status: 'error', code: error instanceof PdfSaveError ? error.code : 'failed' });
-    }
-  };
+  /** Wat er na het venster "Opslaan als" gedownload wordt. */
+  type SaveRequest = { kind: 'save' | 'extract'; suggestion: string; pages: PageItem[] };
+  const [request, setRequest] = useState<SaveRequest | null>(null);
 
-  const extract = async () => {
+  const askSave = () =>
+    setRequest({ kind: 'save', suggestion: editedFileName(name, t.pages.editedSuffix), pages });
+
+  const askExtract = () => {
     const picked = pickPages(pages, selected);
     if (picked.length === 0) return;
+    const positions = pages.flatMap((page, i) => (selected.has(page.key) ? [i + 1] : []));
+    const suffix = format(t.pages.extractSuffix, { ranges: formatRanges(positions) });
+    setRequest({ kind: 'extract', suggestion: editedFileName(name, suffix), pages: picked });
+  };
+
+  const saveAs = async (current: SaveRequest, fileName: string) => {
+    setRequest(null);
     setSave({ status: 'saving' });
     try {
-      const bytes = await buildPdf(new Uint8Array(await file.arrayBuffer()), picked);
-      const positions = pages.flatMap((page, i) => (selected.has(page.key) ? [i + 1] : []));
-      const suffix = format(t.pages.extractSuffix, { ranges: formatRanges(positions) });
-      const fileName = editedFileName(name, suffix);
+      const bytes = await buildPdf(new Uint8Array(await file.arrayBuffer()), current.pages);
       downloadPdf(bytes, fileName);
-      // Het document zelf is niet veranderd: "niet gedownload" blijft wat het was.
+      // Bij uitpakken is het document zelf niet veranderd: "niet gedownload" blijft wat het was.
+      if (current.kind === 'save') markSaved();
       setSave({ status: 'saved', fileName });
     } catch (error) {
       setSave({ status: 'error', code: error instanceof PdfSaveError ? error.code : 'failed' });
@@ -415,7 +415,7 @@ export function PageEditor({
             class="button button--secondary"
             disabled={selected.size === 0 || save.status === 'saving'}
             title={t.pages.extractTitle}
-            onClick={() => void extract()}
+            onClick={askExtract}
           >
             {t.pages.extract}
           </button>
@@ -423,7 +423,7 @@ export function PageEditor({
             type="button"
             class="button"
             disabled={save.status === 'saving'}
-            onClick={() => void download()}
+            onClick={askSave}
           >
             {save.status === 'saving' ? t.pages.saving : t.pages.save}
           </button>
@@ -525,6 +525,14 @@ export function PageEditor({
           );
         })}
       </div>
+      {request && (
+        <SaveDialog
+          title={request.kind === 'save' ? t.saveDialog.saveTitle : t.saveDialog.extractTitle}
+          suggestion={request.suggestion}
+          onConfirm={(fileName) => void saveAs(request, fileName)}
+          onCancel={() => setRequest(null)}
+        />
+      )}
     </div>
   );
 }

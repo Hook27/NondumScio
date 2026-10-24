@@ -63,6 +63,14 @@ export const en: Messages = {
       failed: 'Saving failed. Please try again.',
     },
   },
+  saveDialog: {
+    saveTitle: 'Save PDF',
+    extractTitle: 'Save selected pages',
+    label: 'File name',
+    result: 'Will be downloaded as: {name}',
+    download: 'Download',
+    cancel: 'Cancel',
+  },
   comingSoon: 'Coming soon.',
   comingSoonDetail: 'The tools for this task will come in a later version.',
   notFound: {

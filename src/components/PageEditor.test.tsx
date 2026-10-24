@@ -46,6 +46,11 @@ async function openEditor(pageCount = 3) {
 const options = () => screen.getAllByRole('option');
 const button = (name: string) => screen.getByRole('button', { name: new RegExp(name) });
 const status = () => document.querySelector('.page-editor__status')!.textContent;
+
+/** Het venster "Opslaan als": het naamveld, en bevestigen met de knop "Downloaden". */
+const nameField = () => screen.getByLabelText(nl.saveDialog.label) as HTMLInputElement;
+const confirmSave = () =>
+  fireEvent.click(screen.getByRole('button', { name: nl.saveDialog.download }));
 /** De nummers onder de miniaturen: altijd 1, 2, 3, … (de plek). */
 const captions = () => options().map((o) => o.querySelector('figcaption')!.textContent);
 /** Welke pagina van het origineel (1, 2, …) op elke plek staat. */
@@ -170,6 +175,7 @@ describe('PageEditor', () => {
     fireEvent.click(options()[0]!);
     fireEvent.click(button(nl.pages.rotateRight));
     fireEvent.click(button(nl.pages.save));
+    confirmSave();
 
     await waitFor(() => expect(downloadPdf).toHaveBeenCalledTimes(1));
     const [, plan] = vi.mocked(buildPdf).mock.calls[0]!;
@@ -186,6 +192,7 @@ describe('PageEditor', () => {
     vi.mocked(buildPdf).mockRejectedValueOnce(new PdfSaveError('encrypted'));
     await openEditor(2);
     fireEvent.click(button(nl.pages.save));
+    confirmSave();
     expect((await screen.findByRole('alert')).textContent).toBe(nl.pages.errors.encrypted);
     expect(downloadPdf).not.toHaveBeenCalled();
   });
@@ -240,6 +247,7 @@ describe('PageEditor', () => {
     fireEvent.click(options()[3]!, { ctrlKey: true });
     fireEvent.click(options()[4]!, { ctrlKey: true });
     fireEvent.click(button(nl.pages.extract));
+    confirmSave();
 
     await waitFor(() => expect(downloadPdf).toHaveBeenCalledTimes(1));
     const [, picked] = vi.mocked(buildPdf).mock.calls[0]!;
@@ -291,5 +299,66 @@ describe('PageEditor', () => {
     expect(box.getAttribute('aria-hidden')).toBe('true');
     fireEvent.click(box);
     expect(options()[0]!.getAttribute('aria-selected')).toBe('true');
+  });
+
+  it('vraagt eerst om een bestandsnaam, met een voorstel dat je kunt aanpassen', async () => {
+    await openEditor(2);
+    fireEvent.click(button(nl.pages.save));
+
+    expect(screen.getByRole('heading', { name: nl.saveDialog.saveTitle })).toBeTruthy();
+    expect(nameField().value).toBe('rapport (bewerkt).pdf');
+    // Alleen de naam is geselecteerd, niet ".pdf": meteen overtypen kan.
+    expect(nameField().selectionStart).toBe(0);
+    expect(nameField().selectionEnd).toBe('rapport (bewerkt)'.length);
+    expect(downloadPdf).not.toHaveBeenCalled();
+
+    fireEvent.input(nameField(), { target: { value: 'Jaar/overzicht 2026' } });
+    expect(screen.getByText('Wordt gedownload als: Jaar-overzicht 2026.pdf')).toBeTruthy();
+    confirmSave();
+
+    await waitFor(() => expect(downloadPdf).toHaveBeenCalledTimes(1));
+    expect(vi.mocked(downloadPdf).mock.calls[0]![1]).toBe('Jaar-overzicht 2026.pdf');
+  });
+
+  it('downloadt ook met Enter in het naamveld', async () => {
+    await openEditor(2);
+    fireEvent.click(button(nl.pages.save));
+    fireEvent.input(nameField(), { target: { value: 'met enter' } });
+    fireEvent.submit(nameField().form!);
+    await waitFor(() => expect(downloadPdf).toHaveBeenCalledTimes(1));
+    expect(vi.mocked(downloadPdf).mock.calls[0]![1]).toBe('met enter.pdf');
+  });
+
+  it('downloadt niets bij annuleren of Escape', async () => {
+    await openEditor(2);
+    fireEvent.click(button(nl.pages.save));
+    fireEvent.click(screen.getByRole('button', { name: nl.saveDialog.cancel }));
+    expect(screen.queryByLabelText(nl.saveDialog.label)).toBeNull();
+
+    fireEvent.click(button(nl.pages.save));
+    const dialog = document.querySelector('dialog')!;
+    fireEvent(dialog, new Event('cancel', { cancelable: true }));
+    expect(screen.queryByLabelText(nl.saveDialog.label)).toBeNull();
+
+    expect(buildPdf).not.toHaveBeenCalled();
+    expect(downloadPdf).not.toHaveBeenCalled();
+  });
+
+  it('valt terug op het voorstel als de naam leeg is', async () => {
+    await openEditor(2);
+    fireEvent.click(button(nl.pages.save));
+    fireEvent.input(nameField(), { target: { value: '   ' } });
+    confirmSave();
+    await waitFor(() => expect(downloadPdf).toHaveBeenCalledTimes(1));
+    expect(vi.mocked(downloadPdf).mock.calls[0]![1]).toBe('rapport (bewerkt).pdf');
+  });
+
+  it('stelt bij uitpakken een naam voor met de gekozen pagina’s', async () => {
+    await openEditor(4);
+    fireEvent.click(options()[1]!);
+    fireEvent.click(options()[2]!, { ctrlKey: true });
+    fireEvent.click(button(nl.pages.extract));
+    expect(screen.getByRole('heading', { name: nl.saveDialog.extractTitle })).toBeTruthy();
+    expect(nameField().value).toBe("rapport (pagina's 2-3).pdf");
   });
 });
