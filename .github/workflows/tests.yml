@@ -38,6 +38,13 @@ jobs:
   # Browsertests: de echte productiebuild in een echte browser, op desktop en telefoon.
   e2e:
     runs-on: ubuntu-latest
+    # Kant-en-klare omgeving van Microsoft waarin de browser en alle systeempakketten al
+    # zitten. Zo hoeven we niets meer van Ubuntu-servers te downloaden (dat duurde soms
+    # 10 minuten). De versie moet gelijk zijn aan @playwright/test in package-lock.json;
+    # scripts/playwright-container.test.ts bewaakt dat.
+    container:
+      image: mcr.microsoft.com/playwright:v1.64.1-noble
+      options: --user 1001
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-node@v7
@@ -45,13 +52,6 @@ jobs:
           node-version-file: .nvmrc
           cache: npm
       - run: npm ci
-      - name: Browser onthouden tussen runs
-        uses: actions/cache@v6
-        with:
-          path: ~/.cache/ms-playwright
-          key: playwright-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
-      - name: Browser installeren
-        run: npx playwright install --with-deps chromium
       - name: Browsertests
         run: npm run e2e
       - name: Rapport bewaren bij een fout
