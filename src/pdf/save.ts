@@ -44,29 +44,10 @@ export async function buildPdf(
 ): Promise<Uint8Array> {
   if (pages.length === 0) throw new PdfSaveError('failed');
   const lib = await import('pdf-lib');
-  const { PDFDocument, EncryptedPDFError, degrees } = lib;
-
-  // Elk gebruikt bestand één keer inlezen.
-  const docs = new Map<number, PdfLibDocument>();
-  for (const id of new Set(pages.map((page) => page.doc))) {
-    const bytes = sources.get(id);
-    if (!bytes) throw new PdfSaveError('failed');
-    try {
-      docs.set(id, await PDFDocument.load(bytes, { updateMetadata: false }));
-    } catch (error) {
-      throw new PdfSaveError(isEncryptedError(error, EncryptedPDFError) ? 'encrypted' : 'failed');
-    }
-  }
-
-  const rotated = (angle: number, extra: number) => degrees((((angle + extra) % 360) + 360) % 360);
+  const docs = await loadDocs(lib, sources, pages);
+  const rotated = rotation(lib);
 
   try {
-    for (const item of pages) {
-      if (!docs.get(item.doc)!.getPages()[item.source]) {
-        throw new RangeError(`Pagina ${item.source} bestaat niet`);
-      }
-    }
-
     if (docs.size === 1) {
       const doc = docs.values().next().value!;
       const sourcePages = doc.getPages();
@@ -81,31 +62,108 @@ export async function buildPdf(
       return await doc.save();
     }
 
-    const out = await PDFDocument.create();
-    const first = docs.get(pages[0]!.doc)!;
-    const title = first.getTitle();
-    const author = first.getAuthor();
-    if (title) out.setTitle(title);
-    if (author) out.setAuthor(author);
-
-    // Per bestand alle benodigde pagina's in één keer kopiëren: gedeelde lettertypen en
-    // afbeeldingen komen dan maar één keer in het resultaat.
-    const copies = new Map<string, ReturnType<typeof out.addPage>>();
-    for (const [id, doc] of docs) {
-      const indices = [...new Set(pages.filter((p) => p.doc === id).map((p) => p.source))];
-      const copied = await out.copyPages(doc, indices);
-      indices.forEach((index, i) => copies.set(`${id}:${index}`, copied[i]!));
-    }
-    for (const item of pages) {
-      const page = copies.get(`${item.doc}:${item.source}`)!;
-      page.setRotation(rotated(page.getRotation().angle, item.rotation));
-      out.addPage(page);
-    }
+    const out = await assemble(lib, docs, pages);
     if (bookmarks) setBookmarks(lib, out, outlineEntries(bookmarks, pages));
     return await out.save();
   } catch {
     throw new PdfSaveError('failed');
   }
+}
+
+/**
+ * Splitsen: maakt per deel een eigen PDF. Elk bronbestand wordt maar één keer ingelezen,
+ * ook bij honderden delen. Titel en auteur komen uit het bestand van de eerste pagina van
+ * elk deel; bestaande bladwijzers vervallen. `onProgress` meldt na elk deel hoe ver het is;
+ * tussen de delen krijgt de browser even lucht, zodat de pagina blijft reageren.
+ */
+export async function buildParts(
+  sources: SourceBytes,
+  parts: readonly (readonly PageItem[])[],
+  onProgress?: (done: number, total: number) => void,
+): Promise<Uint8Array[]> {
+  if (parts.length === 0 || parts.some((part) => part.length === 0)) {
+    throw new PdfSaveError('failed');
+  }
+  const lib = await import('pdf-lib');
+  const docs = await loadDocs(lib, sources, parts.flat());
+  const result: Uint8Array[] = [];
+  try {
+    for (const part of parts) {
+      result.push(await (await assemble(lib, docs, part)).save());
+      onProgress?.(result.length, parts.length);
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    }
+  } catch {
+    throw new PdfSaveError('failed');
+  }
+  return result;
+}
+
+type PdfLib = typeof import('pdf-lib');
+
+/** Leest elk gebruikt bestand één keer in, en controleert dat alle pagina's bestaan. */
+async function loadDocs(lib: PdfLib, sources: SourceBytes, pages: readonly PageItem[]) {
+  const { PDFDocument, EncryptedPDFError } = lib;
+  const docs = new Map<number, PdfLibDocument>();
+  for (const id of new Set(pages.map((page) => page.doc))) {
+    const bytes = sources.get(id);
+    if (!bytes) throw new PdfSaveError('failed');
+    try {
+      docs.set(id, await PDFDocument.load(bytes, { updateMetadata: false }));
+    } catch (error) {
+      throw new PdfSaveError(isEncryptedError(error, EncryptedPDFError) ? 'encrypted' : 'failed');
+    }
+  }
+  // Ook een bestand dat pdf-lib wel inleest maar waarvan de paginaboom niet klopt, geeft
+  // hier een nette melding.
+  const complete = () => {
+    try {
+      return pages.every((item) => docs.get(item.doc)!.getPages()[item.source] !== undefined);
+    } catch {
+      return false;
+    }
+  };
+  if (!complete()) throw new PdfSaveError('failed');
+  return docs;
+}
+
+/** De draaiing van de pagina plus de extra draaiing uit het plan, als pdf-lib-hoek. */
+function rotation({ degrees }: PdfLib) {
+  return (angle: number, extra: number) => degrees((((angle + extra) % 360) + 360) % 360);
+}
+
+/**
+ * Een nieuw document met de pagina's van het plan, gekopieerd uit de ingelezen bestanden.
+ * Titel en auteur komen uit het bestand van de eerste pagina.
+ */
+async function assemble(
+  lib: PdfLib,
+  docs: ReadonlyMap<number, PdfLibDocument>,
+  pages: readonly PageItem[],
+) {
+  const rotated = rotation(lib);
+  const out = await lib.PDFDocument.create();
+  const first = docs.get(pages[0]!.doc)!;
+  const title = first.getTitle();
+  const author = first.getAuthor();
+  if (title) out.setTitle(title);
+  if (author) out.setAuthor(author);
+
+  // Per bestand alle benodigde pagina's in één keer kopiëren: gedeelde lettertypen en
+  // afbeeldingen komen dan maar één keer in het resultaat.
+  const copies = new Map<string, ReturnType<typeof out.addPage>>();
+  for (const [id, doc] of docs) {
+    const indices = [...new Set(pages.filter((p) => p.doc === id).map((p) => p.source))];
+    if (indices.length === 0) continue;
+    const copied = await out.copyPages(doc, indices);
+    indices.forEach((index, i) => copies.set(`${id}:${index}`, copied[i]!));
+  }
+  for (const item of pages) {
+    const page = copies.get(`${item.doc}:${item.source}`)!;
+    page.setRotation(rotated(page.getRotation().angle, item.rotation));
+    out.addPage(page);
+  }
+  return out;
 }
 
 /** Bij elke bladwijzer de plek van de eerste pagina van dat bestand, in volgorde van het resultaat. */
@@ -185,9 +243,14 @@ export function editedFileName(name: string, suffix: string): string {
   return `${base} (${suffix}).pdf`;
 }
 
-/** Biedt bytes aan als download, zonder iets te versturen. */
+/** Biedt een PDF aan als download, zonder iets te versturen. */
 export function downloadPdf(bytes: Uint8Array, fileName: string): void {
-  const blob = new Blob([bytes as BlobPart], { type: 'application/pdf' });
+  downloadFile(bytes, fileName, 'application/pdf');
+}
+
+/** Biedt bytes aan als download (bijvoorbeeld een ZIP), zonder iets te versturen. */
+export function downloadFile(bytes: Uint8Array, fileName: string, type: string): void {
+  const blob = new Blob([bytes as BlobPart], { type });
   const url = URL.createObjectURL(blob);
   const link = document.createElement('a');
   link.href = url;

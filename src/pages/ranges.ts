@@ -53,3 +53,36 @@ export function parseRanges(text: string, pageCount: number): ParsedRanges {
   }
   return { ok: true, pages: [...pages].sort((a, b) => a - b) };
 }
+
+export type ParsedParts = { ok: true; parts: number[][] } | { ok: false; error: RangeProblem };
+
+/**
+ * Leest delen voor splitsen: elk stuk tussen komma's (of puntkomma's) wordt een eigen deel,
+ * bijvoorbeeld "1-3, 4-6, 8-" → drie delen. Binnen een deel werkt alles van `parseRanges`
+ * (dus ook "1 3" of "5-3"). Geeft per deel de paginanummers (vanaf 1), of wat er niet klopt.
+ */
+export function parseParts(text: string, pageCount: number): ParsedParts {
+  const items = text
+    .split(/[,;]/)
+    .map((item) => item.trim())
+    .filter(Boolean);
+  if (items.length === 0) return { ok: false, error: { code: 'empty' } };
+  const parts: number[][] = [];
+  for (const item of items) {
+    const result = parseRanges(item, pageCount);
+    if (!result.ok) return result;
+    parts.push(result.pages);
+  }
+  return { ok: true, parts };
+}
+
+/** Splitst `pageCount` pagina's in delen van `size` (het laatste deel kan korter zijn). */
+export function chunkParts(pageCount: number, size: number): number[][] {
+  const step = Number.isFinite(size) && size >= 1 ? Math.floor(size) : 1;
+  const parts: number[][] = [];
+  for (let start = 1; start <= pageCount; start += step) {
+    const end = Math.min(start + step - 1, pageCount);
+    parts.push(Array.from({ length: end - start + 1 }, (_, i) => start + i));
+  }
+  return parts;
+}

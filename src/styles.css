@@ -1007,6 +1007,118 @@ h1 {
   white-space: nowrap;
 }
 
+/* Splitsen */
+.split-method {
+  display: grid;
+  gap: 0.4rem;
+  margin: 0 0 0.75rem;
+  padding: 0.6rem 0.8rem;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+}
+
+.split-method__legend {
+  padding: 0 0.25rem;
+  font-weight: 600;
+}
+
+.split-method__option {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  cursor: pointer;
+}
+
+.split-method__option input {
+  width: 1.1rem;
+  height: 1.1rem;
+  accent-color: var(--accent);
+}
+
+/* Het veld hoort bij de keuze erboven: iets ingesprongen. */
+.split-method__field {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.4rem 0.5rem;
+  margin: 0 0 0.35rem 1.6rem;
+  color: var(--text-muted);
+  font-size: 0.9rem;
+}
+
+.split-method__number {
+  width: 5rem;
+  padding: 0.35rem 0.5rem;
+  background: var(--bg);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  font: inherit;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+}
+
+.split-method__ranges {
+  flex: 1;
+  min-width: 8rem;
+}
+
+.split-method input:disabled {
+  opacity: 0.5;
+}
+
+.split-parts {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 0.35rem;
+  margin: 0 0 0.75rem;
+  padding: 0;
+  list-style: none;
+}
+
+.split-parts__item {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.35rem 0.4rem 0.35rem 0.75rem;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+}
+
+.split-parts__name {
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.split-parts__pages {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  color: var(--text-muted);
+  font-size: 0.9rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.split-group {
+  margin: 0 0 1.25rem;
+}
+
+.split-group__title {
+  display: flex;
+  align-items: baseline;
+  gap: 0.6rem;
+  margin: 0 0 0.5rem;
+  font-size: 0.95rem;
+}
+
+.split-group__meta {
+  color: var(--text-muted);
+  font-size: 0.85rem;
+  font-weight: 400;
+}
+
 /* Kop van een vak (rechts: resultaat of pagina's kiezen) */
 .pane-head {
   display: flex;
