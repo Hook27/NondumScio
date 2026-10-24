@@ -1,4 +1,13 @@
-import { PDFDocument, degrees } from 'pdf-lib';
+import {
+  PDFArray,
+  PDFDict,
+  PDFDocument,
+  PDFName,
+  PDFRef,
+  PDFString,
+  degrees,
+  type PDFHexString,
+} from 'pdf-lib';
 import { describe, expect, it } from 'vitest';
 import { initialPages, movePages, removePages, rotatePages } from '../pages/plan';
 import { PdfSaveError, buildPdf, editedFileName } from './save';
@@ -27,6 +36,40 @@ async function describePdf(bytes: Uint8Array) {
     title: doc.getTitle(),
     author: doc.getAuthor(),
   };
+}
+
+/** De bladwijzers van een PDF: titel en paginanummer (vanaf 1), in volgorde. */
+async function readBookmarks(bytes: Uint8Array) {
+  const doc = await PDFDocument.load(bytes);
+  const outlines = doc.catalog.lookupMaybe(PDFName.of('Outlines'), PDFDict);
+  const pageRefs = doc.getPages().map((page) => page.ref);
+  const result: { title: string; page: number }[] = [];
+  let item = outlines?.lookupMaybe(PDFName.of('First'), PDFDict);
+  while (item) {
+    const title = item.lookup(PDFName.of('Title')) as PDFString | PDFHexString;
+    const dest = item.lookup(PDFName.of('Dest'), PDFArray).get(0) as PDFRef;
+    result.push({ title: title.decodeText(), page: pageRefs.indexOf(dest) + 1 });
+    item = item.lookupMaybe(PDFName.of('Next'), PDFDict);
+  }
+  const pageMode = doc.catalog.lookupMaybe(PDFName.of('PageMode'), PDFName)?.asString();
+  return { bookmarks: result, pageMode };
+}
+
+/** Een PDF met één bestaande bladwijzer naar pagina 1. */
+async function withOldBookmark(bytes: Uint8Array) {
+  const doc = await PDFDocument.load(bytes);
+  const { context } = doc;
+  const outlines = context.nextRef();
+  const item = context.register(
+    context.obj({
+      Title: PDFString.of('Oud'),
+      Parent: outlines,
+      Dest: [doc.getPage(0).ref, 'Fit'],
+    }),
+  );
+  context.assign(outlines, context.obj({ Type: 'Outlines', First: item, Last: item, Count: 1 }));
+  doc.catalog.set(PDFName.of('Outlines'), outlines);
+  return doc.save();
 }
 
 const keys = (...values: number[]) => new Set(values);
@@ -155,6 +198,73 @@ describe('buildPdf met meerdere bestanden (samenvoegen)', () => {
     const withLocked = await twoSources();
     withLocked.set(2, await locked.save());
     await expect(buildPdf(withLocked, plan())).rejects.toMatchObject({ code: 'encrypted' });
+  });
+});
+
+describe('buildPdf met nieuwe bladwijzers', () => {
+  async function sources() {
+    return new Map([
+      [1, await withOldBookmark(await samplePdf(2, {}, { title: 'Bestand A' }))],
+      [2, await samplePdf(3, {}, { title: 'Bestand B', firstWidth: 1000 })],
+    ]);
+  }
+  const plan = () => [...initialPages(2, 1, 0), ...initialPages(3, 2, 2)];
+  const marks = [
+    { doc: 1, title: 'Offerte' },
+    { doc: 2, title: 'Bijlage – €, ü en 中文' },
+  ];
+
+  it('zet per bestand een bladwijzer naar zijn eerste pagina, en toont ze bij openen', async () => {
+    const result = await readBookmarks(
+      await buildPdf(await sources(), plan(), { bookmarks: marks }),
+    );
+    expect(result.bookmarks).toEqual([
+      { title: 'Offerte', page: 1 },
+      { title: 'Bijlage – €, ü en 中文', page: 3 },
+    ]);
+    expect(result.pageMode).toBe('/UseOutlines');
+  });
+
+  it('volgt de volgorde van het resultaat en slaat weggelaten bestanden over', async () => {
+    const reversed = [...initialPages(3, 2, 2), ...initialPages(2, 1, 0)];
+    const result = await readBookmarks(
+      await buildPdf(await sources(), reversed, { bookmarks: marks }),
+    );
+    expect(result.bookmarks).toEqual([
+      { title: 'Bijlage – €, ü en 中文', page: 1 },
+      { title: 'Offerte', page: 4 },
+    ]);
+    const onlyB = initialPages(3, 2, 2);
+    const single = await readBookmarks(
+      await buildPdf(await sources(), onlyB, { bookmarks: marks }),
+    );
+    expect(single.bookmarks).toEqual([{ title: 'Bijlage – €, ü en 中文', page: 1 }]);
+  });
+
+  it('wijst bij door elkaar staande pagina’s naar de eerste pagina van elk bestand', async () => {
+    const mixed = movePages(plan(), keys(2), 1); // B1 tussen A1 en A2
+    const result = await readBookmarks(
+      await buildPdf(await sources(), mixed, { bookmarks: marks }),
+    );
+    expect(result.bookmarks).toEqual([
+      { title: 'Offerte', page: 1 },
+      { title: 'Bijlage – €, ü en 中文', page: 2 },
+    ]);
+  });
+
+  it('vervangt bestaande bladwijzers, ook bij één bestand', async () => {
+    const one = new Map([[1, await withOldBookmark(await samplePdf(2))]]);
+    const kept = await readBookmarks(await buildPdf(one, initialPages(2, 1)));
+    expect(kept.bookmarks).toEqual([{ title: 'Oud', page: 1 }]);
+    const replaced = await readBookmarks(
+      await buildPdf(one, initialPages(2, 1), { bookmarks: [{ doc: 1, title: 'Nieuw' }] }),
+    );
+    expect(replaced.bookmarks).toEqual([{ title: 'Nieuw', page: 1 }]);
+  });
+
+  it('zonder de optie: geen bladwijzers bij samenvoegen', async () => {
+    const result = await readBookmarks(await buildPdf(await sources(), plan()));
+    expect(result.bookmarks).toEqual([]);
   });
 });
 

@@ -90,6 +90,11 @@ export const en: Messages = {
     result: 'Result',
     picking: '{name}: choose pages',
     showResult: 'Back to the result',
+    bookmarks: 'Bookmark per file',
+    bookmarkLabel: 'Bookmark',
+    bookmarkFor: 'for {name}',
+    bookmarksHint:
+      'With “Bookmark per file” the merged PDF gets a bookmark to the start of each file; you can change its title. Without that option, existing bookmarks are dropped when merging.',
     pick: 'Thumbnails of {name}',
     keepPage: 'At least one page of this file must remain. To leave out a whole file, use ✕.',
     rangeErrors: {
