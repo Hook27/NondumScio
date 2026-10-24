@@ -173,6 +173,24 @@ test.describe('pagina’s verplaatsen en uitpakken', () => {
     await expect(page.locator('.page-editor__status')).not.toContainText(nl.pages.unsaved);
   });
 
+  test('met de vinkjes meer pagina’s kiezen en uitpakken, ook op een telefoon', async ({
+    page,
+    isMobile,
+  }) => {
+    await openPages(page);
+    for (const index of [1, 3]) {
+      const box = options(page).nth(index).locator('.select-box');
+      // Op een telefoon tikken, met de muis klikken.
+      if (isMobile) await box.tap();
+      else await box.click();
+    }
+    await expect(page.locator('.page-editor__status')).toContainText('2 van 4 gekozen');
+
+    const result = await download(page, nl.pages.extract);
+    expect(result.name).toBe("vier (pagina's 2, 4).pdf");
+    expect(result.widths).toEqual([400, 600]);
+  });
+
   test('op een telefoon is er per pagina een greepje om te slepen', async ({ page }) => {
     await openPages(page, [300, 400]);
     const handle = page.locator('.drag-handle').first();

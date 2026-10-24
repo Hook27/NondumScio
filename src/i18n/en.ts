@@ -36,7 +36,7 @@ export const en: Messages = {
   },
   pages: {
     toolbar: 'Page tools',
-    hint: 'Click a page to select it; use Ctrl or Shift to select more. Drag to move (on a phone by the handle ⠿), or use Alt + arrow keys.',
+    hint: 'Click a page to select it; use the checkbox in the corner (or Ctrl and Shift) to select more. Drag to move (on a phone by the handle ⠿), or use Alt + arrow keys.',
     list: 'Pages of {name}. Arrow keys to move, space to select.',
     selected: '{n} of {total} selected',
     rotated: 'rotated {n}°',

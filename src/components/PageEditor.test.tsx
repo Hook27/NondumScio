@@ -262,4 +262,34 @@ describe('PageEditor', () => {
     expect(handles).toHaveLength(2);
     expect(handles[0]!.getAttribute('aria-hidden')).toBe('true');
   });
+
+  it('kiest met het vinkje meer pagina’s, zonder Ctrl of Shift (zoals op een telefoon)', async () => {
+    await openEditor(4);
+    const box = (index: number) => options()[index]!.querySelector('.select-box')!;
+    fireEvent.click(box(0));
+    fireEvent.click(box(2));
+    fireEvent.click(box(3));
+    expect(options().map((o) => o.getAttribute('aria-selected'))).toEqual([
+      'true',
+      'false',
+      'true',
+      'true',
+    ]);
+    expect(box(2).textContent).toBe('✓');
+
+    // Nog eens op een vinkje: die pagina eraf, de rest blijft.
+    fireEvent.click(box(2));
+    expect(status()).toContain('2 van 4 gekozen');
+    // Een gewone klik op de pagina kiest weer alleen die ene.
+    fireEvent.click(options()[1]!);
+    expect(status()).toContain('1 van 4 gekozen');
+  });
+
+  it('heeft het vinkje alleen voor het oog: de keuze staat in de optie zelf', async () => {
+    await openEditor(1);
+    const box = options()[0]!.querySelector('.select-box')!;
+    expect(box.getAttribute('aria-hidden')).toBe('true');
+    fireEvent.click(box);
+    expect(options()[0]!.getAttribute('aria-selected')).toBe('true');
+  });
 });

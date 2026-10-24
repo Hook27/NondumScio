@@ -293,7 +293,8 @@ export function PageEditor({
       y: event.clientY,
       active: false,
     };
-    (event.currentTarget as HTMLElement).setPointerCapture?.(event.pointerId);
+    // Nog niet "vangen": een gewone klik (bijvoorbeeld op het vinkje) moet zijn eigen
+    // doel houden. Dat gebeurt pas als het echt slepen wordt.
   };
 
   const onPointerMove = (event: PointerEvent) => {
@@ -303,6 +304,8 @@ export function PageEditor({
       const distance = Math.hypot(event.clientX - current.x, event.clientY - current.y);
       if (distance < DRAG_THRESHOLD) return;
       current.active = true;
+      // Vanaf nu volgen alle bewegingen deze sleepactie, ook buiten de miniatuur.
+      (event.currentTarget as HTMLElement).setPointerCapture?.(event.pointerId);
       setDragging(true);
       if (!selected.has(current.key)) setSelection({ keys: current.keys, anchor: current.key });
     }
@@ -489,16 +492,26 @@ export function PageEditor({
                   return;
                 }
                 setActive(index);
+                // Het vinkje werkt als Ctrl-klik: erbij of eraf, zonder de rest te wissen.
+                // Zo kun je ook op een telefoon (zonder Ctrl of Shift) meer pagina's kiezen.
+                const viaCheckbox = (event.target as HTMLElement | null)?.closest('.select-box');
                 setSelection((current) =>
                   selectByClick(current, order, page.key, {
-                    toggle: event.ctrlKey || event.metaKey,
-                    range: event.shiftKey,
+                    toggle: Boolean(viaCheckbox) || event.ctrlKey || event.metaKey,
+                    range: !viaCheckbox && event.shiftKey,
                   }),
                 );
               }}
             >
               <span class="drag-handle" aria-hidden="true">
                 ⠿
+              </span>
+              {/* Alleen voor het oog: de keuze zelf staat al in aria-selected van de optie. */}
+              <span
+                class={`select-box${isSelected ? ' select-box--checked' : ''}`}
+                aria-hidden="true"
+              >
+                {isSelected ? '✓' : ''}
               </span>
               <Thumbnail
                 pdf={pdf}

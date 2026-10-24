@@ -541,6 +541,31 @@ h1 {
   touch-action: none;
 }
 
+/* Vinkje om pagina's erbij of eraf te kiezen, ook zonder Ctrl of Shift (telefoon). */
+.select-box {
+  position: absolute;
+  top: 0.4rem;
+  right: 0.4rem;
+  z-index: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 2rem;
+  height: 2rem;
+  background: var(--surface);
+  border: 2px solid var(--text-muted);
+  border-radius: 6px;
+  color: var(--accent-contrast);
+  font-size: 1.1rem;
+  font-weight: 700;
+  line-height: 1;
+}
+
+.select-box--checked {
+  background: var(--accent);
+  border-color: var(--accent);
+}
+
 .thumbs--dragging .page-option,
 .thumbs--dragging .drag-handle {
   cursor: grabbing;

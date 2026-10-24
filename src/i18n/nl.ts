@@ -39,7 +39,7 @@ export const nl = {
   },
   pages: {
     toolbar: 'Paginabewerkingen',
-    hint: 'Klik op een pagina om hem te kiezen; met Ctrl of Shift kies je er meer. Sleep om te verplaatsen (op een telefoon aan het greepje ⠿), of gebruik Alt + pijltjes.',
+    hint: 'Klik op een pagina om hem te kiezen; met het vinkje rechtsboven (of Ctrl en Shift) kies je er meer. Sleep om te verplaatsen (op een telefoon aan het greepje ⠿), of gebruik Alt + pijltjes.',
     list: 'Pagina’s van {name}. Pijltjes om te bewegen, spatie om te kiezen.',
     selected: '{n} van {total} gekozen',
     rotated: '{n}° gedraaid',
