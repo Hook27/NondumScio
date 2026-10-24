@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'preact/hooks';
 import { useI18n } from '../i18n/LanguageContext';
 import { format } from '../i18n/format';
-import { cleanFileName, nameWithoutExtensionLength } from '../lib/fileName';
+import { cleanFileName, withoutPdfExtension } from '../lib/fileName';
 
 /**
  * Venster "Opslaan als": toont een voorgestelde bestandsnaam die je kunt aanpassen voordat
@@ -21,7 +21,8 @@ export function SaveDialog({
   const { t } = useI18n();
   const dialog = useRef<HTMLDialogElement>(null);
   const input = useRef<HTMLInputElement>(null);
-  const [value, setValue] = useState(suggestion);
+  // In het veld alleen de naam; ".pdf" staat er vast naast en komt er bij opslaan vanzelf bij.
+  const [value, setValue] = useState(() => withoutPdfExtension(suggestion));
   const fileName = cleanFileName(value, suggestion);
 
   useEffect(() => {
@@ -30,10 +31,10 @@ export function SaveDialog({
     // Een echt modaal venster: de rest van de pagina is even niet bereikbaar.
     if (typeof element.showModal === 'function') element.showModal();
     else element.setAttribute('open', '');
-    // Alleen de naam selecteren, niet ".pdf": dan typ je meteen een nieuwe naam.
+    // De hele naam selecteren: dan typ je meteen een nieuwe naam.
     const field = input.current;
     field?.focus();
-    field?.setSelectionRange(0, nameWithoutExtensionLength(suggestion));
+    field?.select();
     return () => {
       if (element.open && typeof element.close === 'function') element.close();
     };
@@ -63,16 +64,21 @@ export function SaveDialog({
         <label for="save-dialog-name" class="save-dialog__label">
           {t.saveDialog.label}
         </label>
-        <input
-          ref={input}
-          id="save-dialog-name"
-          class="save-dialog__input"
-          type="text"
-          value={value}
-          spellcheck={false}
-          autocomplete="off"
-          onInput={(event) => setValue(event.currentTarget.value)}
-        />
+        <div class="save-dialog__field">
+          <input
+            ref={input}
+            id="save-dialog-name"
+            class="save-dialog__input"
+            type="text"
+            value={value}
+            spellcheck={false}
+            autocomplete="off"
+            onInput={(event) => setValue(event.currentTarget.value)}
+          />
+          <span class="save-dialog__extension" aria-hidden="true">
+            .pdf
+          </span>
+        </div>
         <p class="save-dialog__result" aria-live="polite">
           {format(t.saveDialog.result, { name: fileName })}
         </p>

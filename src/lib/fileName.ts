@@ -32,7 +32,7 @@ export function cleanFileName(input: string, fallback: string): string {
   return `${base}.pdf`;
 }
 
-/** Hoe lang het deel vóór ".pdf" is: om alleen dat deel te selecteren in het invoerveld. */
-export function nameWithoutExtensionLength(name: string): number {
-  return /\.pdf$/i.test(name) ? name.length - 4 : name.length;
+/** De naam zonder ".pdf" erachter, voor in het invoerveld: ".pdf" komt er bij opslaan vanzelf bij. */
+export function withoutPdfExtension(name: string): string {
+  return name.replace(/\.pdf$/i, '');
 }

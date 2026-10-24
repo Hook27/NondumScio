@@ -22,7 +22,8 @@ test.describe('bestandsnaam bij downloaden', () => {
     await openTwoPages(page);
     await toolbarButton(page, nl.pages.save).click();
     const field = page.getByRole('dialog').getByRole('textbox', { name: nl.saveDialog.label });
-    await expect(field).toHaveValue('brief (bewerkt).pdf');
+    await expect(field).toHaveValue('brief (bewerkt)');
+    await expect(page.locator('.save-dialog__extension')).toHaveText('.pdf');
     await expect(field).toBeFocused();
     await page.getByRole('button', { name: nl.saveDialog.cancel }).click();
 
@@ -30,12 +31,13 @@ test.describe('bestandsnaam bij downloaden', () => {
     expect(download.suggestedFilename()).toBe('Brief aan- VvE.pdf');
   });
 
-  test('overtypen vervangt alleen de naam, .pdf blijft staan', async ({ page, isMobile }) => {
+  test('overtypen vervangt de naam, .pdf komt er vanzelf bij', async ({ page, isMobile }) => {
     test.skip(isMobile, 'Toetsenbordbediening is op een telefoon niet relevant');
     await openTwoPages(page);
     await toolbarButton(page, nl.pages.save).click();
     await page.keyboard.type('Nieuwe naam');
-    await expect(page.getByRole('dialog').getByRole('textbox')).toHaveValue('Nieuwe naam.pdf');
+    await expect(page.getByRole('dialog').getByRole('textbox')).toHaveValue('Nieuwe naam');
+    await expect(page.getByText('Wordt gedownload als: Nieuwe naam.pdf')).toBeVisible();
     const [download] = await Promise.all([
       page.waitForEvent('download'),
       page.keyboard.press('Enter'),

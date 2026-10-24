@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { cleanFileName, nameWithoutExtensionLength } from './fileName';
+import { cleanFileName, withoutPdfExtension } from './fileName';
 
 const fallback = 'document.pdf';
 
@@ -51,10 +51,11 @@ describe('cleanFileName', () => {
   });
 });
 
-describe('nameWithoutExtensionLength', () => {
-  it('telt de naam zonder .pdf', () => {
-    expect(nameWithoutExtensionLength('rapport.pdf')).toBe(7);
-    expect(nameWithoutExtensionLength('Rapport.PDF')).toBe(7);
-    expect(nameWithoutExtensionLength('zonder')).toBe(6);
+describe('withoutPdfExtension', () => {
+  it('haalt alleen een .pdf aan het eind weg', () => {
+    expect(withoutPdfExtension('rapport (bewerkt).pdf')).toBe('rapport (bewerkt)');
+    expect(withoutPdfExtension('Rapport.PDF')).toBe('Rapport');
+    expect(withoutPdfExtension('zonder')).toBe('zonder');
+    expect(withoutPdfExtension('pdf-uitleg.pdf')).toBe('pdf-uitleg');
   });
 });

@@ -306,8 +306,10 @@ describe('PageEditor', () => {
     fireEvent.click(button(nl.pages.save));
 
     expect(screen.getByRole('heading', { name: nl.saveDialog.saveTitle })).toBeTruthy();
-    expect(nameField().value).toBe('rapport (bewerkt).pdf');
-    // Alleen de naam is geselecteerd, niet ".pdf": meteen overtypen kan.
+    // Alleen de naam staat in het veld; ".pdf" staat er vast naast.
+    expect(nameField().value).toBe('rapport (bewerkt)');
+    expect(document.querySelector('.save-dialog__extension')!.textContent).toBe('.pdf');
+    // De hele naam is geselecteerd: meteen overtypen kan.
     expect(nameField().selectionStart).toBe(0);
     expect(nameField().selectionEnd).toBe('rapport (bewerkt)'.length);
     expect(downloadPdf).not.toHaveBeenCalled();
@@ -359,6 +361,15 @@ describe('PageEditor', () => {
     fireEvent.click(options()[2]!, { ctrlKey: true });
     fireEvent.click(button(nl.pages.extract));
     expect(screen.getByRole('heading', { name: nl.saveDialog.extractTitle })).toBeTruthy();
-    expect(nameField().value).toBe("rapport (pagina's 2-3).pdf");
+    expect(nameField().value).toBe("rapport (pagina's 2-3)");
+  });
+
+  it('voegt geen tweede .pdf toe als je die zelf typt', async () => {
+    await openEditor(2);
+    fireEvent.click(button(nl.pages.save));
+    fireEvent.input(nameField(), { target: { value: 'eigen naam.pdf' } });
+    confirmSave();
+    await waitFor(() => expect(downloadPdf).toHaveBeenCalledTimes(1));
+    expect(vi.mocked(downloadPdf).mock.calls[0]![1]).toBe('eigen naam.pdf');
   });
 });

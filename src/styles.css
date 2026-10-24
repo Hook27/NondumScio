@@ -636,7 +636,20 @@ h1 {
   font-weight: 600;
 }
 
+.save-dialog__field {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+.save-dialog__extension {
+  color: var(--text-muted);
+  font-weight: 600;
+}
+
 .save-dialog__input {
+  flex: 1;
+  min-width: 0;
   width: 100%;
   padding: 0.6rem 0.7rem;
   background: var(--bg);
