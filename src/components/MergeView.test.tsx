@@ -115,6 +115,26 @@ describe('Samenvoegen', () => {
     expect(names()).toEqual(['a.pdf']);
   });
 
+  it('probeert een bestand nog één keer als het openen een keer mislukt', async () => {
+    let attempts = 0;
+    const flaky = (bytes: Uint8Array) => {
+      attempts += 1;
+      return attempts === 1 ? Promise.reject(new Error('worker te laat')) : fakeLoad(bytes);
+    };
+    render(
+      <LanguageProvider initial="nl">
+        <DocumentProvider load={flaky} unload={() => {}}>
+          <Workspace mode="merge" />
+        </DocumentProvider>
+      </LanguageProvider>,
+    );
+    choose([pdfFile('a.pdf', 2)]);
+    await screen.findByRole('list', { name: nl.merge.files });
+    expect(names()).toEqual(['a.pdf']);
+    expect(attempts).toBe(2);
+    expect(screen.queryByRole('alert')).toBeNull();
+  });
+
   it('meldt bestanden die niet lukken, en gaat door met de rest', async () => {
     setup();
     choose([
