@@ -1,4 +1,4 @@
-import type { Page } from '@playwright/test';
+import { expect, type Locator, type Page } from '@playwright/test';
 import { LANGUAGES, STORAGE_KEY, messages, type Language } from '../src/i18n';
 import { TASK_IDS } from '../src/router';
 import { THEME_STORAGE_KEY, type Theme } from '../src/theme';
@@ -37,4 +37,20 @@ export async function openPage(page: Page, path = '/', prefs: Preferences = {}):
   );
   await page.goto(url(path));
   await page.reload();
+}
+
+/**
+ * Klikt een downloadknop, vult in het venster "Opslaan als" eventueel een andere naam in
+ * en bevestigt met "Downloaden". Geeft de download terug.
+ */
+export async function downloadVia(page: Page, button: Locator, fileName?: string) {
+  await button.click();
+  const dialog = page.getByRole('dialog');
+  await expect(dialog).toBeVisible();
+  if (fileName !== undefined) await dialog.getByRole('textbox').fill(fileName);
+  const [download] = await Promise.all([
+    page.waitForEvent('download'),
+    dialog.getByRole('button', { name: messages.nl.saveDialog.download }).click(),
+  ]);
+  return download;
 }

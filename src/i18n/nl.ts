@@ -67,6 +67,14 @@ export const nl = {
       failed: 'Opslaan is mislukt. Probeer het opnieuw.',
     },
   },
+  saveDialog: {
+    saveTitle: 'PDF opslaan',
+    extractTitle: 'Gekozen pagina’s opslaan',
+    label: 'Bestandsnaam',
+    result: 'Wordt gedownload als: {name}',
+    download: 'Downloaden',
+    cancel: 'Annuleren',
+  },
   comingSoon: 'Binnenkort beschikbaar.',
   comingSoonDetail: 'De gereedschappen voor deze taak komen in een volgende versie.',
   notFound: {

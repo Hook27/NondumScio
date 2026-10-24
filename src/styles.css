@@ -610,6 +610,69 @@ h1 {
   font-weight: 700;
 }
 
+/* Venster "Opslaan als" */
+.save-dialog {
+  width: min(32rem, calc(100vw - 2rem));
+  padding: 1.25rem;
+  background: var(--surface);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: 0 10px 30px rgb(0 0 0 / 25%);
+}
+
+.save-dialog::backdrop {
+  background: rgb(0 0 0 / 45%);
+}
+
+.save-dialog__title {
+  margin: 0 0 1rem;
+  font-size: 1.2rem;
+}
+
+.save-dialog__label {
+  display: block;
+  margin-bottom: 0.35rem;
+  font-weight: 600;
+}
+
+.save-dialog__field {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+.save-dialog__extension {
+  color: var(--text-muted);
+  font-weight: 600;
+}
+
+.save-dialog__input {
+  flex: 1;
+  min-width: 0;
+  width: 100%;
+  padding: 0.6rem 0.7rem;
+  background: var(--bg);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  font: inherit;
+}
+
+.save-dialog__result {
+  margin: 0.5rem 0 1.25rem;
+  color: var(--text-muted);
+  font-size: 0.9rem;
+  overflow-wrap: anywhere;
+}
+
+.save-dialog__actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 0.5rem;
+}
+
 /* Versienummer linksonder */
 .site-footer {
   padding: 0.75rem 1.25rem;

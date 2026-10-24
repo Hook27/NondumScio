@@ -15,7 +15,7 @@ Met pdf.js (Mozilla, Apache-2.0). De bibliotheek wordt pas geladen als je een PD
 
 ## Pagina's bewerken
 
-Op de taak _Pagina's_ kies je pagina's (klikken, Ctrl/Shift-klik of het toetsenbord) en draai, verwijder of verplaats je ze, met ongedaan maken. Verplaatsen kan met de knoppen, met Alt + pijltjes, of door te slepen (met de muis de hele miniatuur, op een aanraakscherm het greepje ⠿). _Uitpakken_ downloadt alleen de gekozen pagina's als nieuwe PDF. Bewerken verandert alleen een pagina-plan in het geheugen (`src/pages/plan.ts`); pas bij "PDF downloaden" maakt pdf-lib (MIT) daaruit een nieuw bestand (`src/pdf/save.ts`). Het origineel blijft onaangeroerd. pdf-lib wordt pas geladen als je opslaat.
+Op de taak _Pagina's_ kies je pagina's (klikken, Ctrl/Shift-klik of het toetsenbord) en draai, verwijder of verplaats je ze, met ongedaan maken. Verplaatsen kan met de knoppen, met Alt + pijltjes, of door te slepen (met de muis de hele miniatuur, op een aanraakscherm het greepje ⠿). _Uitpakken_ downloadt alleen de gekozen pagina's als nieuwe PDF. Bij elke download stelt een venster "Opslaan als" een bestandsnaam voor die je kunt aanpassen; tekens die besturingssystemen niet toestaan worden vervangen (`src/lib/fileName.ts`). Bewerken verandert alleen een pagina-plan in het geheugen (`src/pages/plan.ts`); pas bij "PDF downloaden" maakt pdf-lib (MIT) daaruit een nieuw bestand (`src/pdf/save.ts`). Het origineel blijft onaangeroerd. pdf-lib wordt pas geladen als je opslaat.
 
 ## Ontwikkelen
 

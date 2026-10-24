@@ -2,7 +2,7 @@ import { readFileSync } from 'node:fs';
 import { expect, test, type Page } from '@playwright/test';
 import { PDFDocument } from 'pdf-lib';
 import { makeSizedPdf } from './fixtures';
-import { messages, openPage } from './helpers';
+import { downloadVia, messages, openPage } from './helpers';
 
 const nl = messages.nl;
 const options = (page: Page) => page.getByRole('option');
@@ -30,10 +30,7 @@ async function openPages(page: Page, widths = [300, 400, 500, 600]) {
 
 /** Klikt een downloadknop en leest de gedownloade PDF terug: naam en breedte per pagina. */
 async function download(page: Page, name: string) {
-  const [file] = await Promise.all([
-    page.waitForEvent('download'),
-    toolbarButton(page, name).click(),
-  ]);
+  const file = await downloadVia(page, toolbarButton(page, name));
   const doc = await PDFDocument.load(readFileSync(await file.path()));
   return { name: file.suggestedFilename(), widths: doc.getPages().map((p) => p.getWidth()) };
 }
