@@ -39,7 +39,7 @@ export const nl = {
   },
   pages: {
     toolbar: 'Paginabewerkingen',
-    hint: 'Klik op een pagina om hem te kiezen. Met Ctrl of Shift kies je er meer.',
+    hint: 'Klik op een pagina om hem te kiezen; met Ctrl of Shift kies je er meer. Sleep om te verplaatsen (op een telefoon aan het greepje ⠿), of gebruik Alt + pijltjes.',
     list: 'Pagina’s van {name}. Pijltjes om te bewegen, spatie om te kiezen.',
     selected: '{n} van {total} gekozen',
     rotated: '{n}° gedraaid',
@@ -48,6 +48,12 @@ export const nl = {
     rotateLeft: 'Draai linksom',
     rotateRight: 'Draai rechtsom',
     remove: 'Verwijderen',
+    moveEarlier: 'Naar voren',
+    moveLater: 'Naar achteren',
+    extract: 'Uitpakken',
+    extractTitle:
+      'De gekozen pagina’s als nieuwe PDF downloaden; het document zelf blijft zoals het is.',
+    extractSuffix: "pagina's {ranges}",
     keepOne: 'Er moet minstens één pagina overblijven.',
     undo: 'Ongedaan maken',
     redo: 'Opnieuw',
