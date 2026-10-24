@@ -3,7 +3,10 @@ import {
   HISTORY_LIMIT,
   canRemove,
   initialPages,
-  isChanged,
+  docOrder,
+  keysOfDoc,
+  moveDoc,
+  removeDoc,
   movePages,
   movePagesBy,
   pickPages,
@@ -25,9 +28,14 @@ const order = [0, 1, 2, 3, 4];
 describe('pagina-plan', () => {
   it('begint met alle pagina’s in de originele volgorde, zonder draaiing', () => {
     expect(initialPages(3)).toEqual([
-      { key: 0, source: 0, rotation: 0 },
-      { key: 1, source: 1, rotation: 0 },
-      { key: 2, source: 2, rotation: 0 },
+      { key: 0, doc: 0, source: 0, rotation: 0 },
+      { key: 1, doc: 0, source: 1, rotation: 0 },
+      { key: 2, doc: 0, source: 2, rotation: 0 },
+    ]);
+    // Een tweede bestand: eigen bestandsnummer en sleutels die doortellen.
+    expect(initialPages(2, 7, 3)).toEqual([
+      { key: 3, doc: 7, source: 0, rotation: 0 },
+      { key: 4, doc: 7, source: 1, rotation: 0 },
     ]);
   });
 
@@ -61,14 +69,6 @@ describe('pagina-plan', () => {
     expect(canRemove(pages, keys(0, 1, 2, 3))).toBe(false);
     expect(canRemove(pages, keys(1))).toBe(true);
     expect(canRemove(pages, keys())).toBe(false);
-  });
-
-  it('ziet of het plan afwijkt van het origineel', () => {
-    const pages = initialPages(3);
-    expect(isChanged(pages, 3)).toBe(false);
-    expect(isChanged(rotatePages(pages, keys(1), 90), 3)).toBe(true);
-    expect(isChanged(removePages(pages, keys(2)), 3)).toBe(true);
-    expect(isChanged(rotatePages(rotatePages(pages, keys(1), 90), keys(1), -90), 3)).toBe(false);
   });
 });
 
@@ -197,7 +197,7 @@ describe('verplaatsen', () => {
   it('houdt de draaiing en de sleutel van een pagina vast', () => {
     const pages = rotatePages(initialPages(3), keys(2), 90);
     const moved = movePages(pages, keys(2), 0);
-    expect(moved[0]).toEqual({ key: 2, source: 2, rotation: 90 });
+    expect(moved[0]).toEqual({ key: 2, doc: 0, source: 2, rotation: 90 });
   });
 
   it('geeft hetzelfde plan terug als er niets verandert', () => {
@@ -249,5 +249,53 @@ describe('formatRanges', () => {
 
   it('negeert volgorde en dubbele nummers', () => {
     expect(formatRanges([6, 5, 1, 5, 2])).toBe('1-2, 5-6');
+  });
+});
+
+describe('meerdere bestanden', () => {
+  /** Drie bestanden: A (doc 1, 2 pagina's), B (doc 2, 3 pagina's), C (doc 3, 1 pagina). */
+  const merged = () => [
+    ...initialPages(2, 1, 0),
+    ...initialPages(3, 2, 2),
+    ...initialPages(1, 3, 5),
+  ];
+  const docs = (pages: ReturnType<typeof merged>) => pages.map((p) => p.doc);
+
+  it('kent de volgorde van de bestanden en hun pagina’s', () => {
+    expect(docOrder(merged())).toEqual([1, 2, 3]);
+    expect([...keysOfDoc(merged(), 2)]).toEqual([2, 3, 4]);
+    expect(docOrder([])).toEqual([]);
+  });
+
+  it('haalt een heel bestand weg, maar nooit het laatste', () => {
+    expect(docs(removeDoc(merged(), 2))).toEqual([1, 1, 3]);
+    const single = initialPages(2, 1);
+    expect(removeDoc(single, 1)).toBe(single);
+  });
+
+  it('zet een bestand als blok een plek omhoog of omlaag', () => {
+    expect(docs(moveDoc(merged(), 2, -1))).toEqual([2, 2, 2, 1, 1, 3]);
+    expect(docs(moveDoc(merged(), 2, 1))).toEqual([1, 1, 3, 2, 2, 2]);
+    expect(docs(moveDoc(merged(), 1, 1))).toEqual([2, 2, 2, 1, 1, 3]);
+  });
+
+  it('kan niet voorbij de eerste of laatste plek', () => {
+    const pages = merged();
+    expect(moveDoc(pages, 1, -1)).toBe(pages);
+    expect(moveDoc(pages, 3, 1)).toBe(pages);
+    expect(moveDoc(pages, 9, 1)).toBe(pages);
+  });
+
+  it('houdt bij door elkaar staande pagina’s de volgorde van de eerste pagina aan', () => {
+    // A1 B1 A2 B2 B3 C1: A staat eerst, want A1 komt als eerste.
+    const pages = merged();
+    const mixed = [pages[0]!, pages[2]!, pages[1]!, pages[3]!, pages[4]!, pages[5]!];
+    expect(docOrder(mixed)).toEqual([1, 2, 3]);
+    // B omhoog: alle pagina's van B komen als blok vóór A.
+    expect(docs(moveDoc(mixed, 2, -1))).toEqual([2, 2, 2, 1, 1, 3]);
+  });
+
+  it('vergelijkt ook het bestand bij samePlan', () => {
+    expect(samePlan(initialPages(2, 1), initialPages(2, 2))).toBe(false);
   });
 });

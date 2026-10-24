@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'preact/hooks';
-import type { PDFDocumentProxy } from 'pdfjs-dist';
 import { useDocument } from '../document/DocumentContext';
+import { useUndoShortcuts } from '../document/useUndoShortcuts';
 import { useI18n } from '../i18n/LanguageContext';
 import { format } from '../i18n/format';
 import {
@@ -20,7 +20,7 @@ import {
   selectByClick,
   type Selection,
 } from '../pages/selection';
-import { PdfSaveError, buildPdf, downloadPdf, editedFileName } from '../pdf/save';
+import { PdfSaveError, buildPdf, downloadPdf, editedFileName, readSources } from '../pdf/save';
 import { SaveDialog } from './SaveDialog';
 import { Thumbnail } from './Thumbnail';
 
@@ -29,13 +29,6 @@ type SaveState =
   | { status: 'saving' }
   | { status: 'saved'; fileName: string }
   | { status: 'error'; code: 'encrypted' | 'failed' };
-
-/** Is de toetsenbordfocus in een tekstveld? Dan laten we sneltoetsen met rust. */
-function typingIn(target: EventTarget | null) {
-  return (
-    target instanceof HTMLElement && target.closest('input, textarea, select, [contenteditable]')
-  );
-}
 
 /** Zo ver moet de muis bewegen voordat een klik een sleepbeweging wordt (in pixels). */
 const DRAG_THRESHOLD = 6;
@@ -54,18 +47,25 @@ type Drag = {
  * Pagina's kiezen, draaien, verwijderen, verplaatsen en uitpakken, met ongedaan maken, en
  * het resultaat als nieuwe PDF downloaden. Het origineel blijft onaangeroerd.
  */
-export function PageEditor({
-  docId,
-  name,
-  file,
-  pdf,
-}: {
-  docId: number;
-  name: string;
-  file: File;
-  pdf: PDFDocumentProxy;
-}) {
-  const { pages, edit, undo, redo, canUndo, canRedo, unsaved, markSaved } = useDocument();
+export function PageEditor() {
+  const {
+    doc,
+    pages,
+    activeSources,
+    sourceOf,
+    add,
+    adding,
+    edit,
+    undo,
+    redo,
+    canUndo,
+    canRedo,
+    unsaved,
+    markSaved,
+  } = useDocument();
+  // De naam van het eerste bestand is de basis voor voorgestelde bestandsnamen.
+  const name = activeSources[0]?.name ?? '';
+  const multiple = activeSources.length > 1;
   const { t } = useI18n();
   const [selection, setSelection] = useState<Selection>(emptySelection);
   const [active, setActive] = useState(0);
@@ -113,22 +113,7 @@ export function PageEditor({
     }
   };
 
-  // Ctrl+Z en Ctrl+Y (of Ctrl+Shift+Z) werken overal op de pagina, behalve in tekstvelden.
-  useEffect(() => {
-    const onKey = (event: KeyboardEvent) => {
-      if (!(event.ctrlKey || event.metaKey) || typingIn(event.target)) return;
-      const key = event.key.toLowerCase();
-      if (key === 'z' && !event.shiftKey) {
-        event.preventDefault();
-        undo();
-      } else if (key === 'y' || (key === 'z' && event.shiftKey)) {
-        event.preventDefault();
-        redo();
-      }
-    };
-    document.addEventListener('keydown', onKey);
-    return () => document.removeEventListener('keydown', onKey);
-  }, [undo, redo]);
+  useUndoShortcuts(undo, redo);
 
   const focusOption = (index: number) => {
     const target = Math.max(0, Math.min(index, pages.length - 1));
@@ -216,7 +201,10 @@ export function PageEditor({
     setRequest(null);
     setSave({ status: 'saving' });
     try {
-      const bytes = await buildPdf(new Uint8Array(await file.arrayBuffer()), current.pages);
+      const files = new Map(
+        (doc.status === 'ready' ? doc.sources : []).map((source) => [source.id, source.file]),
+      );
+      const bytes = await buildPdf(await readSources(files, current.pages), current.pages);
       downloadPdf(bytes, fileName);
       // Bij uitpakken is het document zelf niet veranderd: "niet gedownload" blijft wat het was.
       if (current.kind === 'save') markSaved();
@@ -409,6 +397,24 @@ export function PageEditor({
             {t.pages.redo}
           </button>
         </div>
+        <div class="toolbar__group">
+          <input
+            id="add-pdf"
+            class="visually-hidden"
+            type="file"
+            accept="application/pdf,.pdf"
+            multiple
+            disabled={adding}
+            onChange={(event) => {
+              const files = [...(event.currentTarget.files ?? [])];
+              event.currentTarget.value = '';
+              void add(files);
+            }}
+          />
+          <label for="add-pdf" class="button button--secondary">
+            {adding ? t.merge.adding : t.pages.addPdf}
+          </label>
+        </div>
         <div class="toolbar__group toolbar__group--end">
           <button
             type="button"
@@ -466,15 +472,17 @@ export function PageEditor({
           ]
             .filter(Boolean)
             .join(' ');
+          const fileName = multiple ? sourceOf(page)?.name : undefined;
           const label = [
             format(t.document.page, { n: index + 1 }),
             page.rotation ? format(t.pages.rotated, { n: page.rotation }) : '',
+            fileName ? format(t.pages.fromFile, { name: fileName }) : '',
           ]
             .filter(Boolean)
             .join(', ');
           return (
             <div
-              key={`${docId}-${page.key}`}
+              key={`page-${page.key}`}
               role="option"
               class={classes}
               data-index={index}
@@ -514,13 +522,18 @@ export function PageEditor({
                 {isSelected ? '✓' : ''}
               </span>
               <Thumbnail
-                pdf={pdf}
+                pdf={sourceOf(page)!.pdf}
                 pageNumber={page.source + 1}
                 rotation={page.rotation}
                 caption={index + 1}
                 label={label}
                 decorative
               />
+              {fileName && (
+                <span class="page-option__file" aria-hidden="true">
+                  {fileName}
+                </span>
+              )}
             </div>
           );
         })}

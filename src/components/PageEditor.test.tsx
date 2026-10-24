@@ -32,7 +32,7 @@ async function openEditor(pageCount = 3) {
   render(
     <LanguageProvider initial="nl">
       <DocumentProvider load={async () => fakePdf(pageCount)} unload={() => {}}>
-        <Workspace editable />
+        <Workspace mode="pages" />
       </DocumentProvider>
     </LanguageProvider>,
   );

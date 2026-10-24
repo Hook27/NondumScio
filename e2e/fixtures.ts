@@ -79,7 +79,7 @@ export async function makeScanPdf(): Promise<Buffer> {
 }
 
 /** Een PDF waarvan je elke pagina terugkent aan zijn breedte (in punten). */
-export async function makeSizedPdf(widths: number[]): Promise<Buffer> {
+export async function makeSizedPdf(widths: number[], title = 'Pagina-test'): Promise<Buffer> {
   const doc = await PDFDocument.create();
   const font = await doc.embedFont(StandardFonts.HelveticaBold);
   widths.forEach((width, i) => {
@@ -87,6 +87,6 @@ export async function makeSizedPdf(widths: number[]): Promise<Buffer> {
     page.drawRectangle({ x: 20, y: 20, width: width - 40, height: 760, color: rgb(0.9, 0.93, 1) });
     page.drawText(String(i + 1), { x: 40, y: 600, size: 120, font, color: rgb(0.1, 0.1, 0.2) });
   });
-  doc.setTitle('Pagina-test');
+  doc.setTitle(title);
   return Buffer.from(await doc.save());
 }

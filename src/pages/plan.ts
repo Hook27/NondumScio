@@ -1,22 +1,33 @@
 /**
- * Het "pagina-plan": welke pagina's van het origineel in welke volgorde en met welke
- * extra draaiing in het resultaat komen. Bewerken verandert alleen dit plan; het
- * originele bestand blijft onaangeroerd tot je opslaat.
+ * Het "pagina-plan": welke pagina's uit welke bestanden in welke volgorde en met welke
+ * extra draaiing in het resultaat komen. Bewerken verandert alleen dit plan; de
+ * originele bestanden blijven onaangeroerd tot je opslaat.
  */
 
 export type Rotation = 0 | 90 | 180 | 270;
 
 export type PageItem = {
-  /** Vaste sleutel, ook als de pagina verplaatst of gedraaid wordt. */
+  /** Vaste sleutel, ook als de pagina verplaatst of gedraaid wordt; uniek over alle bestanden. */
   key: number;
-  /** Paginanummer in het origineel, vanaf 0. */
+  /** Uit welk geopend bestand de pagina komt (zie `Source.id`). */
+  doc: number;
+  /** Paginanummer in dat bestand, vanaf 0. */
   source: number;
   /** Extra draaiing bovenop de draaiing die de pagina in het origineel al heeft. */
   rotation: Rotation;
 };
 
-export function initialPages(pageCount: number): PageItem[] {
-  return Array.from({ length: pageCount }, (_, i) => ({ key: i, source: i, rotation: 0 }));
+/**
+ * Alle pagina's van één bestand, in de originele volgorde. `firstKey` zorgt dat sleutels
+ * uniek blijven als er meer bestanden bij komen.
+ */
+export function initialPages(pageCount: number, doc = 0, firstKey = 0): PageItem[] {
+  return Array.from({ length: pageCount }, (_, i) => ({
+    key: firstKey + i,
+    doc,
+    source: i,
+    rotation: 0,
+  }));
 }
 
 /** Rekent een draaiing om naar 0, 90, 180 of 270 (ook voor negatieve waarden). */
@@ -94,19 +105,55 @@ export function pickPages(pages: PageItem[], keys: ReadonlySet<number>): PageIte
   return pages.filter((page) => keys.has(page.key));
 }
 
-/** Of het plan afwijkt van het origineel (dan is er iets op te slaan). */
-export function isChanged(pages: PageItem[], originalCount: number): boolean {
-  return (
-    pages.length !== originalCount ||
-    pages.some((page, index) => page.source !== index || page.rotation !== 0)
-  );
+/* Bestanden in het plan */
+
+/** De bestanden in het plan, in de volgorde van hun eerste pagina. */
+export function docOrder(pages: readonly PageItem[]): number[] {
+  return [...new Set(pages.map((page) => page.doc))];
+}
+
+/** De sleutels van alle pagina's uit één bestand. */
+export function keysOfDoc(pages: readonly PageItem[], doc: number): Set<number> {
+  return new Set(pages.filter((page) => page.doc === doc).map((page) => page.key));
+}
+
+/**
+ * Haalt alle pagina's van een bestand uit het plan. Zou er dan niets overblijven, dan blijft
+ * het plan ongewijzigd (een PDF zonder pagina's bestaat niet).
+ */
+export function removeDoc(pages: PageItem[], doc: number): PageItem[] {
+  return removePages(pages, keysOfDoc(pages, doc));
+}
+
+/**
+ * Zet alle pagina's van een bestand als blok vóór het vorige bestand (`-1`) of na het
+ * volgende (`1`), in de volgorde van de bestandenlijst.
+ */
+export function moveDoc(pages: PageItem[], doc: number, step: -1 | 1): PageItem[] {
+  const order = docOrder(pages);
+  const index = order.indexOf(doc);
+  const neighbour = order[index + step];
+  if (index < 0 || neighbour === undefined) return pages;
+  const keys = keysOfDoc(pages, doc);
+  if (step < 0) {
+    return movePages(
+      pages,
+      keys,
+      pages.findIndex((page) => page.doc === neighbour),
+    );
+  }
+  const last = pages.map((page) => page.doc).lastIndexOf(neighbour);
+  return movePages(pages, keys, last + 1);
 }
 
 /** Of twee plannen hetzelfde resultaat geven (zelfde pagina's, volgorde en draaiing). */
 export function samePlan(a: readonly PageItem[], b: readonly PageItem[]): boolean {
   return (
     a.length === b.length &&
-    a.every((page, i) => page.source === b[i]!.source && page.rotation === b[i]!.rotation)
+    a.every(
+      (page, i) =>
+        page.doc === b[i]!.doc && page.source === b[i]!.source && page.rotation === b[i]!.rotation,
+    )
   );
 }
 
