@@ -4,6 +4,7 @@ import { Header } from './components/Header';
 import { Home } from './components/Home';
 import { NotFound } from './components/NotFound';
 import { TaskPage } from './components/TaskPage';
+import { TooltipLayer } from './components/TooltipLayer';
 import { DocumentProvider } from './document/DocumentContext';
 import { LanguageProvider, useI18n } from './i18n/LanguageContext';
 import type { Messages } from './i18n/nl';
@@ -69,6 +70,7 @@ function AppContent() {
         {route.name === 'notFound' && <NotFound />}
       </main>
       <Footer />
+      <TooltipLayer />
     </>
   );
 }

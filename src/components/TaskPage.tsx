@@ -10,22 +10,17 @@ export function TaskPage({ id }: { id: TaskId }) {
 
   return (
     <>
-      <p class="back">
-        <a href={hrefFor({ name: 'home' })}>{t.allTasks}</a>
-      </p>
-      <h1 id="page-title" tabIndex={-1}>
-        {task.title}
-      </h1>
-      <p class="lead">{task.description}</p>
+      {/* Eén smalle regel, zodat het werkgebied zoveel mogelijk ruimte krijgt. */}
+      <div class="task-head">
+        <a class="task-head__back" href={hrefFor({ name: 'home' })}>
+          {t.allTasks}
+        </a>
+        <h1 id="page-title" class="task-head__title" tabIndex={-1}>
+          {task.title}
+        </h1>
+        <p class="task-head__lead">{task.description}</p>
+      </div>
       <Workspace mode={mode} />
-      {mode === 'view' && (
-        <section class="notice" aria-labelledby="coming-soon">
-          <h2 id="coming-soon" class="notice__title">
-            {t.comingSoon}
-          </h2>
-          <p>{t.comingSoonDetail}</p>
-        </section>
-      )}
     </>
   );
 }

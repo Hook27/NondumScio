@@ -12,6 +12,7 @@ export const en: Messages = {
     dark: 'Dark theme',
   },
   allTasks: '← All tasks',
+  info: 'Help',
   home: {
     title: 'What do you want to do with your PDF?',
     intro: 'Everything happens in your browser. Your files are never uploaded.',
@@ -29,6 +30,7 @@ export const en: Messages = {
     pagesOther: '{n} pages',
     page: 'Page {n}',
     thumbnails: 'Pages of {name}',
+    pagesTitle: 'Pages',
     errors: {
       notPdf: '{name} is not a PDF. Choose a file that ends in .pdf.',
       password: '{name} is protected with a password. This is not supported yet.',
@@ -79,12 +81,15 @@ export const en: Messages = {
     saveTitle: 'Save merged PDF',
     suffix: 'merged',
     pagesHint:
-      'For each file you choose which pages take part: type a range such as 1-3, 5 and press Enter, or expand the thumbnails and tick them.',
+      'For each file you choose which pages take part: type a range such as 1-3, 5 and press Enter, or click ⊞ and tick the thumbnails on the right.',
     pagesLabel: 'Pages',
     pagesOfFile: 'to use from {name}',
     pagesChosen: '{n} of {total} pages',
-    showPages: 'Show thumbnails',
-    hidePages: 'Hide thumbnails',
+    showPages: 'Choose pages with thumbnails',
+    actions: 'Merge',
+    result: 'Result',
+    picking: '{name}: choose pages',
+    showResult: 'Back to the result',
     pick: 'Thumbnails of {name}',
     keepPage: 'At least one page of this file must remain. To leave out a whole file, use ✕.',
     rangeErrors: {

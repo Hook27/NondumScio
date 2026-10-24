@@ -6,10 +6,10 @@ import { formatRanges, parseRanges, type RangeProblem } from '../pages/ranges';
 import { Thumbnail } from './Thumbnail';
 
 /**
- * Per bestand kiezen welke pagina's meedoen: met een bereik ("1-3, 5") of, uitgeklapt, met
- * een vinkje per miniatuur. Beide werken op hetzelfde pagina-plan als Pagina's.
+ * Alle pagina's van één bestand met een vinkje per pagina: aan = doet mee. Werkt op hetzelfde
+ * pagina-plan als Pagina's. De laatste pagina van een bestand blijft staan.
  */
-export function MergePages({
+export function PagePicker({
   source,
   chosen,
   rotations,
@@ -23,65 +23,48 @@ export function MergePages({
   onChange: (sources: ReadonlySet<number>) => void;
 }) {
   const { t } = useI18n();
-  const [open, setOpen] = useState(false);
-  const panelId = `merge-pick-${source.id}`;
-
   return (
-    <div class="merge-pages">
-      <div class="merge-pages__bar">
-        <RangeField source={source} chosen={chosen} onChange={onChange} />
-        <button
-          type="button"
-          class="button button--secondary"
-          aria-expanded={open}
-          aria-controls={panelId}
-          aria-label={`${open ? t.merge.hidePages : t.merge.showPages}: ${source.name}`}
-          onClick={() => setOpen((value) => !value)}
-        >
-          {open ? t.merge.hidePages : t.merge.showPages}
-        </button>
-      </div>
-      {open && (
-        <fieldset id={panelId} class="merge-pick">
-          <legend class="visually-hidden">{format(t.merge.pick, { name: source.name })}</legend>
-          {Array.from({ length: source.pageCount }, (_, i) => {
-            const checked = chosen.has(i);
-            // De laatste pagina van een bestand blijft staan; het hele bestand weghalen gaat met ✕.
-            const last = checked && chosen.size === 1;
-            return (
-              <label key={i} class={`merge-pick__page${checked ? '' : ' merge-pick__page--off'}`}>
-                <input
-                  type="checkbox"
-                  class="merge-pick__check"
-                  checked={checked}
-                  disabled={last}
-                  title={last ? t.merge.keepPage : undefined}
-                  onChange={() => {
-                    const next = new Set(chosen);
-                    if (checked) next.delete(i);
-                    else next.add(i);
-                    onChange(next);
-                  }}
-                />
-                <Thumbnail
-                  pdf={source.pdf}
-                  pageNumber={i + 1}
-                  rotation={rotations.get(i) ?? 0}
-                  label={format(t.document.page, { n: i + 1 })}
-                  decorative
-                />
-                <span class="visually-hidden">{format(t.document.page, { n: i + 1 })}</span>
-              </label>
-            );
-          })}
-        </fieldset>
-      )}
-    </div>
+    <fieldset class="merge-pick">
+      <legend class="visually-hidden">{format(t.merge.pick, { name: source.name })}</legend>
+      {Array.from({ length: source.pageCount }, (_, i) => {
+        const checked = chosen.has(i);
+        // De laatste pagina van een bestand blijft staan; het hele bestand weghalen gaat met ✕.
+        const last = checked && chosen.size === 1;
+        return (
+          <label
+            key={i}
+            class={`merge-pick__page${checked ? '' : ' merge-pick__page--off'}`}
+            data-tip={last ? t.merge.keepPage : undefined}
+          >
+            <input
+              type="checkbox"
+              class="merge-pick__check"
+              checked={checked}
+              disabled={last}
+              onChange={() => {
+                const next = new Set(chosen);
+                if (checked) next.delete(i);
+                else next.add(i);
+                onChange(next);
+              }}
+            />
+            <Thumbnail
+              pdf={source.pdf}
+              pageNumber={i + 1}
+              rotation={rotations.get(i) ?? 0}
+              label={format(t.document.page, { n: i + 1 })}
+              decorative
+            />
+            <span class="visually-hidden">{format(t.document.page, { n: i + 1 })}</span>
+          </label>
+        );
+      })}
+    </fieldset>
   );
 }
 
 /** Het bereikveld: toepassen met Enter of door het veld te verlaten, Escape zet het terug. */
-function RangeField({
+export function RangeField({
   source,
   chosen,
   onChange,

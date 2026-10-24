@@ -1,11 +1,17 @@
 import { useState } from 'preact/hooks';
-import { useDocument, type FileError } from '../document/DocumentContext';
+import { useDocument } from '../document/DocumentContext';
 import { useI18n } from '../i18n/LanguageContext';
-import { format, plural } from '../i18n/format';
-import { formatFileSize } from '../lib/format';
+import { format } from '../i18n/format';
 import { MergeView } from './MergeView';
 import { PageEditor } from './PageEditor';
-import { Thumbnail } from './Thumbnail';
+import {
+  ComingSoon,
+  FileErrors,
+  PageThumbs,
+  PaneHead,
+  Split,
+  useErrorText,
+} from './WorkspaceParts';
 
 /** Wat het werkgebied laat doen: alleen bekijken, pagina's bewerken of bestanden samenvoegen. */
 export type WorkspaceMode = 'view' | 'pages' | 'merge';
@@ -14,35 +20,16 @@ export type WorkspaceMode = 'view' | 'pages' | 'merge';
 export function Workspace({ mode = 'view' }: { mode?: WorkspaceMode }) {
   const { doc } = useDocument();
 
-  if (doc.status === 'ready') return <OpenDocument mode={mode} />;
-  return <OpenPdf />;
-}
-
-/** De foutmelding voor een bestand dat niet geopend kon worden. */
-function useErrorText() {
-  const { t } = useI18n();
-  return (error: FileError) =>
-    format(
-      {
-        'not-pdf': t.document.errors.notPdf,
-        password: t.document.errors.password,
-        damaged: t.document.errors.damaged,
-      }[error.code],
-      { name: error.name },
-    );
-}
-
-/** Meldingen voor bestanden die niet geopend konden worden (de rest werkt gewoon). */
-function FileErrors() {
-  const { fileErrors } = useDocument();
-  const errorText = useErrorText();
-  if (fileErrors.length === 0) return null;
+  if (doc.status === 'ready') {
+    if (mode === 'pages') return <PageEditor />;
+    if (mode === 'merge') return <MergeView />;
+    return <ViewDocument />;
+  }
   return (
-    <div class="file-errors" role="alert">
-      {fileErrors.map((error, i) => (
-        <p key={`${i}-${error.name}`}>{errorText(error)}</p>
-      ))}
-    </div>
+    <>
+      <OpenPdf />
+      {mode === 'view' && <ComingSoon />}
+    </>
   );
 }
 
@@ -109,66 +96,23 @@ function OpenPdf() {
   );
 }
 
-function OpenDocument({ mode }: { mode: WorkspaceMode }) {
-  const { doc, close, pages, activeSources, sourceOf } = useDocument();
-  const { t, language } = useI18n();
-  if (doc.status !== 'ready') return null;
-
-  const multiple = activeSources.length > 1;
-  const title = multiple
-    ? format(t.document.files, { n: activeSources.length })
-    : (activeSources[0]?.name ?? '');
-  const size = activeSources.reduce((total, source) => total + source.size, 0);
-
+/** Taken zonder eigen gereedschap: de pagina's bekijken, en de melding dat er meer komt. */
+function ViewDocument() {
+  const { activeSources } = useDocument();
+  const { t } = useI18n();
+  const name =
+    activeSources.length > 1
+      ? format(t.document.files, { n: activeSources.length })
+      : (activeSources[0]?.name ?? '');
   return (
-    <section class="document" aria-labelledby="document-title">
-      <div class="document__bar">
-        <div>
-          <h2 id="document-title" class="document__name">
-            {title}
-          </h2>
-          <p class="document__meta">
-            {plural(pages.length, t.document.pagesOne, t.document.pagesOther)} ·{' '}
-            {formatFileSize(size, language)}
-          </p>
-        </div>
-        <button type="button" class="button button--secondary" onClick={close}>
-          {t.document.close}
-        </button>
-      </div>
-      <FileErrors />
-      {mode === 'pages' && <PageEditor />}
-      {mode === 'merge' && <MergeView />}
-      {mode !== 'pages' && (
-        <ol class="thumbs" aria-label={format(t.document.thumbnails, { name: title })}>
-          {pages.map((page, index) => {
-            const source = sourceOf(page);
-            if (!source) return null;
-            const label = [
-              format(t.document.page, { n: index + 1 }),
-              multiple ? format(t.pages.fromFile, { name: source.name }) : '',
-            ]
-              .filter(Boolean)
-              .join(', ');
-            return (
-              <li key={`page-${page.key}`}>
-                <Thumbnail
-                  pdf={source.pdf}
-                  pageNumber={page.source + 1}
-                  rotation={page.rotation}
-                  caption={index + 1}
-                  label={label}
-                />
-                {multiple && (
-                  <span class="page-option__file" aria-hidden="true">
-                    {source.name}
-                  </span>
-                )}
-              </li>
-            );
-          })}
-        </ol>
-      )}
-    </section>
+    <Split
+      tools={<ComingSoon />}
+      view={
+        <>
+          <PaneHead title={t.document.pagesTitle} />
+          <PageThumbs label={format(t.document.thumbnails, { name })} />
+        </>
+      }
+    />
   );
 }

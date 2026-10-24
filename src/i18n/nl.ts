@@ -15,6 +15,7 @@ export const nl = {
     dark: 'Donker thema',
   },
   allTasks: '← Alle taken',
+  info: 'Uitleg',
   home: {
     title: 'Wat wil je doen met je PDF?',
     intro: 'Alles gebeurt in je browser. Je bestanden worden nooit geüpload.',
@@ -32,6 +33,7 @@ export const nl = {
     pagesOther: '{n} pagina’s',
     page: 'Pagina {n}',
     thumbnails: 'Pagina’s van {name}',
+    pagesTitle: 'Pagina’s',
     errors: {
       notPdf: '{name} is geen PDF. Kies een bestand dat eindigt op .pdf.',
       password: '{name} is beveiligd met een wachtwoord. Dat wordt nog niet ondersteund.',
@@ -83,12 +85,15 @@ export const nl = {
     saveTitle: 'Samengevoegde PDF opslaan',
     suffix: 'samengevoegd',
     pagesHint:
-      'Per bestand kies je welke pagina’s meedoen: typ een bereik zoals 1-3, 5 en druk op Enter, of klap de miniaturen uit en zet vinkjes.',
+      'Per bestand kies je welke pagina’s meedoen: typ een bereik zoals 1-3, 5 en druk op Enter, of klik op ⊞ en zet vinkjes bij de miniaturen rechts.',
     pagesLabel: 'Pagina’s',
     pagesOfFile: 'kiezen uit {name}',
     pagesChosen: '{n} van {total} pagina’s',
-    showPages: 'Miniaturen tonen',
-    hidePages: 'Miniaturen verbergen',
+    showPages: 'Pagina’s kiezen met miniaturen',
+    actions: 'Samenvoegen',
+    result: 'Resultaat',
+    picking: '{name}: pagina’s kiezen',
+    showResult: 'Terug naar het resultaat',
     pick: 'Miniaturen van {name}',
     keepPage:
       'Er moet minstens één pagina van dit bestand overblijven. Een heel bestand weghalen doe je met ✕.',

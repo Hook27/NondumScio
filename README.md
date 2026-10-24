@@ -21,6 +21,10 @@ Op de taak _Pagina's_ kies je pagina's (klikken, Ctrl/Shift-klik of het toetsenb
 
 Je kunt meerdere PDF's tegelijk openen (kiezen of slepen), en later met "Bestand toevoegen" of, bij _Pagina's_, "PDF toevoegen" nog bestanden erbij zetten. Bestanden die niet lukken (geen PDF, beveiligd, beschadigd) worden gemeld; de rest gaat gewoon door. _Samenvoegen_ en _Pagina's_ werken op hetzelfde pagina-plan: bij _Samenvoegen_ sleep je hele bestanden naar een andere plek (op een telefoon aan het greepje ⠿) of zet je ze met de pijlen omhoog, omlaag of weg (met ongedaan maken), bij _Pagina's_ kun je pagina's van verschillende bestanden door elkaar zetten. Per bestand kies je welke pagina's meedoen: met een bereik zoals `1-3, 5` (ook `8-` tot het eind; `src/pages/ranges.ts`) of met vinkjes bij de uitgeklapte miniaturen. Pagina's die blijven houden hun plek en draaiing; een teruggezette pagina komt op volgorde van paginanummer terug (`setDocPages` in `src/pages/plan.ts`). Bij het downloaden maakt pdf-lib één nieuwe PDF uit de gebruikte bestanden; titel en auteur komen van het bestand van de eerste pagina. Bladwijzers vervallen bij samenvoegen (bij bewerken van één bestand blijven ze behouden).
 
+## Layout
+
+Met een document open staat op een breed scherm (vanaf 900 px) een splitscherm: links het gereedschap, rechts de pagina's. Elk vak scrolt los, zodat de knoppen altijd in beeld blijven (`src/components/WorkspaceParts.tsx`). Op een smal scherm staan ze onder elkaar en blijft de knoppenbalk bovenaan hangen. Veel knoppen zijn symbolen (een eigen kleine set SVG's in `src/components/Icon.tsx`); hun naam verschijnt als hover-tekst bij muis en toetsenbordfocus, ook als de knop uit staat (`src/components/TooltipLayer.tsx`), en is dezelfde naam die een schermlezer voorleest. Uitleg staat achter een ⓘ-knop. Bij Samenvoegen toont het rechtervak het resultaat, of met ⊞ de pagina's van één bestand met vinkjes.
+
 ## Ontwikkelen
 
 Vereist Node 24 (zie `.nvmrc`).

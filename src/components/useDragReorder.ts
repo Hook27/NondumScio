@@ -7,6 +7,20 @@ const DRAG_THRESHOLD = 6;
 /** Op deze elementen begint geen sleepbeweging: die houden hun eigen klik. */
 const OWN_CLICK = 'button, a, input, label, select, textarea';
 
+/** Het dichtstbijzijnde vak boven `element` dat zelf scrolt, of `null` (dan scrolt het venster). */
+function scrollParent(element: HTMLElement): HTMLElement | null {
+  for (let parent = element.parentElement; parent; parent = parent.parentElement) {
+    const { overflowY } = getComputedStyle(parent);
+    if (
+      (overflowY === 'auto' || overflowY === 'scroll') &&
+      parent.scrollHeight > parent.clientHeight
+    ) {
+      return parent;
+    }
+  }
+  return null;
+}
+
 type Drag<T> = {
   pointerId: number;
   /** Wat er gesleept wordt (bijvoorbeeld de gekozen pagina's of een bestand). */
@@ -128,14 +142,18 @@ export function useDragReorder<T>({ list, itemSelector, direction, onStart, onDr
     }
     event.preventDefault();
     updateDrop(event.clientX, event.clientY);
-    // Bij de rand van het venster meeschuiven, maar alleen als er in die richting nog
-    // onderdelen buiten beeld staan; anders zou het doel onder de muis wegschuiven.
+    // Bij de rand meeschuiven, maar alleen als er in die richting nog onderdelen buiten
+    // beeld staan; anders zou het doel onder de muis wegschuiven. Staat de lijst in een vak
+    // dat zelf scrolt (splitscherm), dan schuift dat vak; anders het venster.
     const box = list.current?.getBoundingClientRect();
-    if (!box) return;
-    if (event.clientY < 40 && box.top < 0) window.scrollBy(0, -16);
-    else if (event.clientY > window.innerHeight - 40 && box.bottom > window.innerHeight) {
-      window.scrollBy(0, 16);
-    }
+    if (!box || !list.current) return;
+    const scroller = scrollParent(list.current);
+    const edge = scroller
+      ? scroller.getBoundingClientRect()
+      : { top: 0, bottom: window.innerHeight };
+    const scrollBy = (dy: number) => (scroller ? scroller.scrollBy(0, dy) : window.scrollBy(0, dy));
+    if (event.clientY < edge.top + 40 && box.top < edge.top) scrollBy(-16);
+    else if (event.clientY > edge.bottom - 40 && box.bottom > edge.bottom) scrollBy(16);
   };
 
   const onPointerUp = (event: PointerEvent) => {
