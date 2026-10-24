@@ -94,6 +94,11 @@ export const nl = {
     result: 'Resultaat',
     picking: '{name}: pagina’s kiezen',
     showResult: 'Terug naar het resultaat',
+    bookmarks: 'Bladwijzer per bestand',
+    bookmarkLabel: 'Bladwijzer',
+    bookmarkFor: 'voor {name}',
+    bookmarksHint:
+      'Met “Bladwijzer per bestand” krijgt de samengevoegde PDF een bladwijzer naar het begin van elk bestand; de titel kun je aanpassen. Zonder die optie vervallen bestaande bladwijzers bij samenvoegen.',
     pick: 'Miniaturen van {name}',
     keepPage:
       'Er moet minstens één pagina van dit bestand overblijven. Een heel bestand weghalen doe je met ✕.',

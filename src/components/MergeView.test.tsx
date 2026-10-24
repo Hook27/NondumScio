@@ -238,6 +238,48 @@ describe('Samenvoegen', () => {
     expect(toggle.getAttribute('aria-pressed')).toBe('false');
   });
 
+  it('maakt standaard geen nieuwe bladwijzers', async () => {
+    setup();
+    choose([pdfFile('a.pdf', 1), pdfFile('b.pdf', 1)]);
+    await screen.findByRole('list', { name: nl.merge.files });
+    expect((screen.getByLabelText(nl.merge.bookmarks) as HTMLInputElement).checked).toBe(false);
+    expect(screen.queryByLabelText('Bladwijzer voor a.pdf')).toBeNull();
+
+    fireEvent.click(button(nl.merge.download));
+    fireEvent.click(screen.getByRole('button', { name: nl.saveDialog.download }));
+    await waitFor(() => expect(downloadPdf).toHaveBeenCalledTimes(1));
+    expect(vi.mocked(buildPdf).mock.calls[0]![2]).toEqual({});
+  });
+
+  it('maakt met de optie een bladwijzer per bestand, met een aanpasbare titel', async () => {
+    setup();
+    choose([pdfFile('offerte.pdf', 2), pdfFile('bijlage.pdf', 1), pdfFile('c.pdf', 1)]);
+    await screen.findByRole('list', { name: nl.merge.files });
+    fireEvent.click(screen.getByLabelText(nl.merge.bookmarks));
+
+    // Standaard de bestandsnaam zonder .pdf.
+    const offerte = screen.getByLabelText('Bladwijzer voor offerte.pdf') as HTMLInputElement;
+    expect(offerte.value).toBe('offerte');
+    fireEvent.input(screen.getByLabelText('Bladwijzer voor bijlage.pdf'), {
+      target: { value: 'Bijlage A' },
+    });
+    // Leeg gemaakt: dan toch de bestandsnaam.
+    fireEvent.input(screen.getByLabelText('Bladwijzer voor c.pdf'), { target: { value: '  ' } });
+    // De volgorde volgt de lijst.
+    fireEvent.click(button('bijlage.pdf omhoog'));
+
+    fireEvent.click(button(nl.merge.download));
+    fireEvent.click(screen.getByRole('button', { name: nl.saveDialog.download }));
+    await waitFor(() => expect(downloadPdf).toHaveBeenCalledTimes(1));
+    expect(vi.mocked(buildPdf).mock.calls[0]![2]).toEqual({
+      bookmarks: [
+        { doc: 2, title: 'Bijlage A' },
+        { doc: 1, title: 'offerte' },
+        { doc: 3, title: 'c' },
+      ],
+    });
+  });
+
   it('toont bij Pagina’s alle pagina’s van alle bestanden, met de bestandsnaam', async () => {
     setup('pages');
     choose([pdfFile('a.pdf', 1), pdfFile('b.pdf', 2)]);

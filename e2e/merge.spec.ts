@@ -106,6 +106,23 @@ async function readDownload(page: Page, button: string, fileName?: string) {
   };
 }
 
+/**
+ * De bladwijzers zoals een PDF-lezer ze ziet: we lezen het bestand met pdf.js zelf (dezelfde
+ * lezer als in Firefox), niet met de bibliotheek die het schreef. Titel en paginanummer (vanaf 1).
+ */
+async function readOutline(path: string) {
+  const pdfjs = await import('pdfjs-dist/legacy/build/pdf.mjs');
+  const doc = await pdfjs.getDocument({ data: new Uint8Array(readFileSync(path)) }).promise;
+  const outline = (await doc.getOutline()) ?? [];
+  const result = [];
+  for (const item of outline) {
+    const dest = item.dest as [{ num: number; gen: number }, ...unknown[]];
+    result.push({ title: item.title, page: (await doc.getPageIndex(dest[0])) + 1 });
+  }
+  await doc.loadingTask.destroy();
+  return result;
+}
+
 test.describe('samenvoegen', () => {
   test('drie PDF’s samenvoegen in de gekozen volgorde', async ({ page }) => {
     await openMerge(page);
@@ -240,6 +257,26 @@ test.describe('samenvoegen', () => {
 
     const result = await readDownload(page, nl.merge.download);
     expect(result.widths).toEqual([300, 500, 700, 710, 720]);
+  });
+
+  test('met de optie krijgt elk bestand een bladwijzer, met een eigen titel', async ({ page }) => {
+    await openMerge(page);
+    await page.getByLabel(nl.merge.bookmarks).check();
+    await page.getByLabel('Bladwijzer voor bijlage.pdf').fill('Bijlage A – tekening');
+    await expect(page.getByLabel('Bladwijzer voor offerte.pdf')).toHaveValue('offerte');
+
+    const download = await downloadVia(page, page.getByRole('button', { name: nl.merge.download }));
+    expect(await readOutline(await download.path())).toEqual([
+      { title: 'offerte', page: 1 },
+      { title: 'Bijlage A – tekening', page: 3 },
+      { title: 'voorwaarden', page: 4 },
+    ]);
+  });
+
+  test('zonder de optie heeft het resultaat geen bladwijzers', async ({ page }) => {
+    await openMerge(page);
+    const download = await downloadVia(page, page.getByRole('button', { name: nl.merge.download }));
+    expect(await readOutline(await download.path())).toEqual([]);
   });
 
   test('een bestand weghalen en dat ongedaan maken', async ({ page }) => {

@@ -38,6 +38,9 @@ export function MergeView() {
     canRedo,
     unsaved,
     markSaved,
+    bookmarks,
+    setBookmarksOn,
+    setBookmarkTitle,
   } = useDocument();
   const { t } = useI18n();
   const [asking, setAsking] = useState(false);
@@ -72,6 +75,7 @@ export function MergeView() {
     <>
       <p>{t.merge.hint}</p>
       <p>{t.merge.pagesHint}</p>
+      <p>{t.merge.bookmarksHint}</p>
     </>,
   );
 
@@ -83,6 +87,11 @@ export function MergeView() {
   const rotationsOf = (id: number) =>
     new Map(pages.filter((page) => page.doc === id).map((page) => [page.source, page.rotation]));
 
+  // De titel van de bladwijzer voor een bestand: eigen titel, anders de naam zonder .pdf.
+  const defaultTitle = (name: string) => name.replace(/\.pdf$/i, '');
+  const titleOf = (id: number, name: string) =>
+    bookmarks.titles.get(id)?.trim() || defaultTitle(name);
+
   const saveAs = async (fileName: string) => {
     setAsking(false);
     setSave({ status: 'saving' });
@@ -90,7 +99,15 @@ export function MergeView() {
       const files = new Map(
         (doc.status === 'ready' ? doc.sources : []).map((source) => [source.id, source.file]),
       );
-      const bytes = await buildPdf(await readSources(files, pages), pages);
+      const options = bookmarks.on
+        ? {
+            bookmarks: activeSources.map((source) => ({
+              doc: source.id,
+              title: titleOf(source.id, source.name),
+            })),
+          }
+        : {};
+      const bytes = await buildPdf(await readSources(files, pages), pages, options);
       downloadPdf(bytes, fileName);
       markSaved();
       setSave({ status: 'saved', fileName });
@@ -177,10 +194,39 @@ export function MergeView() {
                       />
                     </span>
                   </div>
+                  {bookmarks.on && (
+                    <div class="merge-list__bookmark">
+                      <label for={`merge-bookmark-${source.id}`} class="merge-range__label">
+                        {t.merge.bookmarkLabel}
+                        <span class="visually-hidden">
+                          {' '}
+                          {format(t.merge.bookmarkFor, { name: source.name })}
+                        </span>
+                      </label>
+                      <input
+                        id={`merge-bookmark-${source.id}`}
+                        class="merge-bookmark__input"
+                        type="text"
+                        autocomplete="off"
+                        value={bookmarks.titles.get(source.id) ?? defaultTitle(source.name)}
+                        placeholder={defaultTitle(source.name)}
+                        onInput={(event) => setBookmarkTitle(source.id, event.currentTarget.value)}
+                      />
+                    </div>
+                  )}
                 </li>
               );
             })}
           </ol>
+
+          <label class="merge-option">
+            <input
+              type="checkbox"
+              checked={bookmarks.on}
+              onChange={(event) => setBookmarksOn(event.currentTarget.checked)}
+            />
+            {t.merge.bookmarks}
+          </label>
 
           <div class="toolbar toolbar--tools" role="toolbar" aria-label={t.merge.actions}>
             <div class="toolbar__group">

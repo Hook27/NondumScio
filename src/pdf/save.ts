@@ -13,6 +13,17 @@ export class PdfSaveError extends Error {
 /** De originele bytes per geopend bestand (sleutel: `PageItem.doc`). */
 export type SourceBytes = ReadonlyMap<number, Uint8Array>;
 
+/** Een nieuwe bladwijzer: naar de eerste pagina van een bestand in het resultaat. */
+export type BookmarkFor = { doc: number; title: string };
+
+export type BuildOptions = {
+  /**
+   * Nieuwe bladwijzers, één per bestand. Vervangt bestaande bladwijzers. Een bestand dat
+   * niet (meer) in het plan staat, wordt overgeslagen; de volgorde volgt het resultaat.
+   */
+  bookmarks?: readonly BookmarkFor[];
+};
+
 /**
  * Maakt een nieuwe PDF volgens het pagina-plan: de gekozen pagina's, uit de gekozen
  * bestanden, in de gekozen volgorde, met de extra draaiing. Werkt op kopieën in het
@@ -24,10 +35,12 @@ export type SourceBytes = ReadonlyMap<number, Uint8Array>;
  * - Meerdere bestanden (samenvoegen): een nieuw document waarin de pagina's worden
  *   gekopieerd. Titel en auteur komen uit het bestand van de eerste pagina; bestaande
  *   bladwijzers vervallen, want die zouden in het samengevoegde document toch niet kloppen.
+ * - Met `bookmarks`: nieuwe bladwijzers (bijvoorbeeld één per samengevoegd bestand).
  */
 export async function buildPdf(
   sources: SourceBytes,
   pages: readonly PageItem[],
+  { bookmarks }: BuildOptions = {},
 ): Promise<Uint8Array> {
   if (pages.length === 0) throw new PdfSaveError('failed');
   const lib = await import('pdf-lib');
@@ -64,6 +77,7 @@ export async function buildPdf(
         page.setRotation(rotated(page.getRotation().angle, item.rotation));
         doc.addPage(page);
       }
+      if (bookmarks) setBookmarks(lib, doc, outlineEntries(bookmarks, pages));
       return await doc.save();
     }
 
@@ -87,10 +101,60 @@ export async function buildPdf(
       page.setRotation(rotated(page.getRotation().angle, item.rotation));
       out.addPage(page);
     }
+    if (bookmarks) setBookmarks(lib, out, outlineEntries(bookmarks, pages));
     return await out.save();
   } catch {
     throw new PdfSaveError('failed');
   }
+}
+
+/** Bij elke bladwijzer de plek van de eerste pagina van dat bestand, in volgorde van het resultaat. */
+function outlineEntries(bookmarks: readonly BookmarkFor[], pages: readonly PageItem[]) {
+  return bookmarks
+    .map((bookmark) => ({
+      title: bookmark.title,
+      pageIndex: pages.findIndex((page) => page.doc === bookmark.doc),
+    }))
+    .filter((entry) => entry.pageIndex >= 0)
+    .sort((a, b) => a.pageIndex - b.pageIndex);
+}
+
+/**
+ * Zet de bladwijzers (de "outline" van de PDF) en laat de PDF-lezer ze bij openen tonen.
+ * pdf-lib heeft daar geen kant-en-klare functie voor; we bouwen de lijst zelf op volgens de
+ * PDF-norm: een Outlines-woordenboek met First/Last/Count en per bladwijzer Title, Parent,
+ * Prev/Next en een bestemming (de pagina, passend in beeld).
+ */
+function setBookmarks(
+  lib: typeof import('pdf-lib'),
+  doc: PdfLibDocument,
+  entries: readonly { title: string; pageIndex: number }[],
+) {
+  const { PDFName, PDFHexString } = lib;
+  const { context, catalog } = doc;
+  if (entries.length === 0) {
+    catalog.delete(PDFName.of('Outlines'));
+    return;
+  }
+  const pageRefs = doc.getPages().map((page) => page.ref);
+  const outlinesRef = context.nextRef();
+  const refs = entries.map(() => context.nextRef());
+  entries.forEach((entry, i) => {
+    const item = context.obj({
+      Title: PDFHexString.fromText(entry.title),
+      Parent: outlinesRef,
+      Dest: [pageRefs[entry.pageIndex]!, 'Fit'],
+    });
+    if (i > 0) item.set(PDFName.of('Prev'), refs[i - 1]!);
+    if (i < refs.length - 1) item.set(PDFName.of('Next'), refs[i + 1]!);
+    context.assign(refs[i]!, item);
+  });
+  context.assign(
+    outlinesRef,
+    context.obj({ Type: 'Outlines', First: refs[0]!, Last: refs.at(-1)!, Count: refs.length }),
+  );
+  catalog.set(PDFName.of('Outlines'), outlinesRef);
+  catalog.set(PDFName.of('PageMode'), PDFName.of('UseOutlines'));
 }
 
 /** Leest de bytes van de bestanden die in het plan voorkomen. */

@@ -52,6 +52,10 @@ export type DocState =
   | { status: 'ready'; sources: Source[] }
   | { status: 'error'; name: string; code: LoadErrorCode };
 
+export type Bookmarks = { on: boolean; titles: ReadonlyMap<number, string> };
+
+const NO_BOOKMARKS: Bookmarks = { on: false, titles: new Map() };
+
 type DocApi = {
   doc: DocState;
   /** Opent één of meer bestanden; wat er open stond, wordt gesloten. */
@@ -85,6 +89,13 @@ type DocApi = {
   canRedo: boolean;
   /** Gewijzigd sinds het openen of de laatste download. */
   unsaved: boolean;
+  /**
+   * Nieuwe bladwijzers bij samenvoegen: aan of uit (standaard uit), en eigen titels per
+   * bestand. Zonder eigen titel geldt de bestandsnaam. Hoort niet bij ongedaan maken.
+   */
+  bookmarks: Bookmarks;
+  setBookmarksOn: (on: boolean) => void;
+  setBookmarkTitle: (id: number, title: string) => void;
   /** Na een geslaagde download: de huidige stand geldt als bewaard. */
   markSaved: () => void;
 };
@@ -105,6 +116,7 @@ export function DocumentProvider({
   const [doc, setDoc] = useState<DocState>({ status: 'empty' });
   const [fileErrors, setFileErrors] = useState<FileError[]>([]);
   const [adding, setAdding] = useState(false);
+  const [bookmarks, setBookmarks] = useState<Bookmarks>(NO_BOOKMARKS);
   // De bewerkingen horen bij wat er open staat en blijven bewaard als je van taak wisselt.
   const [history, setHistory] = useState<History>(() => startHistory([]));
   // Het plan dat het laatst is gedownload (of het begin), om "niet opgeslagen" te kunnen tonen.
@@ -207,6 +219,7 @@ export function DocumentProvider({
       const start = pagesOf(sources);
       setHistory(startHistory(start));
       setSavedPages(start);
+      setBookmarks(NO_BOOKMARKS);
       setDoc({ status: 'ready', sources });
       setFileErrors(errors);
     },
@@ -246,8 +259,19 @@ export function DocumentProvider({
     setHistory(startHistory([]));
     setSavedPages(null);
     setFileErrors([]);
+    setBookmarks(NO_BOOKMARKS);
     setDoc({ status: 'empty' });
   }, [release]);
+
+  const setBookmarksOn = useCallback(
+    (on: boolean) => setBookmarks((current) => ({ ...current, on })),
+    [],
+  );
+  const setBookmarkTitle = useCallback(
+    (id: number, title: string) =>
+      setBookmarks((current) => ({ ...current, titles: new Map(current.titles).set(id, title) })),
+    [],
+  );
 
   const edit = useCallback((next: PageItem[]) => setHistory((h) => record(h, next)), []);
   const undo = useCallback(() => setHistory(undoHistory), []);
@@ -323,6 +347,9 @@ export function DocumentProvider({
       canRedo: history.future.length > 0,
       unsaved,
       markSaved,
+      bookmarks,
+      setBookmarksOn,
+      setBookmarkTitle,
     };
   }, [
     doc,
@@ -341,6 +368,9 @@ export function DocumentProvider({
     redo,
     unsaved,
     markSaved,
+    bookmarks,
+    setBookmarksOn,
+    setBookmarkTitle,
   ]);
   return <DocContext.Provider value={value}>{children}</DocContext.Provider>;
 }
