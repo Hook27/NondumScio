@@ -7,6 +7,16 @@ const nl = messages.nl;
 const toolbarButton = (page: Page, name: string) =>
   page.getByRole('toolbar', { name: nl.pages.toolbar }).getByRole('button', { name });
 
+/**
+ * Opent het venster "Opslaan als" en wacht tot het echt klaar is (naamveld heeft de focus).
+ * Wie te vroeg typt of op Escape drukt, komt anders vóór het venster uit: zo werd een test
+ * eerder af en toe rood.
+ */
+async function openSaveDialog(page: Page) {
+  await toolbarButton(page, nl.pages.save).click();
+  await expect(page.getByRole('dialog').getByRole('textbox')).toBeFocused();
+}
+
 async function openTwoPages(page: Page, theme: 'light' | 'dark' = 'light') {
   await openPage(page, '/#/pages', { lang: 'nl', theme });
   await page.locator('input[type="file"]').setInputFiles({
@@ -34,7 +44,7 @@ test.describe('bestandsnaam bij downloaden', () => {
   test('overtypen vervangt de naam, .pdf komt er vanzelf bij', async ({ page, isMobile }) => {
     test.skip(isMobile, 'Toetsenbordbediening is op een telefoon niet relevant');
     await openTwoPages(page);
-    await toolbarButton(page, nl.pages.save).click();
+    await openSaveDialog(page);
     await page.keyboard.type('Nieuwe naam');
     await expect(page.getByRole('dialog').getByRole('textbox')).toHaveValue('Nieuwe naam');
     await expect(page.getByText('Wordt gedownload als: Nieuwe naam.pdf')).toBeVisible();
@@ -50,12 +60,12 @@ test.describe('bestandsnaam bij downloaden', () => {
     let downloads = 0;
     page.on('download', () => (downloads += 1));
 
-    await toolbarButton(page, nl.pages.save).click();
+    await openSaveDialog(page);
     await page.getByRole('button', { name: nl.saveDialog.cancel }).click();
     await expect(page.getByRole('dialog')).toHaveCount(0);
 
     if (!isMobile) {
-      await toolbarButton(page, nl.pages.save).click();
+      await openSaveDialog(page);
       await page.keyboard.press('Escape');
       await expect(page.getByRole('dialog')).toHaveCount(0);
     }
