@@ -42,10 +42,20 @@ describe('App', () => {
   });
 
   it('opent de juiste taakpagina vanuit het adres', () => {
-    goTo('#/merge');
+    goTo('#/split');
     renderApp();
-    expect(screen.getByRole('heading', { level: 1, name: nl.tasks.merge.title })).toBeTruthy();
+    expect(screen.getByRole('heading', { level: 1, name: nl.tasks.split.title })).toBeTruthy();
     expect(screen.getByText(nl.comingSoon)).toBeTruthy();
+  });
+
+  it('toont geen "Binnenkort" bij taken die al werken', () => {
+    for (const id of ['merge', 'pages'] as const) {
+      goTo(`#/${id}`);
+      renderApp();
+      expect(screen.getByRole('heading', { level: 1, name: nl.tasks[id].title })).toBeTruthy();
+      expect(screen.queryByText(nl.comingSoon)).toBeNull();
+      cleanup();
+    }
   });
 
   it('wisselt van pagina als het adres verandert, met titel en focus', async () => {
@@ -167,7 +177,7 @@ describe('taalkeuze', () => {
     await waitFor(() =>
       expect(screen.getByRole('heading', { level: 1, name: en.tasks.merge.title })).toBeTruthy(),
     );
-    expect(screen.getByText(en.comingSoon)).toBeTruthy();
+    expect(screen.getByText(en.tasks.merge.description)).toBeTruthy();
     expect(screen.getByRole('navigation', { name: en.mainMenu })).toBeTruthy();
     expect(screen.getByRole('group', { name: en.language })).toBeTruthy();
     expect(document.title).toBe(`${en.tasks.merge.title} · ${en.appName}`);

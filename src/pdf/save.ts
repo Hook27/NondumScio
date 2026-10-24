@@ -10,47 +10,100 @@ export class PdfSaveError extends Error {
   }
 }
 
+/** De originele bytes per geopend bestand (sleutel: `PageItem.doc`). */
+export type SourceBytes = ReadonlyMap<number, Uint8Array>;
+
 /**
- * Maakt een nieuwe PDF volgens het pagina-plan: de gekozen pagina's, in de gekozen
- * volgorde, met de extra draaiing. Werkt op een kopie van het origineel in het geheugen;
- * het bestand op je apparaat blijft onaangeroerd.
+ * Maakt een nieuwe PDF volgens het pagina-plan: de gekozen pagina's, uit de gekozen
+ * bestanden, in de gekozen volgorde, met de extra draaiing. Werkt op kopieën in het
+ * geheugen; de bestanden op je apparaat blijven onaangeroerd.
  *
- * We passen het originele document aan in plaats van pagina's naar een leeg document te
- * kopiëren. Zo blijven de gegevens van het document (titel, auteur, formulieren,
- * bladwijzers) zoveel mogelijk behouden. Een bladwijzer naar een verwijderde pagina
- * wijst daarna nergens meer heen.
+ * - Eén bestand: we passen dat document zelf aan in plaats van pagina's naar een leeg
+ *   document te kopiëren. Zo blijven titel, auteur, formulieren en bladwijzers zoveel
+ *   mogelijk behouden (een bladwijzer naar een verwijderde pagina wijst daarna nergens heen).
+ * - Meerdere bestanden (samenvoegen): een nieuw document waarin de pagina's worden
+ *   gekopieerd. Titel en auteur komen uit het bestand van de eerste pagina; bestaande
+ *   bladwijzers vervallen, want die zouden in het samengevoegde document toch niet kloppen.
  */
 export async function buildPdf(
-  original: Uint8Array,
+  sources: SourceBytes,
   pages: readonly PageItem[],
 ): Promise<Uint8Array> {
   if (pages.length === 0) throw new PdfSaveError('failed');
-  const { PDFDocument, EncryptedPDFError, degrees } = await import('pdf-lib');
+  const lib = await import('pdf-lib');
+  const { PDFDocument, EncryptedPDFError, degrees } = lib;
 
-  let doc: PdfLibDocument;
-  try {
-    doc = await PDFDocument.load(original, { updateMetadata: false });
-  } catch (error) {
-    throw new PdfSaveError(isEncryptedError(error, EncryptedPDFError) ? 'encrypted' : 'failed');
+  // Elk gebruikt bestand één keer inlezen.
+  const docs = new Map<number, PdfLibDocument>();
+  for (const id of new Set(pages.map((page) => page.doc))) {
+    const bytes = sources.get(id);
+    if (!bytes) throw new PdfSaveError('failed');
+    try {
+      docs.set(id, await PDFDocument.load(bytes, { updateMetadata: false }));
+    } catch (error) {
+      throw new PdfSaveError(isEncryptedError(error, EncryptedPDFError) ? 'encrypted' : 'failed');
+    }
   }
 
+  const rotated = (angle: number, extra: number) => degrees((((angle + extra) % 360) + 360) % 360);
+
   try {
-    const sourcePages = doc.getPages();
     for (const item of pages) {
-      if (!sourcePages[item.source]) throw new RangeError(`Pagina ${item.source} bestaat niet`);
+      if (!docs.get(item.doc)!.getPages()[item.source]) {
+        throw new RangeError(`Pagina ${item.source} bestaat niet`);
+      }
     }
-    // Alle pagina's uit de paginaboom halen en in de nieuwe volgorde terugzetten.
-    for (let i = sourcePages.length - 1; i >= 0; i -= 1) doc.removePage(i);
+
+    if (docs.size === 1) {
+      const doc = docs.values().next().value!;
+      const sourcePages = doc.getPages();
+      // Alle pagina's uit de paginaboom halen en in de nieuwe volgorde terugzetten.
+      for (let i = sourcePages.length - 1; i >= 0; i -= 1) doc.removePage(i);
+      for (const item of pages) {
+        const page = sourcePages[item.source]!;
+        page.setRotation(rotated(page.getRotation().angle, item.rotation));
+        doc.addPage(page);
+      }
+      return await doc.save();
+    }
+
+    const out = await PDFDocument.create();
+    const first = docs.get(pages[0]!.doc)!;
+    const title = first.getTitle();
+    const author = first.getAuthor();
+    if (title) out.setTitle(title);
+    if (author) out.setAuthor(author);
+
+    // Per bestand alle benodigde pagina's in één keer kopiëren: gedeelde lettertypen en
+    // afbeeldingen komen dan maar één keer in het resultaat.
+    const copies = new Map<string, ReturnType<typeof out.addPage>>();
+    for (const [id, doc] of docs) {
+      const indices = [...new Set(pages.filter((p) => p.doc === id).map((p) => p.source))];
+      const copied = await out.copyPages(doc, indices);
+      indices.forEach((index, i) => copies.set(`${id}:${index}`, copied[i]!));
+    }
     for (const item of pages) {
-      const page = sourcePages[item.source]!;
-      const angle = (((page.getRotation().angle + item.rotation) % 360) + 360) % 360;
-      page.setRotation(degrees(angle));
-      doc.addPage(page);
+      const page = copies.get(`${item.doc}:${item.source}`)!;
+      page.setRotation(rotated(page.getRotation().angle, item.rotation));
+      out.addPage(page);
     }
-    return await doc.save();
+    return await out.save();
   } catch {
     throw new PdfSaveError('failed');
   }
+}
+
+/** Leest de bytes van de bestanden die in het plan voorkomen. */
+export async function readSources(
+  files: ReadonlyMap<number, File>,
+  pages: readonly PageItem[],
+): Promise<Map<number, Uint8Array>> {
+  const result = new Map<number, Uint8Array>();
+  for (const id of new Set(pages.map((page) => page.doc))) {
+    const file = files.get(id);
+    if (file) result.set(id, new Uint8Array(await file.arrayBuffer()));
+  }
+  return result;
 }
 
 /**

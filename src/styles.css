@@ -673,6 +673,119 @@ h1 {
   gap: 0.5rem;
 }
 
+/* Samenvoegen */
+.merge__hint {
+  margin: 0 0 0.75rem;
+  color: var(--text-muted);
+  font-size: 0.9rem;
+}
+
+.merge-list {
+  display: grid;
+  gap: 0.5rem;
+  margin: 0 0 1rem;
+  padding: 0;
+  list-style: none;
+}
+
+.merge-list__item {
+  position: relative;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem 0.75rem;
+  padding: 0.6rem 0.75rem;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  cursor: grab;
+  user-select: none;
+}
+
+/* Het greepje staat hier gewoon in de rij, niet over een miniatuur heen. */
+.merge-list__handle {
+  position: static;
+}
+
+.merge-list--dragging .merge-list__item,
+.merge-list--dragging .drag-handle {
+  cursor: grabbing;
+}
+
+.merge-list__item--dragging {
+  opacity: 0.5;
+}
+
+/* Een streepje laat zien waar het gesleepte bestand terechtkomt. */
+.merge-list__item--drop-before::before,
+.merge-list__item--drop-after::after {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 0;
+  height: 4px;
+  background: var(--accent);
+  border-radius: 2px;
+}
+
+.merge-list__item--drop-before::before {
+  top: calc(-0.25rem - 2px);
+}
+
+.merge-list__item--drop-after::after {
+  bottom: calc(-0.25rem - 2px);
+}
+
+.merge-list__position {
+  min-width: 1.6rem;
+  color: var(--text-muted);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  text-align: right;
+}
+
+.merge-list__name {
+  flex: 1;
+  min-width: 10rem;
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+
+.merge-list__pages {
+  color: var(--text-muted);
+  font-size: 0.9rem;
+}
+
+.merge-list__actions {
+  display: flex;
+  gap: 0.3rem;
+}
+
+.button--icon {
+  min-width: 2.4rem;
+  padding: 0.4rem 0.6rem;
+}
+
+.file-errors {
+  margin: 0 0 1rem;
+  font-weight: 600;
+}
+
+.file-errors p {
+  margin: 0 0 0.25rem;
+}
+
+/* Bestandsnaam onder een miniatuur, als er meer bestanden open staan */
+.page-option__file {
+  display: block;
+  margin-top: 0.1rem;
+  color: var(--text-muted);
+  font-size: 0.75rem;
+  text-align: center;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 /* Versienummer linksonder */
 .site-footer {
   padding: 0.75rem 1.25rem;
