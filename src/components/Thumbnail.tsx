@@ -59,8 +59,10 @@ export function Thumbnail({
       });
       target.width = Math.round(viewport.width);
       target.height = Math.round(viewport.height);
+      // Alleen de breedte vast; de hoogte volgt de verhouding. Zo blijft de pagina recht
+      // als het vak smaller is dan de miniatuur (max-width: 100%), bijvoorbeeld op een telefoon.
       target.style.width = `${size.width}px`;
-      target.style.height = `${size.height}px`;
+      target.style.aspectRatio = `${size.width} / ${size.height}`;
 
       task = page.render({ canvas: target, viewport });
       try {

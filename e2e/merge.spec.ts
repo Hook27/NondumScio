@@ -225,6 +225,14 @@ test.describe('samenvoegen', () => {
     await page.getByRole('button', { name: `${nl.merge.showPages}: offerte.pdf` }).click();
     const group = page.getByRole('group', { name: 'Miniaturen van offerte.pdf' });
     await expect(group.getByRole('checkbox')).toHaveCount(2);
+    // De miniaturen houden de verhouding van de pagina, ook in de smallere kolommen.
+    await expect(group.locator('.thumb[data-rendered="true"]')).toHaveCount(2);
+    const ratios = await group
+      .locator('canvas')
+      .evaluateAll((canvases: HTMLCanvasElement[]) =>
+        canvases.map((c) => [c.clientWidth / c.clientHeight, c.width / c.height]),
+      );
+    for (const [shown, page] of ratios) expect(shown!).toBeCloseTo(page!, 1);
     await group.getByRole('checkbox').nth(1).uncheck();
     await expect(page.getByLabel('Pagina’s kiezen uit offerte.pdf')).toHaveValue('1');
     // De laatste pagina van een bestand blijft staan.
