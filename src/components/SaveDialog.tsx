@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'preact/hooks';
 import { useI18n } from '../i18n/LanguageContext';
 import { format } from '../i18n/format';
-import { cleanFileName, withoutPdfExtension } from '../lib/fileName';
+import { cleanFileName, withoutExtension } from '../lib/fileName';
 
 /**
  * Venster "Opslaan als": toont een voorgestelde bestandsnaam die je kunt aanpassen voordat
@@ -10,20 +10,23 @@ import { cleanFileName, withoutPdfExtension } from '../lib/fileName';
 export function SaveDialog({
   title,
   suggestion,
+  extension = '.pdf',
   onConfirm,
   onCancel,
 }: {
   title: string;
   suggestion: string;
+  /** De extensie die er vast naast staat (standaard ".pdf", bijvoorbeeld ".zip"). */
+  extension?: string;
   onConfirm: (fileName: string) => void;
   onCancel: () => void;
 }) {
   const { t } = useI18n();
   const dialog = useRef<HTMLDialogElement>(null);
   const input = useRef<HTMLInputElement>(null);
-  // In het veld alleen de naam; ".pdf" staat er vast naast en komt er bij opslaan vanzelf bij.
-  const [value, setValue] = useState(() => withoutPdfExtension(suggestion));
-  const fileName = cleanFileName(value, suggestion);
+  // In het veld alleen de naam; de extensie staat er vast naast en komt er bij opslaan vanzelf bij.
+  const [value, setValue] = useState(() => withoutExtension(suggestion, extension));
+  const fileName = cleanFileName(value, suggestion, extension);
 
   useEffect(() => {
     const element = dialog.current;
@@ -76,7 +79,7 @@ export function SaveDialog({
             onInput={(event) => setValue(event.currentTarget.value)}
           />
           <span class="save-dialog__extension" aria-hidden="true">
-            .pdf
+            {extension}
           </span>
         </div>
         <p class="save-dialog__result" aria-live="polite">

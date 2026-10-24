@@ -4,6 +4,7 @@ import { useI18n } from '../i18n/LanguageContext';
 import { format } from '../i18n/format';
 import { MergeView } from './MergeView';
 import { PageEditor } from './PageEditor';
+import { SplitView } from './SplitView';
 import {
   ComingSoon,
   FileErrors,
@@ -14,7 +15,7 @@ import {
 } from './WorkspaceParts';
 
 /** Wat het werkgebied laat doen: alleen bekijken, pagina's bewerken of bestanden samenvoegen. */
-export type WorkspaceMode = 'view' | 'pages' | 'merge';
+export type WorkspaceMode = 'view' | 'pages' | 'merge' | 'split';
 
 /** Het werkgebied van een taak: PDF's openen, en daarna de pagina's ervan. */
 export function Workspace({ mode = 'view' }: { mode?: WorkspaceMode }) {
@@ -23,6 +24,7 @@ export function Workspace({ mode = 'view' }: { mode?: WorkspaceMode }) {
   if (doc.status === 'ready') {
     if (mode === 'pages') return <PageEditor />;
     if (mode === 'merge') return <MergeView />;
+    if (mode === 'split') return <SplitView />;
     return <ViewDocument />;
   }
   return (

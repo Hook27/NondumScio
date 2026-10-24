@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { cleanFileName, withoutPdfExtension } from './fileName';
+import { cleanFileName, withoutExtension, withoutPdfExtension } from './fileName';
 
 const fallback = 'document.pdf';
 
@@ -57,5 +57,15 @@ describe('withoutPdfExtension', () => {
     expect(withoutPdfExtension('Rapport.PDF')).toBe('Rapport');
     expect(withoutPdfExtension('zonder')).toBe('zonder');
     expect(withoutPdfExtension('pdf-uitleg.pdf')).toBe('pdf-uitleg');
+  });
+});
+
+describe('andere extensies (ZIP)', () => {
+  it('vult .zip aan en haalt het weg voor het invoerveld', () => {
+    expect(cleanFileName('delen', 'x.zip', '.zip')).toBe('delen.zip');
+    expect(cleanFileName('delen.ZIP', 'x.zip', '.zip')).toBe('delen.zip');
+    expect(cleanFileName('  ', 'x.zip', '.zip')).toBe('x.zip');
+    expect(withoutExtension('rapport (gesplitst).zip', '.zip')).toBe('rapport (gesplitst)');
+    expect(cleanFileName('a'.repeat(500), 'x.zip', '.zip').length).toBeLessThanOrEqual(200);
   });
 });

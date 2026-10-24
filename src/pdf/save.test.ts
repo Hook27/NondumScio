@@ -10,7 +10,7 @@ import {
 } from 'pdf-lib';
 import { describe, expect, it } from 'vitest';
 import { initialPages, movePages, removePages, rotatePages } from '../pages/plan';
-import { PdfSaveError, buildPdf, editedFileName } from './save';
+import { PdfSaveError, buildParts, buildPdf, editedFileName } from './save';
 
 /** Test-PDF waarin elke pagina een eigen breedte heeft, zodat je hem terugkent: 300, 400, 500, … */
 async function samplePdf(
@@ -265,6 +265,42 @@ describe('buildPdf met nieuwe bladwijzers', () => {
   it('zonder de optie: geen bladwijzers bij samenvoegen', async () => {
     const result = await readBookmarks(await buildPdf(await sources(), plan()));
     expect(result.bookmarks).toEqual([]);
+  });
+});
+
+describe('buildParts (splitsen)', () => {
+  it('maakt per deel een PDF met de juiste pagina’s, draaiing en titel', async () => {
+    const sources = new Map([
+      [1, await samplePdf(3, {}, { title: 'Bestand A' })],
+      [2, await samplePdf(2, {}, { title: 'Bestand B', firstWidth: 1000 })],
+    ]);
+    const plan = rotatePages([...initialPages(3, 1, 0), ...initialPages(2, 2, 3)], keys(1), 90);
+    const progress: string[] = [];
+    const parts = await buildParts(
+      sources,
+      [plan.slice(0, 2), plan.slice(2, 4), plan.slice(4)],
+      (done, total) => progress.push(`${done}/${total}`),
+    );
+    const results = await Promise.all(parts.map(describePdf));
+    expect(results.map((r) => r.widths)).toEqual([[300, 400], [500, 1000], [1100]]);
+    expect(results[0]!.rotations).toEqual([0, 90]);
+    expect(results.map((r) => r.title)).toEqual(['Bestand A', 'Bestand A', 'Bestand B']);
+    expect(progress).toEqual(['1/3', '2/3', '3/3']);
+  });
+
+  it('staat dezelfde pagina in meer delen toe', async () => {
+    const plan = initialPages(3, 1);
+    const parts = await buildParts(new Map([[1, await samplePdf(3)]]), [plan, plan.slice(1, 2)]);
+    expect((await describePdf(parts[1]!)).widths).toEqual([400]);
+  });
+
+  it('meldt een fout bij een leeg deel, een ontbrekend of beveiligd bestand', async () => {
+    const sources = new Map([[1, await samplePdf(2)]]);
+    await expect(buildParts(sources, [[]])).rejects.toMatchObject({ code: 'failed' });
+    await expect(buildParts(sources, [initialPages(2, 9)])).rejects.toMatchObject({
+      code: 'failed',
+    });
+    await expect(buildParts(sources, [initialPages(5, 1)])).rejects.toBeInstanceOf(PdfSaveError);
   });
 });
 
