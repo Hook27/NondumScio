@@ -9,7 +9,7 @@
  * plek van de inhoud staan, ook als je de pagina daarna draait.
  */
 
-export type Tool = 'select' | 'text' | 'highlight' | 'rect' | 'line';
+export type Tool = 'select' | 'text' | 'highlight' | 'rect' | 'line' | 'redact';
 
 export type TextAnnotation = {
   id: number;
@@ -24,11 +24,15 @@ export type TextAnnotation = {
   color: string;
 };
 
-/** Een gekleurd vlak: een markering (doorzichtig) of een rechthoek (alleen de rand). */
+/**
+ * Een vlak: een markering (doorzichtig), een rechthoek (alleen de rand) of een redactievak. Een
+ * redactievak is geen tekening maar een opdracht: bij het opslaan wordt de pagina een afbeelding
+ * en wordt dit gebied er zwart in gezet, zodat wat eronder stond niet meer in het bestand zit.
+ */
 export type BoxAnnotation = {
   id: number;
   page: number;
-  kind: 'highlight' | 'rect';
+  kind: 'highlight' | 'rect' | 'redact';
   x: number;
   y: number;
   width: number;
@@ -70,6 +74,7 @@ export const DEFAULT_COLOR: Record<Exclude<Tool, 'select'>, string> = {
   highlight: '#ffd60a',
   rect: '#d92d20',
   line: '#d92d20',
+  redact: '#000000',
 };
 
 export const TEXT_SIZES = [10, 12, 14, 18, 24, 36] as const;
@@ -91,6 +96,23 @@ export const MIN_DRAW = 4;
 
 /** Het standaardformaat van een vak dat met het toetsenbord wordt geplaatst. */
 export const KEYBOARD_BOX = { width: 140, height: 28 };
+
+/** Alleen de redactievakken uit een lijst annotaties. */
+export function redactionsOf(annotations: readonly Annotation[]): BoxAnnotation[] {
+  return annotations.filter(
+    (annotation): annotation is BoxAnnotation => annotation.kind === 'redact',
+  );
+}
+
+/** Of er voor de pagina's van het plan redactievakken zijn (vakken van andere pagina's tellen niet). */
+export function hasRedactions(
+  pages: readonly { key: number }[],
+  annotations: readonly Annotation[],
+): boolean {
+  return pages.some((page) =>
+    annotations.some((annotation) => annotation.page === page.key && annotation.kind === 'redact'),
+  );
+}
 
 /** Annotaties van één pagina, in de volgorde waarin ze zijn gemaakt (onderaan = eerst). */
 export function annotationsOf(annotations: readonly Annotation[], page: number): Annotation[] {

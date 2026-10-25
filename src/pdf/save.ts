@@ -1,9 +1,12 @@
 import type { PDFDocument as PdfLibDocument } from 'pdf-lib';
-import { annotationsOf, type Annotation } from '../annotations/model';
+import { annotationsOf, hasRedactions, type Annotation } from '../annotations/model';
 import type { PageItem } from '../pages/plan';
 import { drawAnnotations, type FontCache } from './annotate';
+import { pruneUnreachable } from './prune';
+import type { RedactionReport } from './redact';
+import { DEFAULT_REDACTION, type RedactionOptions } from './redactOptions';
 
-export type SaveErrorCode = 'encrypted' | 'failed';
+export type SaveErrorCode = 'encrypted' | 'failed' | 'redaction';
 
 export class PdfSaveError extends Error {
   constructor(readonly code: SaveErrorCode) {
@@ -30,7 +33,52 @@ export type BuildOptions = {
    * doen niet mee.
    */
   annotations?: readonly Annotation[];
+  /**
+   * Hoe pagina's met redactievakken worden afgehandeld: ze worden afbeeldingen (zie `redact.ts`).
+   * Zonder opgave gelden de standaardwaarden; redactievakken doen altijd mee, dus ook als een
+   * taak hier niets over opgeeft.
+   */
+  redaction?: Partial<RedactionOptions> & {
+    onProgress?: (done: number, total: number) => void;
+    onDone?: (report: RedactionReport) => void;
+    /**
+     * Is er ergens in het hele document (niet alleen in deze pagina's) een redactievak? Dan
+     * krijgt ook een deel of uittreksel zonder vak geen documentgegevens mee. Zonder opgave
+     * geldt wat in de gevraagde pagina's zit.
+     */
+    wholeDocument?: boolean;
+  };
 };
+
+export type RedactionRun = NonNullable<BuildOptions['redaction']>;
+
+/**
+ * Past redactie toe op een klaar bestand: alleen als er voor de pagina's van het plan
+ * redactievakken zijn. Mislukt het, dan komt er geen bestand: liever niets dan een bestand
+ * waarin nog staat wat weg moest.
+ */
+async function applyRedactions(
+  bytes: Uint8Array,
+  pages: readonly PageItem[],
+  annotations: readonly Annotation[],
+  run: RedactionRun = {},
+  alsoWithout = false,
+): Promise<Uint8Array> {
+  if (!hasRedactions(pages, annotations) && !alsoWithout) return bytes;
+  const { redactPdf } = await import('./redact');
+  const { onProgress, onDone } = run;
+  const options: RedactionOptions = {
+    dpi: run.dpi ?? DEFAULT_REDACTION.dpi,
+    stripMetadata: run.stripMetadata ?? DEFAULT_REDACTION.stripMetadata,
+  };
+  try {
+    const result = await redactPdf(bytes, pages, annotations, options, onProgress, {}, alsoWithout);
+    onDone?.(result.report);
+    return result.bytes;
+  } catch {
+    throw new PdfSaveError('redaction');
+  }
+}
 
 /**
  * Maakt een nieuwe PDF volgens het pagina-plan: de gekozen pagina's, uit de gekozen
@@ -48,7 +96,22 @@ export type BuildOptions = {
 export async function buildPdf(
   sources: SourceBytes,
   pages: readonly PageItem[],
-  { bookmarks, annotations = [] }: BuildOptions = {},
+  options: BuildOptions = {},
+): Promise<Uint8Array> {
+  const bytes = await buildPlain(sources, pages, options);
+  return applyRedactions(
+    bytes,
+    pages,
+    options.annotations ?? [],
+    options.redaction,
+    options.redaction?.wholeDocument ?? false,
+  );
+}
+
+async function buildPlain(
+  sources: SourceBytes,
+  pages: readonly PageItem[],
+  { bookmarks, annotations = [] }: BuildOptions,
 ): Promise<Uint8Array> {
   if (pages.length === 0) throw new PdfSaveError('failed');
   const lib = await import('pdf-lib');
@@ -69,6 +132,8 @@ export async function buildPdf(
         doc.addPage(page);
       }
       if (bookmarks) setBookmarks(lib, doc, outlineEntries(bookmarks, pages));
+      // Pagina's die je hebt weggehaald, moeten ook echt uit het bestand zijn.
+      pruneUnreachable(lib, doc);
       return await doc.save();
     }
 
@@ -91,6 +156,7 @@ export async function buildParts(
   parts: readonly (readonly PageItem[])[],
   onProgress?: (done: number, total: number) => void,
   annotations: readonly Annotation[] = [],
+  redaction?: RedactionRun,
 ): Promise<Uint8Array[]> {
   if (parts.length === 0 || parts.some((part) => part.length === 0)) {
     throw new PdfSaveError('failed');
@@ -98,9 +164,13 @@ export async function buildParts(
   const lib = await import('pdf-lib');
   const docs = await loadDocs(lib, sources, parts.flat());
   const result: Uint8Array[] = [];
+  // Is er in een van de delen geredigeerd, dan krijgen ook de andere delen geen documentgegevens
+  // mee (die kunnen hetzelfde bevatten).
+  const redacting = redaction?.wholeDocument ?? hasRedactions(parts.flat(), annotations);
   try {
     for (const part of parts) {
-      result.push(await (await assemble(lib, docs, part, annotations)).save());
+      const bytes = await (await assemble(lib, docs, part, annotations)).save();
+      result.push(await applyRedactions(bytes, part, annotations, redaction, redacting));
       onProgress?.(result.length, parts.length);
       await new Promise((resolve) => setTimeout(resolve, 0));
     }

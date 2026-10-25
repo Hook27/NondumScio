@@ -35,7 +35,7 @@ export async function drawAnnotations(
   items: readonly Annotation[],
   fonts: FontCache,
 ): Promise<void> {
-  if (items.length === 0) return;
+  if (items.every((item) => item.kind === 'redact')) return;
   const rotate = normalizeRotation(page.getRotation().angle);
   const box = page.getCropBox();
   const { height } = baseSize(rotate, box);
@@ -51,6 +51,8 @@ export async function drawAnnotations(
   const up = (y: number) => height - y;
 
   for (const item of items) {
+    // Een redactievak is een opdracht voor het opslaan (de pagina wordt een afbeelding), geen tekening.
+    if (item.kind === 'redact') continue;
     const color = colorOf(lib, item.color);
     if (item.kind === 'text') {
       const lines = drawableText(item.text).split('\n');

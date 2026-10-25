@@ -39,7 +39,7 @@ function setup({
   render(
     <LanguageProvider initial={language}>
       <DocumentProvider load={load} unload={unload}>
-        <Workspace />
+        <Workspace mode="pages" />
       </DocumentProvider>
     </LanguageProvider>,
   );
@@ -67,10 +67,8 @@ describe('Workspace', () => {
 
     expect(await screen.findByRole('heading', { level: 2, name: 'rapport.pdf' })).toBeTruthy();
     expect(screen.getByText(/3 pagina’s · 2 KB/)).toBeTruthy();
-    const list = screen.getByRole('list', { name: 'Pagina’s van rapport.pdf' });
-    expect(within(list).getAllByRole('listitem')).toHaveLength(3);
-    for (const n of [1, 2, 3])
-      expect(within(list).getByRole('img', { name: `Pagina ${n}` })).toBeTruthy();
+    const list = screen.getByRole('listbox', { name: /^Pagina’s van rapport\.pdf/ });
+    expect(within(list).getAllByRole('option')).toHaveLength(3);
     expect(load).toHaveBeenCalledTimes(1);
   });
 
@@ -183,7 +181,7 @@ describe('Workspace', () => {
     ).toBeTruthy();
     choose(pdfFile('report.pdf', 3 * 1024 * 1024));
     expect(await screen.findByText(/3 pages · 3 MB/)).toBeTruthy();
-    expect(screen.getByRole('img', { name: 'Page 2' })).toBeTruthy();
+    expect(screen.getAllByRole('option')).toHaveLength(3);
   });
 
   it('ruimt na het tekenen elke pagina op in pdf.js (zuinig met geheugen)', async () => {
@@ -205,7 +203,7 @@ describe('Workspace', () => {
     fireEvent.click(screen.getByRole('button', { name: nl.document.close }));
     choose(pdfFile('zelfde.pdf'));
 
-    await waitFor(() => expect(screen.getAllByRole('listitem')).toHaveLength(2));
+    await waitFor(() => expect(screen.getAllByRole('option')).toHaveLength(2));
     await waitFor(() => expect(tweede.pdf.getPage).toHaveBeenCalledTimes(2));
   });
 });

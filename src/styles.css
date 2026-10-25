@@ -1695,6 +1695,11 @@ h1 {
   filter: drop-shadow(0 0 3px var(--accent));
 }
 
+.annotate-shape[data-inert] {
+  cursor: inherit;
+  pointer-events: none;
+}
+
 .annotate-shape:focus-visible {
   outline: 2px solid var(--focus);
   outline-offset: 2px;

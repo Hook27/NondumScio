@@ -116,19 +116,6 @@ export function FileErrors() {
   );
 }
 
-/** Melding voor taken waarvan het gereedschap nog niet klaar is. */
-export function ComingSoon() {
-  const { t } = useI18n();
-  return (
-    <section class="notice" aria-labelledby="coming-soon">
-      <h2 id="coming-soon" class="notice__title">
-        {t.comingSoon}
-      </h2>
-      <p>{t.comingSoonDetail}</p>
-    </section>
-  );
-}
-
 /**
  * Uitleg achter een ⓘ-knop: geeft de knop en het (in- of uitgeklapte) vak terug, zodat de
  * knop in een balk kan staan en de uitleg eronder.

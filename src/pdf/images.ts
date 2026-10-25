@@ -1,4 +1,7 @@
 import type { PDFDocumentProxy } from 'pdfjs-dist';
+import type { BoxAnnotation } from '../annotations/model';
+import { normalizeRotation } from '../pages/plan';
+import { paintRedactions } from './paint';
 
 export type ImageType = 'jpeg' | 'png';
 
@@ -208,7 +211,18 @@ export async function renderPageImage(
   pdf: PDFDocumentProxy,
   pageNumber: number,
   rotation: number,
-  { dpi, format, quality }: { dpi: number; format: ImageFormat; quality: number },
+  {
+    dpi,
+    format,
+    quality,
+    redactions = [],
+  }: {
+    dpi: number;
+    format: ImageFormat;
+    quality: number;
+    /** Redactievakken van deze pagina: die worden zwart in de afbeelding gezet. */
+    redactions?: readonly BoxAnnotation[];
+  },
 ): Promise<{ bytes: Uint8Array; reduced: boolean }> {
   const page = await pdf.getPage(pageNumber);
   try {
@@ -220,6 +234,18 @@ export async function renderPageImage(
     canvas.width = Math.max(1, Math.round(viewport.width));
     canvas.height = Math.max(1, Math.round(viewport.height));
     await page.render({ canvas, viewport, background: '#ffffff' }).promise;
+    if (redactions.length > 0) {
+      // De vakken staan in de basisstand van de pagina: zonder de extra draaiing uit het plan.
+      const baseView = page.getViewport({ scale: 1, rotation: page.rotate });
+      const extra = normalizeRotation(rotation);
+      paintRedactions(
+        canvas.getContext('2d')!,
+        redactions,
+        { width: baseView.width, height: baseView.height },
+        extra,
+        scale,
+      );
+    }
     const blob = await new Promise<Blob | null>((resolve) =>
       canvas.toBlob(resolve, format === 'png' ? 'image/png' : 'image/jpeg', quality),
     );

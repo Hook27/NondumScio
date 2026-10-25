@@ -23,6 +23,7 @@ const PATHS = {
   extract: ['M14 3H6v18h12V7z', 'M14 3v4h4', 'M12 10v7', 'M9 14l3 3 3-3'],
   filePlus: ['M14 3H6v18h12V7z', 'M14 3v4h4', 'M12 11v6', 'M9 14h6'],
   cursor: ['M5 3l14 8-6 2-3 6z'],
+  redactTool: ['M4 6h16v12H4z', 'M4 10h16', 'M4 14h16'],
   textTool: ['M5 7V4h14v3', 'M12 4v16', 'M9 20h6'],
   highlighter: ['M9 20H4v-4L14 6l4 4-9 10z', 'M12 8l4 4'],
   rectangle: ['M4 6h16v12H4z'],

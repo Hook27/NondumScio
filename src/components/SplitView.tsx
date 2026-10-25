@@ -1,3 +1,4 @@
+import { hasRedactions } from '../annotations/model';
 import { useState } from 'preact/hooks';
 import { useDocument } from '../document/DocumentContext';
 import { useUndoShortcuts } from '../document/useUndoShortcuts';
@@ -6,6 +7,7 @@ import { format, plural } from '../i18n/format';
 import { chunkParts, formatRanges, parseParts, type RangeProblem } from '../pages/ranges';
 import {
   PdfSaveError,
+  type SaveErrorCode,
   buildParts,
   downloadFile,
   downloadPdf,
@@ -25,7 +27,7 @@ type SaveState =
   | { status: 'idle' }
   | { status: 'saving'; done: number; total: number }
   | { status: 'saved'; fileName: string }
-  | { status: 'error'; code: 'encrypted' | 'failed' };
+  | { status: 'error'; code: SaveErrorCode };
 
 /** Wat er na het venster "Opslaan als" gedownload wordt: één deel, of alles als ZIP. */
 type Request = { kind: 'part'; index: number } | { kind: 'zip' };
@@ -36,7 +38,7 @@ type Request = { kind: 'part'; index: number } | { kind: 'zip' };
  * worden gedownload, of alle delen samen als één ZIP.
  */
 export function SplitView() {
-  const { doc, pages, activeSources, sourceOf, annotations, undo, redo } = useDocument();
+  const { doc, pages, activeSources, sourceOf, annotations, redaction, undo, redo } = useDocument();
   useUndoShortcuts(undo, redo);
   const { t } = useI18n();
   const [method, setMethod] = useState<Method>('every');
@@ -93,6 +95,8 @@ export function SplitView() {
       plans,
       (done, total) => setSave({ status: 'saving', done, total }),
       annotations,
+      // Ook een los deel zonder vak hoort bij een document waarin geredigeerd is.
+      { ...redaction, wholeDocument: hasRedactions(pages, annotations) },
     );
   };
 

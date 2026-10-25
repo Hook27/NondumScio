@@ -3,7 +3,14 @@ import { useDocument } from '../document/DocumentContext';
 import { useUndoShortcuts } from '../document/useUndoShortcuts';
 import { useI18n } from '../i18n/LanguageContext';
 import { format } from '../i18n/format';
-import { PdfSaveError, buildPdf, downloadPdf, editedFileName, readSources } from '../pdf/save';
+import {
+  PdfSaveError,
+  buildPdf,
+  downloadPdf,
+  editedFileName,
+  readSources,
+  type SaveErrorCode,
+} from '../pdf/save';
 import {
   FileList,
   FilesToolbar,
@@ -19,7 +26,7 @@ type SaveState =
   | { status: 'idle' }
   | { status: 'saving' }
   | { status: 'saved'; fileName: string }
-  | { status: 'error'; code: 'encrypted' | 'failed' };
+  | { status: 'error'; code: SaveErrorCode };
 
 /**
  * Samenvoegen: de bestanden in volgorde, met omhoog, omlaag en weghalen, bestanden
@@ -32,6 +39,7 @@ export function MergeView() {
     pages,
     activeSources,
     annotations,
+    redaction,
     undo,
     redo,
     unsaved,
@@ -67,6 +75,7 @@ export function MergeView() {
       );
       const options = {
         annotations,
+        redaction,
         ...(bookmarks.on
           ? {
               bookmarks: activeSources.map((source) => ({
