@@ -194,10 +194,52 @@ test.describe('omzetten: afbeeldingen naar PDF', () => {
       { name: 'a.png', mimeType: 'image/png', buffer: await makeImage(page, 'image/png', 20, 20) },
       { name: 'b.png', mimeType: 'image/png', buffer: await makeImage(page, 'image/png', 20, 20) },
     ]);
-    await page.getByRole('button', { name: 'a.png verwijderen' }).click();
+    await page.getByRole('button', { name: 'a.png weghalen' }).click();
     await expect(imagesList(page).getByRole('listitem')).toHaveCount(1);
-    await page.getByRole('button', { name: nl.convert.clear }).click();
+    await page.getByRole('button', { name: nl.document.close }).click();
     await expect(page.getByRole('heading', { name: nl.convert.pickTitle })).toBeVisible();
+  });
+
+  test('afbeeldingen sleep je naar een andere plek, en dat is ongedaan te maken', async ({
+    page,
+    isMobile,
+  }) => {
+    test.skip(isMobile, 'Aanraken werkt via hetzelfde greepje als bij Samenvoegen (daar getest)');
+    await openImages(page);
+    await page.locator('#images-file').setInputFiles(
+      await Promise.all(
+        ['een', 'twee', 'drie'].map(async (name) => ({
+          name: `${name}.png`,
+          mimeType: 'image/png',
+          buffer: await makeImage(page, 'image/png', 60, 40),
+        })),
+      ),
+    );
+    const items = imagesList(page).getByRole('listitem');
+    const order = () => imagesList(page).locator('.merge-list__name').allTextContents();
+    await expect(items).toHaveCount(3);
+    await imagesList(page).evaluate((el) => el.scrollIntoView({ block: 'center' }));
+
+    // Het greepje van de derde naar de bovenrand van de eerste.
+    const grip = (await items.nth(2).locator('.drag-handle').boundingBox())!;
+    const first = (await items.nth(0).boundingBox())!;
+    await page.mouse.move(grip.x + grip.width / 2, grip.y + grip.height / 2);
+    await page.mouse.down();
+    await page.mouse.move(first.x + 20, first.y + 6, { steps: 8 });
+    await expect(
+      imagesList(page).locator('.merge-list__item--drop-before, .merge-list__item--drop-after'),
+    ).toHaveCount(1);
+    await page.mouse.up();
+    expect(await order()).toEqual(['drie.png', 'een.png', 'twee.png']);
+
+    await page.getByRole('button', { name: nl.pages.undo }).click();
+    expect(await order()).toEqual(['een.png', 'twee.png', 'drie.png']);
+    await page.getByRole('button', { name: nl.pages.redo }).click();
+    expect(await order()).toEqual(['drie.png', 'een.png', 'twee.png']);
+
+    // De volgorde komt ook in de PDF: de eerste pagina is de staande afbeelding.
+    const download = await downloadVia(page, page.getByRole('button', { name: nl.convert.make }));
+    expect((await sizes((await download.path())!)).length).toBe(3);
   });
 
   test('op een telefoon staat de knop om de PDF te maken vast onderaan', async ({
@@ -229,9 +271,7 @@ test.describe('omzetten: PDF naar afbeeldingen', () => {
     await openPage(page, '/#/convert', { lang: 'nl' });
     await page.getByRole('button', { name: nl.convert.toImages }).click();
     await page.locator('#pdf-file').setInputFiles(await pdfFile('rapport.pdf', pages));
-    await expect(
-      page.getByText(`${pages} van ${pages} pagina’s worden omgezet`).first(),
-    ).toBeVisible({
+    await expect(page.getByRole('list', { name: nl.merge.files })).toBeVisible({
       timeout: 15_000,
     });
   }
@@ -274,9 +314,10 @@ test.describe('omzetten: PDF naar afbeeldingen', () => {
     await openPdf(page, 4);
     await page.getByLabel(nl.convert.jpeg).check();
     await page.getByLabel(nl.convert.dpi72).check();
-    await page.getByLabel(nl.convert.somePages).check();
-    await page.locator('#image-ranges').fill('2');
-    await expect(page.getByText('1 van 4 pagina’s worden omgezet').first()).toBeVisible();
+    const field = page.getByLabel('Pagina’s kiezen uit rapport.pdf');
+    await field.fill('2');
+    await field.press('Enter');
+    await expect(page.getByText(/Eén pagina wordt omgezet/).first()).toBeVisible();
     const download = await downloadVia(
       page,
       page.getByRole('button', { name: nl.convert.downloadOne }),
@@ -308,6 +349,38 @@ test.describe('omzetten: PDF naar afbeeldingen', () => {
     expect(pixel).toEqual([255, 255, 255, 255]);
   });
 
+  test('zet meerdere PDF’s tegelijk om, met dezelfde lijst als Samenvoegen', async ({ page }) => {
+    await openPage(page, '/#/convert', { lang: 'nl' });
+    await page.getByRole('button', { name: nl.convert.toImages }).click();
+    await page
+      .locator('#pdf-file')
+      .setInputFiles([await pdfFile('rapport.pdf', 2), await pdfFile('bijlage.pdf', 1)]);
+    const list = page.getByRole('list', { name: nl.merge.files });
+    await expect(list.getByRole('listitem')).toHaveCount(2, { timeout: 15_000 });
+    await expect(page.getByText(/3 pagina’s worden omgezet/).first()).toBeVisible();
+
+    // Een bestand toevoegen kan hier, zonder naar Samenvoegen te gaan.
+    await page.locator('#merge-add').setInputFiles(await pdfFile('extra.pdf', 1));
+    await expect(list.getByRole('listitem')).toHaveCount(3);
+    await expect(page.getByText(/4 pagina’s worden omgezet/).first()).toBeVisible();
+
+    // En de volgorde aanpassen: bijlage naar voren.
+    await page.getByRole('button', { name: 'bijlage.pdf omhoog' }).click();
+    await page.getByLabel(nl.convert.dpi72).check();
+    const download = await downloadVia(
+      page,
+      page.getByRole('button', { name: '4 afbeeldingen downloaden (ZIP)' }),
+    );
+    const files = unzipSync(new Uint8Array(readFileSync((await download.path())!)));
+    expect(Object.keys(files)).toEqual([
+      '1 - bijlage (pagina 1).png',
+      '2 - rapport (pagina 1).png',
+      '3 - rapport (pagina 2).png',
+      '4 - extra (pagina 1).png',
+    ]);
+    for (const bytes of Object.values(files)) expect(isPng(bytes)).toBe(true);
+  });
+
   test('volgt de volgorde en de verwijderde pagina’s van Pagina’s', async ({ page }) => {
     await openPdf(page, 3);
     await page.getByLabel(nl.convert.dpi72).check();
@@ -316,7 +389,7 @@ test.describe('omzetten: PDF naar afbeeldingen', () => {
     await page.getByRole('option').nth(1).click();
     await page.getByRole('button', { name: nl.pages.remove }).click();
     await page.goto('./#/convert');
-    await expect(page.getByText('2 van 2 pagina’s worden omgezet').first()).toBeVisible();
+    await expect(page.getByText(/2 pagina’s worden omgezet/).first()).toBeVisible();
     await expect(page.getByRole('button', { name: nl.convert.toImages })).toHaveAttribute(
       'aria-pressed',
       'true',

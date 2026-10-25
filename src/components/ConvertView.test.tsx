@@ -2,8 +2,9 @@
 import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/preact';
 import { unzipSync } from 'fflate';
 import type { PDFDocumentProxy } from 'pdfjs-dist';
+import { useEffect, useState } from 'preact/hooks';
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
-import { DocumentProvider } from '../document/DocumentContext';
+import { DocumentProvider, useDocument } from '../document/DocumentContext';
 import { messages } from '../i18n';
 import { LanguageProvider } from '../i18n/LanguageContext';
 import { renderPageImage } from '../pdf/images';
@@ -53,6 +54,7 @@ function setup() {
 }
 
 const png = (name: string) => new File([makePng(4, 4)], name, { type: 'image/png' });
+const pdfFile = (name: string, pages: number) => new File([`%PDF-1.7 ${pages}\n`], name);
 
 async function addImages(...files: File[]) {
   fireEvent.change(document.querySelector('input[type="file"]')!, { target: { files } });
@@ -62,17 +64,18 @@ async function addImages(...files: File[]) {
 const names = () =>
   within(screen.getByRole('list', { name: nl.convert.listLabel }))
     .getAllByRole('listitem')
-    .map((item) => item.querySelector('.image-item__name')!.textContent);
+    .map((item) => item.querySelector('.merge-list__name')!.textContent);
 
-async function openPdf(pages: number) {
-  fireEvent.click(screen.getByRole('button', { name: nl.convert.toImages }));
-  fireEvent.change(document.querySelector('#pdf-file')!, {
-    target: { files: [new File([`%PDF-1.7 ${pages}\n`], 'rapport.pdf')] },
-  });
-  await screen.findAllByText(`${pages} van ${pages} pagina’s worden omgezet`);
+const button = (name: string) => screen.getByRole('button', { name }) as HTMLButtonElement;
+
+/** Schakelt naar "PDF naar afbeeldingen" en opent de bestanden. */
+async function openPdfs(...files: File[]) {
+  fireEvent.click(button(nl.convert.toImages));
+  fireEvent.change(document.querySelector('#pdf-file')!, { target: { files } });
+  await screen.findByRole('list', { name: nl.merge.files });
 }
 
-const confirm = () => fireEvent.click(screen.getByRole('button', { name: nl.saveDialog.download }));
+const confirm = () => fireEvent.click(button(nl.saveDialog.download));
 
 beforeAll(() => {
   // jsdom kent geen adressen voor bestanden in het geheugen.
@@ -111,25 +114,74 @@ describe('Omzetten: afbeeldingen naar PDF', () => {
     expect(screen.getByRole('heading', { level: 2, name: '1 afbeelding' })).toBeTruthy();
   });
 
+  it('heeft dezelfde lijst als Samenvoegen: greepje, nummer, naam en dezelfde knoppen', async () => {
+    setup();
+    await addImages(png('a.png'), png('b.png'));
+    const item = within(screen.getByRole('list', { name: nl.convert.listLabel })).getAllByRole(
+      'listitem',
+    )[0]!;
+    expect(item.classList.contains('merge-list__item')).toBe(true);
+    expect(item.querySelector('.drag-handle')).not.toBeNull();
+    expect(item.querySelector('.merge-list__position')!.textContent).toBe('1');
+    expect(within(item).getByRole('button', { name: 'a.png weghalen' })).toBeTruthy();
+    // Dezelfde balk als bij Samenvoegen: toevoegen, ongedaan maken en opnieuw.
+    const toolbar = screen.getByRole('toolbar', { name: nl.convert.actions });
+    expect(within(toolbar).getByText(nl.convert.add)).toBeTruthy();
+    expect(within(toolbar).getByRole('button', { name: nl.pages.undo })).toBeTruthy();
+    expect(within(toolbar).getByRole('button', { name: nl.pages.redo })).toBeTruthy();
+  });
+
   it('verplaatst en verwijdert afbeeldingen', async () => {
     setup();
     await addImages(png('a.png'), png('b.png'), png('c.png'));
     expect(names()).toEqual(['a.png', 'b.png', 'c.png']);
 
-    fireEvent.click(screen.getByRole('button', { name: 'c.png omhoog' }));
+    fireEvent.click(button('c.png omhoog'));
     expect(names()).toEqual(['a.png', 'c.png', 'b.png']);
-    fireEvent.click(screen.getByRole('button', { name: 'a.png omlaag' }));
+    fireEvent.click(button('a.png omlaag'));
     expect(names()).toEqual(['c.png', 'a.png', 'b.png']);
     // De bovenste kan niet verder omhoog, de onderste niet verder omlaag.
-    expect(
-      (screen.getByRole('button', { name: 'c.png omhoog' }) as HTMLButtonElement).disabled,
-    ).toBe(true);
-    expect(
-      (screen.getByRole('button', { name: 'b.png omlaag' }) as HTMLButtonElement).disabled,
-    ).toBe(true);
+    expect(button('c.png omhoog').disabled).toBe(true);
+    expect(button('b.png omlaag').disabled).toBe(true);
 
-    fireEvent.click(screen.getByRole('button', { name: 'a.png verwijderen' }));
+    fireEvent.click(button('a.png weghalen'));
     expect(names()).toEqual(['c.png', 'b.png']);
+  });
+
+  it('maakt alles ongedaan en opnieuw, ook met Ctrl+Z en Ctrl+Y', async () => {
+    setup();
+    await addImages(png('a.png'), png('b.png'));
+    expect(button(nl.pages.undo).disabled).toBe(false);
+    expect(button(nl.pages.redo).disabled).toBe(true);
+
+    fireEvent.click(button('b.png weghalen'));
+    expect(names()).toEqual(['a.png']);
+    fireEvent.click(button(nl.pages.undo));
+    expect(names()).toEqual(['a.png', 'b.png']);
+    fireEvent.click(button(nl.pages.redo));
+    expect(names()).toEqual(['a.png']);
+
+    fireEvent.keyDown(document, { key: 'z', ctrlKey: true });
+    expect(names()).toEqual(['a.png', 'b.png']);
+    fireEvent.click(button('b.png omhoog'));
+    expect(names()).toEqual(['b.png', 'a.png']);
+    fireEvent.keyDown(document, { key: 'z', ctrlKey: true });
+    expect(names()).toEqual(['a.png', 'b.png']);
+    fireEvent.keyDown(document, { key: 'y', ctrlKey: true });
+    expect(names()).toEqual(['b.png', 'a.png']);
+    // Na een nieuwe wijziging valt "opnieuw" weg.
+    fireEvent.keyDown(document, { key: 'z', ctrlKey: true });
+    fireEvent.click(button('a.png omlaag'));
+    expect(button(nl.pages.redo).disabled).toBe(true);
+  });
+
+  it('ongedaan maken brengt ook toegevoegde afbeeldingen weer weg', async () => {
+    setup();
+    await addImages(png('a.png'));
+    fireEvent.change(document.querySelector('#images-add')!, { target: { files: [png('b.png')] } });
+    await waitFor(() => expect(names()).toEqual(['a.png', 'b.png']));
+    fireEvent.click(button(nl.pages.undo));
+    expect(names()).toEqual(['a.png']);
   });
 
   it('maakt één PDF met een voorgestelde naam die je kunt aanpassen', async () => {
@@ -137,7 +189,7 @@ describe('Omzetten: afbeeldingen naar PDF', () => {
     await addImages(png('a.png'), png('b.png'));
     fireEvent.click(screen.getByLabelText(nl.convert.a4));
     fireEvent.click(screen.getByLabelText(nl.convert.marginSmall));
-    fireEvent.click(screen.getByRole('button', { name: nl.convert.make }));
+    fireEvent.click(button(nl.convert.make));
     expect((screen.getByLabelText(nl.saveDialog.label) as HTMLInputElement).value).toBe(
       'afbeeldingen',
     );
@@ -153,7 +205,7 @@ describe('Omzetten: afbeeldingen naar PDF', () => {
   it('stelt bij één afbeelding de naam van die afbeelding voor', async () => {
     setup();
     await addImages(png('vakantie.2024.png'));
-    fireEvent.click(screen.getByRole('button', { name: nl.convert.make }));
+    fireEvent.click(button(nl.convert.make));
     expect((screen.getByLabelText(nl.saveDialog.label) as HTMLInputElement).value).toBe(
       'vakantie.2024',
     );
@@ -167,7 +219,7 @@ describe('Omzetten: afbeeldingen naar PDF', () => {
       'stuk.png',
     );
     await addImages(png('goed.png'), broken);
-    fireEvent.click(screen.getByRole('button', { name: nl.convert.make }));
+    fireEvent.click(button(nl.convert.make));
     confirm();
     expect((await screen.findByRole('alert')).textContent).toBe(
       'Afbeelding 2 (stuk.png) kon niet in de PDF worden gezet.',
@@ -178,25 +230,54 @@ describe('Omzetten: afbeeldingen naar PDF', () => {
   it('houdt de afbeeldingen vast als je tussendoor naar de andere soort wisselt', async () => {
     setup();
     await addImages(png('a.png'));
-    fireEvent.click(screen.getByRole('button', { name: nl.convert.toImages }));
+    fireEvent.click(button(nl.convert.toImages));
     expect(screen.getByRole('heading', { name: nl.document.openTitle })).toBeTruthy();
-    fireEvent.click(screen.getByRole('button', { name: nl.convert.toPdf }));
+    fireEvent.click(button(nl.convert.toPdf));
     expect(names()).toEqual(['a.png']);
   });
 
-  it('wist alles met de sluitknop en begint weer met het keuzevak', async () => {
+  it('sluit alles met de sluitknop en begint weer met het keuzevak', async () => {
     setup();
     await addImages(png('a.png'));
-    fireEvent.click(screen.getByRole('button', { name: nl.convert.clear }));
+    fireEvent.click(button(nl.document.close));
     expect(screen.getByRole('heading', { name: nl.convert.pickTitle })).toBeTruthy();
   });
 });
 
 describe('Omzetten: PDF naar afbeeldingen', () => {
+  it('heeft dezelfde bestandslijst en knoppen als Samenvoegen', async () => {
+    setup();
+    await openPdfs(pdfFile('rapport.pdf', 4), pdfFile('tweede.pdf', 2));
+    expect(
+      within(screen.getByRole('list', { name: nl.merge.files }))
+        .getAllByRole('listitem')
+        .map((item) => item.querySelector('.merge-list__name')!.textContent),
+    ).toEqual(['rapport.pdf', 'tweede.pdf']);
+    const item = within(screen.getByRole('list', { name: nl.merge.files })).getAllByRole(
+      'listitem',
+    )[1]!;
+    expect(item.querySelector('.drag-handle')).not.toBeNull();
+    expect(screen.getByLabelText('Pagina’s kiezen uit tweede.pdf')).toBeTruthy();
+    for (const name of [
+      `${nl.merge.showPages}: tweede.pdf`,
+      'tweede.pdf omhoog',
+      'tweede.pdf omlaag',
+      'tweede.pdf weghalen',
+      nl.pages.undo,
+      nl.pages.redo,
+    ]) {
+      expect(button(name), name).toBeTruthy();
+    }
+    expect(screen.getByText(nl.merge.add)).toBeTruthy();
+    // Rechts het resultaat, met alle pagina's uit beide bestanden.
+    expect(screen.getByRole('heading', { name: nl.merge.result })).toBeTruthy();
+    expect(screen.getAllByText('6 pagina’s worden omgezet').length).toBeGreaterThan(0);
+  });
+
   it('zet alle pagina’s standaard om, als PNG op 150 dpi, en downloadt ze als ZIP', async () => {
     setup();
-    await openPdf(3);
-    fireEvent.click(screen.getByRole('button', { name: '3 afbeeldingen downloaden (ZIP)' }));
+    await openPdfs(pdfFile('rapport.pdf', 3));
+    fireEvent.click(button('3 afbeeldingen downloaden (ZIP)'));
     expect((screen.getByLabelText(nl.saveDialog.label) as HTMLInputElement).value).toBe(
       'rapport (afbeeldingen)',
     );
@@ -221,30 +302,26 @@ describe('Omzetten: PDF naar afbeeldingen', () => {
     });
   });
 
-  it('zet de nummers in de ZIP vooraan aan met nullen, zodat ze goed sorteren', async () => {
+  it('zet de paginanummers in de ZIP aan met nullen, zodat ze goed sorteren', async () => {
     setup();
-    await openPdf(12);
-    fireEvent.click(screen.getByRole('button', { name: '12 afbeeldingen downloaden (ZIP)' }));
+    await openPdfs(pdfFile('rapport.pdf', 12));
+    fireEvent.click(button('12 afbeeldingen downloaden (ZIP)'));
     confirm();
     await waitFor(() => expect(downloadFile).toHaveBeenCalledTimes(1));
-    const names = Object.keys(unzipSync(vi.mocked(downloadFile).mock.calls[0]![0]));
-    expect(names[0]).toBe('rapport (pagina 01).png');
-    expect(names[11]).toBe('rapport (pagina 12).png');
+    const zipped = Object.keys(unzipSync(vi.mocked(downloadFile).mock.calls[0]![0]));
+    expect(zipped[0]).toBe('rapport (pagina 01).png');
+    expect(zipped[11]).toBe('rapport (pagina 12).png');
   });
 
-  it('zet alleen de gekozen pagina’s om; één pagina is een los bestand', async () => {
+  it('zet alleen de pagina’s van het bereik per bestand om; één pagina is een los bestand', async () => {
     setup();
-    await openPdf(5);
-    fireEvent.click(screen.getByLabelText(nl.convert.somePages));
-    // Nog niets ingevuld: geen foutmelding, maar ook niets om te downloaden.
-    expect(screen.queryByRole('alert')).toBeNull();
-    expect(
-      (screen.getByRole('button', { name: nl.convert.downloadOne }) as HTMLButtonElement).disabled,
-    ).toBe(true);
-
-    fireEvent.input(screen.getByLabelText(nl.convert.rangesLabel), { target: { value: '4' } });
-    expect(screen.getAllByText('1 van 5 pagina’s worden omgezet').length).toBeGreaterThan(0);
-    fireEvent.click(screen.getByRole('button', { name: nl.convert.downloadOne }));
+    await openPdfs(pdfFile('rapport.pdf', 5));
+    const field = screen.getByLabelText('Pagina’s kiezen uit rapport.pdf');
+    fireEvent.input(field, { target: { value: '4' } });
+    fireEvent.keyDown(field, { key: 'Enter' });
+    expect(screen.getAllByText(/Eén pagina wordt omgezet/).length).toBeGreaterThan(0);
+    fireEvent.click(button(nl.convert.downloadOne));
+    // De naam volgt het paginanummer in het bestand, niet de plek in het resultaat.
     expect((screen.getByLabelText(nl.saveDialog.label) as HTMLInputElement).value).toBe(
       'rapport (pagina 4)',
     );
@@ -255,24 +332,44 @@ describe('Omzetten: PDF naar afbeeldingen', () => {
     expect([fileName, type]).toEqual(['rapport (pagina 4).png', 'image/png']);
     expect(new TextDecoder().decode(bytes)).toBe('pagina 4');
     expect(vi.mocked(renderPageImage).mock.calls).toHaveLength(1);
+
+    // Ongedaan maken brengt de andere pagina's terug.
+    fireEvent.click(button(nl.pages.undo));
+    expect(screen.getAllByText(/5 pagina’s worden omgezet/).length).toBeGreaterThan(0);
   });
 
-  it('meldt een pagina die niet bestaat', async () => {
+  it('zet pagina’s uit meer bestanden om, in de volgorde van de lijst, met de plek vooraan', async () => {
     setup();
-    await openPdf(5);
-    fireEvent.click(screen.getByLabelText(nl.convert.somePages));
-    fireEvent.input(screen.getByLabelText(nl.convert.rangesLabel), { target: { value: '2, 9' } });
-    expect(screen.getByRole('alert').textContent).toBe(
-      'Pagina 9 bestaat niet: er zijn 5 pagina’s.',
+    await openPdfs(pdfFile('rapport.pdf', 10), pdfFile('tweede.pdf', 3));
+    // Het tweede bestand naar voren.
+    fireEvent.click(button('tweede.pdf omhoog'));
+    fireEvent.click(button('13 afbeeldingen downloaden (ZIP)'));
+    expect((screen.getByLabelText(nl.saveDialog.label) as HTMLInputElement).value).toBe(
+      'tweede (afbeeldingen)',
     );
-    expect(
-      (screen.getByRole('button', { name: nl.convert.downloadOne }) as HTMLButtonElement).disabled,
-    ).toBe(true);
+    confirm();
+
+    await waitFor(() => expect(downloadFile).toHaveBeenCalledTimes(1));
+    const zipped = Object.keys(unzipSync(vi.mocked(downloadFile).mock.calls[0]![0]));
+    expect(zipped).toHaveLength(13);
+    expect(zipped[0]).toBe('01 - tweede (pagina 1).png');
+    expect(zipped[2]).toBe('03 - tweede (pagina 3).png');
+    expect(zipped[3]).toBe('04 - rapport (pagina 1).png');
+    expect(zipped[12]).toBe('13 - rapport (pagina 10).png');
+  });
+
+  it('kiest met ⊞ pagina’s met miniaturen en toont dat in het rechtervak', async () => {
+    setup();
+    await openPdfs(pdfFile('rapport.pdf', 3));
+    fireEvent.click(button(`${nl.merge.showPages}: rapport.pdf`));
+    expect(screen.getByRole('heading', { name: 'rapport.pdf: pagina’s kiezen' })).toBeTruthy();
+    fireEvent.click(button(nl.merge.showResult));
+    expect(screen.getByRole('heading', { name: nl.merge.result })).toBeTruthy();
   });
 
   it('JPG krijgt de gekozen kwaliteit en resolutie, en eindigt op .jpg', async () => {
     setup();
-    await openPdf(2);
+    await openPdfs(pdfFile('rapport.pdf', 2));
     const quality = screen.getByLabelText(nl.convert.quality) as HTMLSelectElement;
     // Bij PNG doet kwaliteit niets.
     expect(quality.disabled).toBe(true);
@@ -280,9 +377,10 @@ describe('Omzetten: PDF naar afbeeldingen', () => {
     expect(quality.disabled).toBe(false);
     fireEvent.change(quality, { target: { value: 'high' } });
     fireEvent.click(screen.getByLabelText(nl.convert.dpi300));
-    fireEvent.click(screen.getByLabelText(nl.convert.somePages));
-    fireEvent.input(screen.getByLabelText(nl.convert.rangesLabel), { target: { value: '1' } });
-    fireEvent.click(screen.getByRole('button', { name: nl.convert.downloadOne }));
+    const field = screen.getByLabelText('Pagina’s kiezen uit rapport.pdf');
+    fireEvent.input(field, { target: { value: '1' } });
+    fireEvent.keyDown(field, { key: 'Enter' });
+    fireEvent.click(button(nl.convert.downloadOne));
     confirm();
 
     await waitFor(() => expect(downloadFile).toHaveBeenCalledTimes(1));
@@ -301,8 +399,8 @@ describe('Omzetten: PDF naar afbeeldingen', () => {
       reduced: true,
     });
     setup();
-    await openPdf(1);
-    fireEvent.click(screen.getByRole('button', { name: nl.convert.downloadOne }));
+    await openPdfs(pdfFile('rapport.pdf', 1));
+    fireEvent.click(button(nl.convert.downloadOne));
     confirm();
     expect(await screen.findByText(nl.convert.reduced)).toBeTruthy();
   });
@@ -310,38 +408,32 @@ describe('Omzetten: PDF naar afbeeldingen', () => {
   it('meldt een mislukte omzetting', async () => {
     vi.mocked(renderPageImage).mockRejectedValueOnce(new Error('kapot'));
     setup();
-    await openPdf(1);
-    fireEvent.click(screen.getByRole('button', { name: nl.convert.downloadOne }));
+    await openPdfs(pdfFile('rapport.pdf', 1));
+    fireEvent.click(button(nl.convert.downloadOne));
     confirm();
     expect((await screen.findByRole('alert')).textContent).toBe(nl.convert.imagesFailed);
     expect(downloadFile).not.toHaveBeenCalled();
   });
 
   it('begint bij “PDF naar afbeeldingen” als er al een PDF openstaat', async () => {
-    const { unmount } = render(
+    render(
       <LanguageProvider initial="nl">
         <DocumentProvider load={fakeLoad} unload={() => {}}>
           <OpenedConvert />
         </DocumentProvider>
       </LanguageProvider>,
     );
-    await screen.findAllByText('2 van 2 pagina’s worden omgezet');
-    expect(
-      screen.getByRole('button', { name: nl.convert.toImages }).getAttribute('aria-pressed'),
-    ).toBe('true');
-    unmount();
+    await screen.findAllByText('2 pagina’s worden omgezet');
+    expect(button(nl.convert.toImages).getAttribute('aria-pressed')).toBe('true');
   });
 });
-
-import { useEffect, useState } from 'preact/hooks';
-import { useDocument } from '../document/DocumentContext';
 
 /** Opent eerst een PDF (zoals bij een andere taak) en toont dan pas Omzetten. */
 function OpenedConvert() {
   const { open, doc } = useDocument();
   const [started, setStarted] = useState(false);
   useEffect(() => {
-    void open(new File([`%PDF-1.7 2\n`], 'rapport.pdf')).then(() => setStarted(true));
+    void open(pdfFile('rapport.pdf', 2)).then(() => setStarted(true));
   }, [open]);
   return started && doc.status === 'ready' ? <Workspace mode="convert" /> : null;
 }
