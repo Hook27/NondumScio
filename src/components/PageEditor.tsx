@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'preact/hooks';
 import { useDocument } from '../document/DocumentContext';
 import { useUndoShortcuts } from '../document/useUndoShortcuts';
 import { useI18n } from '../i18n/LanguageContext';
-import { format } from '../i18n/format';
+import { format, plural } from '../i18n/format';
 import {
   canRemove,
   movePages,
@@ -21,10 +21,11 @@ import {
   type Selection,
 } from '../pages/selection';
 import { PdfSaveError, buildPdf, downloadPdf, editedFileName, readSources } from '../pdf/save';
+import { FileList } from './FilesParts';
 import { Icon, IconButton, TipAnchor } from './Icon';
 import { SaveDialog } from './SaveDialog';
 import { useDragReorder } from './useDragReorder';
-import { Split, useInfo } from './WorkspaceParts';
+import { PaneHead, Split, useInfo } from './WorkspaceParts';
 import { Thumbnail } from './Thumbnail';
 
 type SaveState =
@@ -224,6 +225,7 @@ export function PageEditor() {
     <Split
       tools={
         <div class="page-editor">
+          <FileList />
           <div class="toolbar toolbar--tools" role="toolbar" aria-label={t.pages.toolbar}>
             <div class="toolbar__group">
               <IconButton
@@ -309,7 +311,7 @@ export function PageEditor() {
               />
               <label for="add-pdf" class="button button--secondary">
                 <Icon name="filePlus" />
-                {adding ? t.merge.adding : t.pages.addPdf}
+                {adding ? t.merge.adding : t.merge.add}
               </label>
               <TipAnchor tip={t.pages.extractTitle}>
                 <button
@@ -364,85 +366,93 @@ export function PageEditor() {
         </div>
       }
       view={
-        <div
-          ref={list}
-          class={`thumbs thumbs--selectable${dragging ? ' thumbs--dragging' : ''}`}
-          role="listbox"
-          aria-multiselectable="true"
-          aria-label={format(t.pages.list, { name })}
-          onKeyDown={onListKey}
-        >
-          {pages.map((page, index) => {
-            const isSelected = selected.has(page.key);
-            const classes = [
-              'page-option',
-              isSelected && 'page-option--selected',
-              dragging && isSelected && 'page-option--dragging',
-              dropAt === index && 'page-option--drop-before',
-              dropAt === pages.length && index === pages.length - 1 && 'page-option--drop-after',
-            ]
-              .filter(Boolean)
-              .join(' ');
-            const fileName = multiple ? sourceOf(page)?.name : undefined;
-            const label = [
-              format(t.document.page, { n: index + 1 }),
-              page.rotation ? format(t.pages.rotated, { n: page.rotation }) : '',
-              fileName ? format(t.pages.fromFile, { name: fileName }) : '',
-            ]
-              .filter(Boolean)
-              .join(', ');
-            return (
-              <div
-                key={`page-${page.key}`}
-                role="option"
-                class={classes}
-                data-index={index}
-                data-source={page.source + 1}
-                aria-selected={isSelected}
-                aria-label={label}
-                tabIndex={index === active ? 0 : -1}
-                {...handlers(page.key)}
-                onClick={(event) => {
-                  if (consumeClick()) return;
-                  setActive(index);
-                  // Het vinkje werkt als Ctrl-klik: erbij of eraf, zonder de rest te wissen.
-                  // Zo kun je ook op een telefoon (zonder Ctrl of Shift) meer pagina's kiezen.
-                  const viaCheckbox = (event.target as HTMLElement | null)?.closest('.select-box');
-                  setSelection((current) =>
-                    selectByClick(current, order, page.key, {
-                      toggle: Boolean(viaCheckbox) || event.ctrlKey || event.metaKey,
-                      range: !viaCheckbox && event.shiftKey,
-                    }),
-                  );
-                }}
-              >
-                <span class="drag-handle" aria-hidden="true">
-                  ⠿
-                </span>
-                {/* Alleen voor het oog: de keuze zelf staat al in aria-selected van de optie. */}
-                <span
-                  class={`select-box${isSelected ? ' select-box--checked' : ''}`}
-                  aria-hidden="true"
+        <>
+          <PaneHead
+            title={t.merge.result}
+            meta={plural(pages.length, t.document.pagesOne, t.document.pagesOther)}
+          />
+          <div
+            ref={list}
+            class={`thumbs thumbs--selectable${dragging ? ' thumbs--dragging' : ''}`}
+            role="listbox"
+            aria-multiselectable="true"
+            aria-label={format(t.pages.list, { name })}
+            onKeyDown={onListKey}
+          >
+            {pages.map((page, index) => {
+              const isSelected = selected.has(page.key);
+              const classes = [
+                'page-option',
+                isSelected && 'page-option--selected',
+                dragging && isSelected && 'page-option--dragging',
+                dropAt === index && 'page-option--drop-before',
+                dropAt === pages.length && index === pages.length - 1 && 'page-option--drop-after',
+              ]
+                .filter(Boolean)
+                .join(' ');
+              const fileName = multiple ? sourceOf(page)?.name : undefined;
+              const label = [
+                format(t.document.page, { n: index + 1 }),
+                page.rotation ? format(t.pages.rotated, { n: page.rotation }) : '',
+                fileName ? format(t.pages.fromFile, { name: fileName }) : '',
+              ]
+                .filter(Boolean)
+                .join(', ');
+              return (
+                <div
+                  key={`page-${page.key}`}
+                  role="option"
+                  class={classes}
+                  data-index={index}
+                  data-source={page.source + 1}
+                  aria-selected={isSelected}
+                  aria-label={label}
+                  tabIndex={index === active ? 0 : -1}
+                  {...handlers(page.key)}
+                  onClick={(event) => {
+                    if (consumeClick()) return;
+                    setActive(index);
+                    // Het vinkje werkt als Ctrl-klik: erbij of eraf, zonder de rest te wissen.
+                    // Zo kun je ook op een telefoon (zonder Ctrl of Shift) meer pagina's kiezen.
+                    const viaCheckbox = (event.target as HTMLElement | null)?.closest(
+                      '.select-box',
+                    );
+                    setSelection((current) =>
+                      selectByClick(current, order, page.key, {
+                        toggle: Boolean(viaCheckbox) || event.ctrlKey || event.metaKey,
+                        range: !viaCheckbox && event.shiftKey,
+                      }),
+                    );
+                  }}
                 >
-                  {isSelected ? '✓' : ''}
-                </span>
-                <Thumbnail
-                  pdf={sourceOf(page)!.pdf}
-                  pageNumber={page.source + 1}
-                  rotation={page.rotation}
-                  caption={index + 1}
-                  label={label}
-                  decorative
-                />
-                {fileName && (
-                  <span class="page-option__file" aria-hidden="true">
-                    {fileName}
+                  <span class="drag-handle" aria-hidden="true">
+                    ⠿
                   </span>
-                )}
-              </div>
-            );
-          })}
-        </div>
+                  {/* Alleen voor het oog: de keuze zelf staat al in aria-selected van de optie. */}
+                  <span
+                    class={`select-box${isSelected ? ' select-box--checked' : ''}`}
+                    aria-hidden="true"
+                  >
+                    {isSelected ? '✓' : ''}
+                  </span>
+                  <Thumbnail
+                    pdf={sourceOf(page)!.pdf}
+                    pageNumber={page.source + 1}
+                    rotation={page.rotation}
+                    caption={index + 1}
+                    label={label}
+                    decorative
+                  />
+                  {fileName && (
+                    <span class="page-option__file" aria-hidden="true">
+                      {fileName}
+                    </span>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        </>
       }
     />
   );

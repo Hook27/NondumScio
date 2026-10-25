@@ -74,6 +74,18 @@ describe('Samenvoegen', () => {
     expect(within(list()).getAllByRole('listitem')[1]!.textContent).toContain('3 pagina’s');
   });
 
+  it('zet toevoegen onderaan, naast de hoofdactie; bovenin staan ongedaan maken en opnieuw', async () => {
+    setup();
+    choose([pdfFile('a.pdf', 2)]);
+    await screen.findByRole('list', { name: nl.merge.files });
+    const toolbar = screen.getByRole('toolbar', { name: nl.merge.actions });
+    const wide = toolbar.querySelector('.toolbar__group--wide') as HTMLElement;
+    expect(within(wide).getByText(nl.merge.add)).toBeTruthy();
+    expect(within(wide).getByRole('button', { name: nl.merge.download })).toBeTruthy();
+    expect(within(toolbar).getByRole('button', { name: nl.pages.undo })).toBeTruthy();
+    expect(within(toolbar).getByRole('button', { name: nl.pages.redo })).toBeTruthy();
+  });
+
   it('zet bestanden omhoog en omlaag, en dat is ongedaan te maken', async () => {
     setup();
     choose([pdfFile('a.pdf', 2), pdfFile('b.pdf', 3), pdfFile('c.pdf', 1)]);

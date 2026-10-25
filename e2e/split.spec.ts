@@ -58,7 +58,9 @@ test.describe('splitsen', () => {
     const field = page.getByLabel(nl.split.rangesLabel);
     await field.fill('4-, 1 3');
     await expect(partsList(page).getByRole('listitem')).toHaveCount(2);
-    await expect(page.getByRole('region', { name: nl.split.unused })).toBeVisible();
+    // Pagina 2 zit in geen deel: gedempt in het raster, met dat label.
+    await expect(page.locator('.thumbs__off')).toHaveCount(1);
+    await expect(page.locator('.thumbs__off')).toContainText(nl.split.unused);
 
     const download = await downloadVia(
       page,
