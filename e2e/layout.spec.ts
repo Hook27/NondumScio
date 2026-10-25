@@ -94,6 +94,10 @@ test.describe('layout', () => {
     await page.setViewportSize({ width: 360, height: 740 });
     await openPage(page, '/', { lang: 'nl' });
     const title = page.getByRole('heading', { level: 1 });
+    // Op een telefoon staat de korte titel; de uitleg staat in de voettekst, niet meer boven de blokjes.
+    await expect(page.locator('.home-title__short')).toBeVisible();
+    await expect(page.locator('.home-title__short')).toHaveText(nl.home.titleShort);
+    await expect(page.locator('.site-main').getByText(nl.privacyNote)).toHaveCount(0);
     // De titel past op één regel (een regel is minder dan 1,6 keer de lettergrootte hoog).
     const { height, fontSize } = await title.evaluate((el) => ({
       height: el.getBoundingClientRect().height,

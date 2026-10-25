@@ -18,8 +18,10 @@ export const nl = {
   info: 'Uitleg',
   home: {
     title: 'Wat wil je doen met je PDF?',
-    intro: 'Alles gebeurt in je browser. Je bestanden worden nooit geüpload.',
+    // Korte vorm voor een smal scherm.
+    titleShort: 'Wat wil je doen?',
   },
+  privacyNote: 'Alles gebeurt in je browser. Je bestanden worden nooit geüpload.',
   document: {
     openTitle: 'Open een PDF',
     openHint:

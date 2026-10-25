@@ -1384,13 +1384,23 @@ h1 {
   }
 
   .home-title {
-    margin-bottom: 0.25rem;
-    font-size: min(1.5rem, 5.6vw);
+    margin-bottom: 0.75rem;
+    font-size: 1.5rem;
   }
 
-  .home-lead {
-    margin-bottom: 0.75rem;
-    font-size: 0.9rem;
+  .home-title .home-title__short {
+    display: inline;
+  }
+
+  /* Voor schermlezers blijft de volledige titel staan; zichtbaar is alleen de korte. */
+  .home-title__full {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    margin: -1px;
+    overflow: hidden;
+    clip: rect(0 0 0 0);
+    white-space: nowrap;
   }
 
   .card-grid {
@@ -1483,6 +1493,23 @@ h1 {
 /* Versienummer linksonder */
 .site-footer {
   padding: 0.75rem 1.25rem;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0.1rem 1rem;
+}
+
+.footer-note {
+  color: var(--text-muted);
+  font-size: 0.75rem;
+}
+
+.home-title {
+  margin-bottom: 1.25rem;
+}
+
+.home-title__short {
+  display: none;
 }
 
 .version {

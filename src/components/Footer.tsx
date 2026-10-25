@@ -11,6 +11,7 @@ export function Footer({ version = APP_VERSION }: { version?: string }) {
       <span class="version" title={`${t.version} ${version}`}>
         {version}
       </span>
+      <span class="footer-note">{t.privacyNote}</span>
     </footer>
   );
 }

@@ -15,8 +15,10 @@ export const en: Messages = {
   info: 'Help',
   home: {
     title: 'What do you want to do with your PDF?',
-    intro: 'Everything happens in your browser. Your files are never uploaded.',
+    // Short form for a narrow screen.
+    titleShort: 'What do you want to do?',
   },
+  privacyNote: 'Everything happens in your browser. Your files are never uploaded.',
   document: {
     openTitle: 'Open a PDF',
     openHint:

@@ -7,9 +7,12 @@ export function Home() {
   return (
     <>
       <h1 id="page-title" class="home-title" tabIndex={-1}>
-        {t.home.title}
+        {/* Op een smal scherm staat de korte vorm; schermlezers lezen altijd de volledige. */}
+        <span class="home-title__full">{t.home.title}</span>
+        <span class="home-title__short" aria-hidden="true">
+          {t.home.titleShort}
+        </span>
       </h1>
-      <p class="lead home-lead">{t.home.intro}</p>
       <ul class="card-grid">
         {TASK_IDS.map((id) => (
           <li key={id}>
