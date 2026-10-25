@@ -136,6 +136,9 @@ export function AnnotateView({ mode = 'annotate' }: { mode?: 'annotate' | 'redac
   const [preview, setPreview] = useState(false);
   const [progress, setProgress] = useState<{ done: number; total: number } | null>(null);
   const [report, setReport] = useState<RedactionReport | null>(null);
+  // Het laden van de tekstherkenning (0 tot 1), en een manier om te stoppen.
+  const [ocrLoading, setOcrLoading] = useState<number | null>(null);
+  const stopper = useRef<AbortController | null>(null);
 
   // Het concept (wat je nu tekent, sleept of typt) staat ook in een ref, zodat twee handelingen
   // vlak na elkaar (zoals een klik naast het tekstveld, waarna het veld zijn focus verliest)
@@ -328,6 +331,9 @@ export function AnnotateView({ mode = 'annotate' }: { mode?: 'annotate' | 'redac
     setSave({ status: 'saving' });
     setReport(null);
     setProgress(null);
+    setOcrLoading(null);
+    const controller = new AbortController();
+    stopper.current = controller;
     try {
       const files = new Map(
         (doc.status === 'ready' ? doc.sources : []).map((source) => [source.id, source.file]),
@@ -336,17 +342,26 @@ export function AnnotateView({ mode = 'annotate' }: { mode?: 'annotate' | 'redac
         annotations,
         redaction: {
           ...redaction,
-          onProgress: (done, total) => setProgress({ done, total }),
+          onProgress: (done, total) => {
+            setOcrLoading(null);
+            setProgress({ done, total });
+          },
           onDone: setReport,
+          onOcrStatus: setOcrLoading,
+          signal: controller.signal,
         },
       });
       setProgress(null);
+      setOcrLoading(null);
       downloadPdf(bytes, fileName);
       markSaved();
       setSave({ status: 'saved', fileName });
     } catch (error) {
       setProgress(null);
+      setOcrLoading(null);
       setSave({ status: 'error', code: error instanceof PdfSaveError ? error.code : 'failed' });
+    } finally {
+      stopper.current = null;
     }
   };
 
@@ -491,6 +506,15 @@ export function AnnotateView({ mode = 'annotate' }: { mode?: 'annotate' | 'redac
                 <label class="merge-option">
                   <input
                     type="checkbox"
+                    checked={redaction.ocr}
+                    onChange={(event) => setRedaction({ ocr: event.currentTarget.checked })}
+                  />
+                  {rt.ocr}
+                </label>
+                {redaction.ocr && <p class="page-editor__status">{rt.ocrHelp}</p>}
+                <label class="merge-option">
+                  <input
+                    type="checkbox"
                     checked={preview}
                     onChange={(event) => setPreview(event.currentTarget.checked)}
                   />
@@ -591,35 +615,54 @@ export function AnnotateView({ mode = 'annotate' }: { mode?: 'annotate' | 'redac
 
           <div class="tools-status">
             <p class="page-editor__status" aria-live="polite">
-              {progress
-                ? format(rt.progress, progress)
-                : [
-                    used.length === 0
-                      ? redactMode
-                        ? rt.none
-                        : t.edit.none
-                      : redactMode
-                        ? plural(used.length, rt.countOne, format(rt.count, { n: used.length }))
-                        : plural(
-                            used.length,
-                            t.edit.countOne,
-                            format(t.edit.count, { n: used.length }),
-                          ),
-                    unsaved && t.pages.unsaved,
-                  ]
-                    .filter(Boolean)
-                    .join(' · ')}
+              {ocrLoading !== null
+                ? format(rt.ocrLoading, { percent: Math.round(ocrLoading * 100) })
+                : progress
+                  ? format(rt.progress, progress)
+                  : [
+                      used.length === 0
+                        ? redactMode
+                          ? rt.none
+                          : t.edit.none
+                        : redactMode
+                          ? plural(used.length, rt.countOne, format(rt.count, { n: used.length }))
+                          : plural(
+                              used.length,
+                              t.edit.countOne,
+                              format(t.edit.count, { n: used.length }),
+                            ),
+                      unsaved && t.pages.unsaved,
+                    ]
+                      .filter(Boolean)
+                      .join(' · ')}
             </p>
             {info.button}
           </div>
+          {redactMode && busy && (
+            <div class="annotate__row">
+              <button
+                type="button"
+                class="button button--secondary"
+                onClick={() => stopper.current?.abort()}
+              >
+                {rt.stop}
+              </button>
+            </div>
+          )}
           {info.panel}
           {redactMode && redactedPages > 0 && (
             <p class="page-editor__status">
-              {plural(
-                redactedPages,
-                rt.affectedOne,
-                format(rt.affectedOther, { n: redactedPages }),
-              )}
+              {redaction.ocr
+                ? plural(
+                    redactedPages,
+                    rt.affectedOcrOne,
+                    format(rt.affectedOcrOther, { n: redactedPages }),
+                  )
+                : plural(
+                    redactedPages,
+                    rt.affectedOne,
+                    format(rt.affectedOther, { n: redactedPages }),
+                  )}
             </p>
           )}
           {!redactMode && anyRedaction && (
@@ -647,11 +690,27 @@ export function AnnotateView({ mode = 'annotate' }: { mode?: 'annotate' | 'redac
               {format(t.pages.saved, { name: save.fileName })}
               {report && report.pages.length > 0 && (
                 <>
-                  {' '}
-                  {plural(
-                    report.pages.length,
-                    rt.verifiedOne,
-                    format(rt.verifiedOther, { n: report.pages.length }),
+                  {report.pages.length > report.recognized.length && (
+                    <>
+                      {' '}
+                      {plural(
+                        report.pages.length - report.recognized.length,
+                        rt.verifiedOne,
+                        format(rt.verifiedOther, {
+                          n: report.pages.length - report.recognized.length,
+                        }),
+                      )}
+                    </>
+                  )}
+                  {report.recognized.length > 0 && (
+                    <>
+                      {' '}
+                      {plural(
+                        report.recognized.length,
+                        rt.recognizedOne,
+                        format(rt.recognizedOther, { n: report.recognized.length }),
+                      )}
+                    </>
                   )}
                   {report.reduced && ` ${t.convert.reduced}`}
                 </>

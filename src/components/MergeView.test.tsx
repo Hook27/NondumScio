@@ -262,7 +262,7 @@ describe('Samenvoegen', () => {
     await waitFor(() => expect(downloadPdf).toHaveBeenCalledTimes(1));
     expect(vi.mocked(buildPdf).mock.calls[0]![2]).toEqual({
       annotations: [],
-      redaction: { dpi: 300, stripMetadata: true },
+      redaction: { dpi: 300, stripMetadata: true, ocr: false },
     });
   });
 
@@ -288,7 +288,7 @@ describe('Samenvoegen', () => {
     await waitFor(() => expect(downloadPdf).toHaveBeenCalledTimes(1));
     expect(vi.mocked(buildPdf).mock.calls[0]![2]).toEqual({
       annotations: [],
-      redaction: { dpi: 300, stripMetadata: true },
+      redaction: { dpi: 300, stripMetadata: true, ocr: false },
       bookmarks: [
         { doc: 2, title: 'Bijlage A' },
         { doc: 1, title: 'offerte' },

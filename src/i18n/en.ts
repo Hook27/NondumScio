@@ -70,6 +70,7 @@ export const en: Messages = {
       failed: 'Saving failed. Please try again.',
       redaction:
         'Redacting failed or could not be verified. Nothing was downloaded; try again or choose a lower resolution.',
+      cancelled: 'Stopped. Nothing was downloaded.',
     },
   },
   merge: {
@@ -261,6 +262,17 @@ export const en: Messages = {
     progress: 'Redacting: {done} of {total} pages…',
     verifiedOne: 'Verified: 1 page has no text left.',
     verifiedOther: 'Verified: {n} pages have no text left.',
+    ocr: 'Recognize text (OCR) on pages with a box',
+    ocrHelp:
+      'After blacking out, the text on the image is recognized (Dutch and English) and added invisibly, so the page stays searchable. Black stays black: whatever was under a box does not end up in it. This takes longer; the first time, the recognition is loaded. Recognized text can contain mistakes. It also applies when you download from Pages, Merge, Split or Convert.',
+    ocrLoading: 'Loading text recognition… {percent}%',
+    stop: 'Stop',
+    affectedOcrOne: '1 page becomes an image with invisible, recognized text.',
+    affectedOcrOther: '{n} pages become an image with invisible, recognized text.',
+    recognizedOne:
+      'Recognized text was added to 1 page; verified that none of it lies in a black box.',
+    recognizedOther:
+      'Recognized text was added to {n} pages; verified that none of it lies in a black box.',
     suffix: 'redacted',
   },
   saveDialog: {

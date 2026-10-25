@@ -15,6 +15,8 @@ import {
   RedactionError,
   assertImageOnly,
   redactPdf,
+  type OcrEngine,
+  type OcrWord,
   type RasterSession,
 } from './redact';
 import { buildPdf } from './save';
@@ -54,6 +56,10 @@ function fakeRaster() {
     png: makePng(4, 4),
     width: 600,
     height: 800,
+    pixelWidth: 600,
+    pixelHeight: 800,
+    // Het zwarte vlak van het standaardvak (x 40, y 60, 200 breed, 40 hoog), met de marge.
+    blackouts: [{ x0: 39, y0: 59, x1: 241, y1: 101 }],
     reduced: false,
   }));
   const close = vi.fn();
@@ -62,6 +68,22 @@ function fakeRaster() {
 }
 
 const noVerify = async () => {};
+
+/** Een nep-herkenner: geeft altijd dezelfde woorden terug en onthoudt wat er gevraagd werd. */
+function fakeOcr(words: OcrWord[]) {
+  const recognize = vi.fn<OcrEngine['recognize']>(async () => words);
+  const close = vi.fn();
+  const engine: OcrEngine = { recognize, close };
+  return { recognize, close, openOcr: async () => engine };
+}
+
+const word = (text: string, x0: number, y0: number, x1: number, y1: number): OcrWord => ({
+  text,
+  x0,
+  y0,
+  x1,
+  y1,
+});
 
 /** Alles wat een bestand verraadt: de ruwe bytes en elke uitgepakte stroom, als tekst. */
 async function everything(bytes: Uint8Array): Promise<string> {
@@ -245,7 +267,7 @@ describe('redactPdf: echt weglakken', () => {
         box(pages[0]!.key, { id: 2, x: 300 }),
         box(pages[2]!.key, { id: 3 }),
       ],
-      { dpi: 200, stripMetadata: true },
+      { ...DEFAULT_REDACTION, dpi: 200 },
       raster,
       noVerify,
       (pages) => [pages[0]!, pages[1]!, { ...pages[2]!, rotation: 90 as const }],
@@ -298,6 +320,9 @@ describe('redactPdf: echt weglakken', () => {
       png: makePng(2, 2),
       width: 600,
       height: 800,
+      pixelWidth: 2,
+      pixelHeight: 2,
+      blackouts: [],
       reduced: true,
     });
     const source = await makeSource(['a', 'b', 'c']);
@@ -357,5 +382,153 @@ describe('assertImageOnly: de eigen controle op het resultaat', () => {
   it('weigert een pagina met tekst, een lettertype of een aantekening', async () => {
     const source = await makeSource(['gewone tekst']);
     await expect(assertImageOnly(source, [0])).rejects.toBeInstanceOf(RedactionError);
+  });
+});
+
+describe('redigeren met tekstherkenning (OCR)', () => {
+  const withOcr = { ...DEFAULT_REDACTION, ocr: true };
+
+  async function runOcr(
+    words: OcrWord[],
+    extra: { signal?: AbortSignal; openOcr?: () => Promise<OcrEngine> } = {},
+  ) {
+    const source = await makeSource(['a', 'b']);
+    const pages = initialPages(2);
+    const built = await buildPdf(new Map([[0, source]]), pages);
+    const raster = fakeRaster();
+    const ocr = fakeOcr(words);
+    const result = await redactPdf(built, pages, [box(pages[0]!.key)], withOcr, undefined, {
+      openRaster: raster.openRaster,
+      openOcr: extra.openOcr ?? ocr.openOcr,
+      verify: noVerify,
+      verifyText: noVerify,
+      signal: extra.signal,
+    });
+    return { result, ocr, raster };
+  }
+
+  it('is standaard uit', () => {
+    expect(DEFAULT_REDACTION.ocr).toBe(false);
+  });
+
+  it('zet de herkende woorden onzichtbaar op de pagina en laat die in het zwart weg', async () => {
+    const { result, ocr } = await runOcr([
+      word('Openbaar', 300, 300, 400, 330),
+      // Rommel die OCR in het zwarte vak "ziet": dit mag er niet in.
+      word('GEHEIM-4711', 60, 65, 200, 95),
+    ]);
+    const content = await pageContent(result.bytes, 0);
+    expect(content).toContain('3 Tr');
+    expect(content).toContain(hex('Openbaar'));
+    expect(content).not.toContain(hex('GEHEIM'));
+    expect(await everything(result.bytes)).not.toContain(SECRET);
+    expect(result.report).toMatchObject({ pages: [0], recognized: [0] });
+    expect(ocr.recognize).toHaveBeenCalledTimes(1);
+    expect(ocr.recognize.mock.calls[0]![1]).toBe(72);
+    expect(ocr.close).toHaveBeenCalledTimes(1);
+  });
+
+  it('laat de pagina zonder vak zoals hij was, en zonder herkenning', async () => {
+    const { result } = await runOcr([word('Openbaar', 300, 300, 400, 330)]);
+    expect(await pageContent(result.bytes, 1)).not.toContain('3 Tr');
+  });
+
+  it('gebruikt geen herkenner zolang OCR uit staat', async () => {
+    const source = await makeSource(['a']);
+    const pages = initialPages(1);
+    const built = await buildPdf(new Map([[0, source]]), pages);
+    const openOcr = vi.fn(async () => fakeOcr([]).openOcr());
+    const result = await redactPdf(
+      built,
+      pages,
+      [box(pages[0]!.key)],
+      DEFAULT_REDACTION,
+      undefined,
+      {
+        openRaster: fakeRaster().openRaster,
+        openOcr,
+        verify: noVerify,
+      },
+    );
+    expect(openOcr).not.toHaveBeenCalled();
+    expect(result.report.recognized).toEqual([]);
+    expect(await pageContent(result.bytes, 0)).not.toContain('BT');
+  });
+
+  it('geeft niets terug als de herkenning mislukt, en sluit alles', async () => {
+    const ocr = fakeOcr([]);
+    ocr.recognize.mockRejectedValueOnce(new Error('kapot'));
+    const source = await makeSource(['a']);
+    const pages = initialPages(1);
+    const built = await buildPdf(new Map([[0, source]]), pages);
+    const raster = fakeRaster();
+    await expect(
+      redactPdf(built, pages, [box(pages[0]!.key)], withOcr, undefined, {
+        openRaster: raster.openRaster,
+        openOcr: ocr.openOcr,
+      }),
+    ).rejects.toMatchObject({ code: 'ocr' });
+    expect(raster.close).toHaveBeenCalledTimes(1);
+    expect(ocr.close).toHaveBeenCalledTimes(1);
+  });
+
+  it('stopt als er al om gestopt is', async () => {
+    const controller = new AbortController();
+    controller.abort();
+    await expect(runOcr([], { signal: controller.signal })).rejects.toMatchObject({
+      code: 'cancelled',
+    });
+  });
+
+  it('stopt ook midden in een herkenning', async () => {
+    const controller = new AbortController();
+    const stuck = { recognize: () => new Promise<OcrWord[]>(() => {}), close: vi.fn() };
+    const running = runOcr([], { signal: controller.signal, openOcr: async () => stuck });
+    setTimeout(() => controller.abort(), 50);
+    await expect(running).rejects.toMatchObject({ code: 'cancelled' });
+    expect(stuck.close).toHaveBeenCalledTimes(1);
+  });
+
+  it('geeft de controle op de tekst de herkende woorden en de zwarte vlakken', async () => {
+    const source = await makeSource(['a']);
+    const pages = initialPages(1);
+    const built = await buildPdf(new Map([[0, source]]), pages);
+    const verifyText = vi.fn(async () => {});
+    await redactPdf(built, pages, [box(pages[0]!.key)], withOcr, undefined, {
+      openRaster: fakeRaster().openRaster,
+      openOcr: fakeOcr([word('Open', 300, 300, 340, 330), word('baar', 350, 300, 400, 330)])
+        .openOcr,
+      verifyText,
+    });
+    expect(verifyText).toHaveBeenCalledWith(expect.any(Uint8Array), [
+      { pageIndex: 0, text: 'Openbaar', forbidden: [{ x0: 39, y0: 59, x1: 241, y1: 101 }] },
+    ]);
+  });
+});
+
+describe('assertImageOnly met herkende tekst', () => {
+  it('accepteert onzichtbare tekst alleen op pagina’s waar die mag', async () => {
+    const source = await makeSource(['a']);
+    const pages = initialPages(1);
+    const built = await buildPdf(new Map([[0, source]]), pages);
+    const { bytes } = await redactPdf(
+      built,
+      pages,
+      [box(pages[0]!.key)],
+      { ...DEFAULT_REDACTION, ocr: true },
+      undefined,
+      {
+        openRaster: fakeRaster().openRaster,
+        openOcr: fakeOcr([word('Openbaar', 300, 300, 400, 330)]).openOcr,
+        verifyText: noVerify,
+      },
+    );
+    await expect(assertImageOnly(bytes, [0], new Set([0]))).resolves.toBeUndefined();
+    await expect(assertImageOnly(bytes, [0])).rejects.toBeInstanceOf(RedactionError);
+  });
+
+  it('weigert zichtbare tekst, ook op een pagina waar tekst mag', async () => {
+    const source = await makeSource(['gewone tekst']);
+    await expect(assertImageOnly(source, [0], new Set([0]))).rejects.toBeInstanceOf(RedactionError);
   });
 });

@@ -6,6 +6,8 @@ import {
   type BoxAnnotation,
 } from '../annotations/model';
 import type { PageItem, Rotation } from '../pages/plan';
+import { addTextLayer, squash, wordsOutside, type OcrWord } from './ocrText';
+import type { PixelRect } from './paint';
 import { DEFAULT_REDACTION, DPI_CHOICES, type RedactionOptions } from './redactOptions';
 
 /**
@@ -16,18 +18,43 @@ import { DEFAULT_REDACTION, DPI_CHOICES, type RedactionOptions } from './redactO
  * pagina's, bladwijzers, formulieren, bijlagen en eerdere versies komen er dus niet in mee.
  */
 
-export { DEFAULT_REDACTION, DPI_CHOICES, type RedactionOptions };
+export { DEFAULT_REDACTION, DPI_CHOICES, type OcrWord, type RedactionOptions };
 
 /** Redigeren mislukte of kon niet worden gecontroleerd: er wordt dan niets gedownload. */
 export class RedactionError extends Error {
-  constructor(readonly code: 'raster' | 'verify') {
+  constructor(readonly code: 'raster' | 'verify' | 'ocr' | 'cancelled') {
     super(`Redigeren mislukt: ${code}`);
     this.name = 'RedactionError';
   }
 }
 
-/** Eén pagina als afbeelding: de PNG, de afmetingen in punten, en of hij kleiner moest dan gevraagd. */
-export type RasterPage = { png: Uint8Array; width: number; height: number; reduced: boolean };
+/**
+ * Eén pagina als afbeelding: de PNG, de afmetingen in punten en in beeldpunten, de zwarte vlakken
+ * (in beeldpunten) en of de afbeelding kleiner moest dan gevraagd.
+ */
+export type RasterPage = {
+  png: Uint8Array;
+  width: number;
+  height: number;
+  pixelWidth: number;
+  pixelHeight: number;
+  blackouts: PixelRect[];
+  reduced: boolean;
+};
+
+/** Tekstherkenning: geeft de woorden op een afbeelding, met hun plek in beeldpunten. */
+export type OcrEngine = {
+  recognize: (png: Uint8Array, dpi: number) => Promise<OcrWord[]>;
+  close: () => void;
+};
+
+/** Wat er op een pagina met herkende tekst moet staan, en waar geen tekst mag liggen (punten, linksboven). */
+export type TextCheck = {
+  pageIndex: number;
+  /** De verwachte tekst zonder witruimte. */
+  text: string;
+  forbidden: PixelRect[];
+};
 
 /** Een geopend bestand waarvan pagina's als afbeelding (met de zwarte vakken) gemaakt worden. */
 export type RasterSession = {
@@ -46,13 +73,34 @@ export type RedactionDeps = {
   openRaster?: (bytes: Uint8Array) => Promise<RasterSession>;
   /** Controleert het resultaat; standaard met pdf.js. Gooit een fout als er toch tekst staat. */
   verify?: (bytes: Uint8Array, pageIndexes: number[]) => Promise<void>;
+  /** Opent de tekstherkenning; standaard tesseract.js (zie `ocr.ts`). */
+  openOcr?: (onStatus?: (progress: number) => void) => Promise<OcrEngine>;
+  /** Controleert de pagina's met herkende tekst; standaard met pdf.js. */
+  verifyText?: (bytes: Uint8Array, checks: TextCheck[]) => Promise<void>;
+  /** Meldt hoever het laden van de herkenner is (0 tot 1). */
+  onOcrStatus?: (progress: number) => void;
+  /** Om te stoppen: tussen de pagina's, en ook midden in een herkenning. */
+  signal?: AbortSignal;
 };
 
 export type RedactionReport = {
   /** De plekken (vanaf 0) van de pagina's die afbeelding zijn geworden. */
   pages: number[];
+  /** Daarvan de pagina's waar herkende tekst onzichtbaar op is gezet. */
+  recognized: number[];
   reduced: boolean;
 };
+
+/** Wacht op `promise`, maar geeft op tijd op als er gestopt wordt. */
+function unlessAborted<T>(promise: Promise<T>, signal?: AbortSignal): Promise<T> {
+  if (!signal) return promise;
+  return new Promise<T>((resolve, reject) => {
+    const stop = () => reject(new RedactionError('cancelled'));
+    if (signal.aborted) return stop();
+    signal.addEventListener('abort', stop, { once: true });
+    promise.then(resolve, reject).finally(() => signal.removeEventListener('abort', stop));
+  });
+}
 
 /**
  * Maakt van een klaar bestand (het resultaat van het pagina-plan) een bestand waarin de pagina's
@@ -76,7 +124,7 @@ export async function redactPdf(
   const affected = boxesPerPage.flatMap((boxes, index) => (boxes.length > 0 ? [index] : []));
   const stripOnly = affected.length === 0 && copyAll && options.stripMetadata;
   if (affected.length === 0 && !stripOnly) {
-    return { bytes, report: { pages: [], reduced: false } };
+    return { bytes, report: { pages: [], recognized: [], reduced: false } };
   }
 
   const lib = await import('pdf-lib');
@@ -96,6 +144,9 @@ export async function redactPdf(
   const session = await openRaster(bytes);
   let reduced = false;
   let done = 0;
+  let engine: OcrEngine | undefined;
+  let font: Awaited<ReturnType<PDFDocument['embedFont']>> | undefined;
+  const checks: TextCheck[] = [];
   try {
     // Pagina's zonder vak in één keer kopiëren (gedeelde lettertypen en afbeeldingen blijven
     // dan gedeeld); een pagina met vak wordt een afbeelding.
@@ -108,6 +159,7 @@ export async function redactPdf(
       run = [];
     };
     for (let index = 0; index < pages.length; index += 1) {
+      if (deps.signal?.aborted) throw new RedactionError('cancelled');
       const boxes = boxesPerPage[index]!;
       if (boxes.length === 0) {
         run.push(index);
@@ -129,6 +181,33 @@ export async function redactPdf(
       const image = await out.embedPng(raster.png);
       const page = out.addPage([raster.width, raster.height]);
       page.drawImage(image, { x: 0, y: 0, width: raster.width, height: raster.height });
+      if (options.ocr) {
+        // Herkennen op de afbeelding die al zwart is gemaakt: wat onder een vak stond, bestaat daar niet meer.
+        let words: OcrWord[];
+        try {
+          engine ??= await unlessAborted(
+            (deps.openOcr ?? (await import('./ocr')).openOcr)(deps.onOcrStatus),
+            deps.signal,
+          );
+          const dpi = Math.round((raster.pixelWidth / raster.width) * 72);
+          words = await unlessAborted(engine.recognize(raster.png, dpi), deps.signal);
+        } catch (error) {
+          throw error instanceof RedactionError ? error : new RedactionError('ocr');
+        }
+        font ??= await out.embedFont(lib.StandardFonts.Helvetica);
+        const factor = raster.width / raster.pixelWidth;
+        const layer = addTextLayer(lib, page, font, wordsOutside(words, raster.blackouts), factor);
+        checks.push({
+          pageIndex: index,
+          text: squash(layer.words.join('')),
+          forbidden: raster.blackouts.map((rect) => ({
+            x0: rect.x0 * factor,
+            y0: rect.y0 * factor,
+            x1: rect.x1 * factor,
+            y1: rect.y1 * factor,
+          })),
+        });
+      }
       done += 1;
       onProgress?.(done, pages.length);
       // Tussen de pagina's krijgt de browser even lucht, zodat de pagina blijft reageren.
@@ -137,14 +216,24 @@ export async function redactPdf(
     await flush();
   } finally {
     session.close();
+    engine?.close();
   }
 
   const result = await out.save();
-  // Eerst de eigen controle op de opbouw, dan (met pdf.js) of er echt geen tekst meer staat.
-  await assertImageOnly(result, affected);
-  if (deps.verify) await deps.verify(result, affected);
-  else await (await import('./rasterize')).verifyNoText(result, affected);
-  return { bytes: result, report: { pages: affected, reduced } };
+  // Eerst de eigen controle op de opbouw, dan (met pdf.js) of er echt geen tekst meer staat; op
+  // pagina's met herkende tekst: of er niets anders staat dan die tekst, en niet in een zwart vak.
+  const recognized = checks.map((check) => check.pageIndex);
+  await assertImageOnly(result, affected, new Set(recognized));
+  const plain = affected.filter((index) => !recognized.includes(index));
+  if (plain.length > 0) {
+    if (deps.verify) await deps.verify(result, plain);
+    else await (await import('./rasterize')).verifyNoText(result, plain);
+  }
+  if (checks.length > 0) {
+    if (deps.verifyText) await deps.verifyText(result, checks);
+    else await (await import('./rasterize')).verifyText(result, checks);
+  }
+  return { bytes: result, report: { pages: affected, recognized, reduced } };
 }
 
 /** Titel, auteur en dergelijke overnemen als de gebruiker daarvoor kiest. */
@@ -164,7 +253,12 @@ function copyInfo(source: PDFDocument, out: PDFDocument) {
  * afbeelding: geen lettertypen, geen tekstopdrachten, geen aantekeningen of koppelingen, en geen
  * miniatuur of andere extra's in de pagina. Gooit een fout als er iets anders staat.
  */
-export async function assertImageOnly(bytes: Uint8Array, pageIndexes: readonly number[]) {
+export async function assertImageOnly(
+  bytes: Uint8Array,
+  pageIndexes: readonly number[],
+  /** Pagina's met herkende tekst: daar mogen onzichtbare tekst en één standaardlettertype op staan. */
+  textPages: ReadonlySet<number> = new Set(),
+) {
   const { PDFArray, PDFDict, PDFDocument, PDFName, PDFRawStream, decodePDFRawStream } =
     await import('pdf-lib');
   const doc = await PDFDocument.load(bytes, { updateMetadata: false });
@@ -176,6 +270,7 @@ export async function assertImageOnly(bytes: Uint8Array, pageIndexes: readonly n
     (value instanceof PDFArray && value.size() === 0) ||
     (value instanceof PDFDict && value.keys().length === 0);
   for (const index of pageIndexes) {
+    const withText = textPages.has(index);
     const page = doc.getPage(index);
     for (const key of page.node.keys()) {
       const name = key.decodeText();
@@ -189,7 +284,21 @@ export async function assertImageOnly(bytes: Uint8Array, pageIndexes: readonly n
     for (const key of resources.keys()) {
       const name = key.decodeText();
       if (name !== 'XObject' && !emptyOnly.has(name)) throw new RedactionError('verify');
-      if (emptyOnly.has(name) && !isEmpty(doc.context.lookup(resources.get(key)))) {
+      const fonts = name === 'Font' ? doc.context.lookup(resources.get(key)) : undefined;
+      if (withText && fonts instanceof PDFDict) {
+        // Alleen het standaardlettertype Helvetica, zonder ingebouwd lettertypebestand.
+        for (const [, ref] of fonts.entries()) {
+          const font = doc.context.lookup(ref);
+          if (
+            !(font instanceof PDFDict) ||
+            font.get(PDFName.of('BaseFont')) !== PDFName.of('Helvetica') ||
+            font.get(PDFName.of('Subtype')) !== PDFName.of('Type1') ||
+            font.has(PDFName.of('FontDescriptor'))
+          ) {
+            throw new RedactionError('verify');
+          }
+        }
+      } else if (emptyOnly.has(name) && !isEmpty(doc.context.lookup(resources.get(key)))) {
         throw new RedactionError('verify');
       }
     }
@@ -199,8 +308,12 @@ export async function assertImageOnly(bytes: Uint8Array, pageIndexes: readonly n
       const stream = ref && doc.context.lookup(ref);
       if (!(stream instanceof PDFRawStream)) throw new RedactionError('verify');
       const text = new TextDecoder('latin1').decode(decodePDFRawStream(stream).decode());
-      // Een tekstblok begint met BT; er mag alleen een afbeelding getekend worden.
-      if (/\bBT\b/.test(text) || /\bTj\b|\bTJ\b/.test(text)) throw new RedactionError('verify');
+      // Een tekstblok begint met BT. Zonder herkende tekst mag er alleen een afbeelding getekend
+      // worden; met herkende tekst moet alle tekst onzichtbaar zijn (weergavemodus 3).
+      const hasText = /\bBT\b/.test(text) || /\bTj\b|\bTJ\b/.test(text);
+      if (hasText && (!withText || !/\b3 Tr\b/.test(text) || /\b[0124567] Tr\b/.test(text))) {
+        throw new RedactionError('verify');
+      }
     }
     // Wat er in de hulpbronnen als afbeelding staat, is een afbeelding en niets anders.
     const xobjects = resources.lookupMaybe(PDFName.of('XObject'), PDFDict);
