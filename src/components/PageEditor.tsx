@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'preact/hooks';
+import { hasRedactions } from '../annotations/model';
 import { useDocument } from '../document/DocumentContext';
 import { useUndoShortcuts } from '../document/useUndoShortcuts';
 import { useI18n } from '../i18n/LanguageContext';
@@ -20,7 +21,14 @@ import {
   selectByClick,
   type Selection,
 } from '../pages/selection';
-import { PdfSaveError, buildPdf, downloadPdf, editedFileName, readSources } from '../pdf/save';
+import {
+  PdfSaveError,
+  buildPdf,
+  downloadPdf,
+  editedFileName,
+  readSources,
+  type SaveErrorCode,
+} from '../pdf/save';
 import { FileList } from './FilesParts';
 import { Icon, IconButton, TipAnchor } from './Icon';
 import { SaveDialog } from './SaveDialog';
@@ -32,7 +40,7 @@ type SaveState =
   | { status: 'idle' }
   | { status: 'saving' }
   | { status: 'saved'; fileName: string }
-  | { status: 'error'; code: 'encrypted' | 'failed' };
+  | { status: 'error'; code: SaveErrorCode };
 
 /**
  * Pagina's kiezen, draaien, verwijderen, verplaatsen en uitpakken, met ongedaan maken, en
@@ -44,6 +52,7 @@ export function PageEditor() {
     pages,
     activeSources,
     annotations,
+    redaction,
     sourceOf,
     add,
     adding,
@@ -191,6 +200,8 @@ export function PageEditor() {
       );
       const bytes = await buildPdf(await readSources(files, current.pages), current.pages, {
         annotations,
+        // Ook een uittreksel zonder vak hoort bij een document waarin geredigeerd is.
+        redaction: { ...redaction, wholeDocument: hasRedactions(pages, annotations) },
       });
       downloadPdf(bytes, fileName);
       // Bij uitpakken is het document zelf niet veranderd: "niet gedownload" blijft wat het was.

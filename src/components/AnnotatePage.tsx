@@ -38,6 +38,10 @@ export type AnnotateController = {
   setDraft: (annotation: Annotation | null) => void;
   /** Legt het concept vast (of gooit het weg als het te klein of leeg is). */
   commitDraft: () => void;
+  /** Toon redactievakken zoals het resultaat: effen zwart (en niet half doorzichtig). */
+  preview?: boolean;
+  /** Welke soorten annotatie je kunt aanpakken; de rest staat er alleen (standaard alles). */
+  interactive?: (kind: Annotation['kind']) => boolean;
   /** Legt een kant-en-klare annotatie meteen vast. */
   add: (annotation: Annotation) => void;
   select: (id: number | null) => void;
@@ -356,7 +360,9 @@ export function AnnotatePage({
         ? t.edit.highlightOf
         : annotation.kind === 'rect'
           ? t.edit.rectOf
-          : t.edit.lineOf;
+          : annotation.kind === 'redact'
+            ? t.redact.boxOf
+            : t.edit.lineOf;
 
   const common = (annotation: Annotation) => ({
     'data-annotation': annotation.id,
@@ -371,6 +377,7 @@ export function AnnotatePage({
   });
 
   const classes = ['annotate-overlay', `annotate-overlay--${controller.tool}`].join(' ');
+  const interactive = (kind: Annotation['kind']) => controller.interactive?.(kind) ?? true;
 
   return (
     <div
@@ -406,7 +413,12 @@ export function AnnotatePage({
       >
         {shownAnnotations.map((annotation) => {
           if (annotation.id === controller.editingId && annotation.kind === 'text') return null;
-          const isSelected = annotation.id === controller.selectedId;
+          const isSelected =
+            annotation.id === controller.selectedId && interactive(annotation.kind);
+          // Wat je bij deze taak niet kunt aanpakken, staat er alleen: zonder focus en zonder klik.
+          const attributes = interactive(annotation.kind)
+            ? common(annotation)
+            : { 'data-inert': 'true', 'aria-hidden': 'true' };
           if (annotation.kind === 'text') {
             return (
               <TextShape
@@ -416,7 +428,7 @@ export function AnnotatePage({
                 scale={scale}
                 extra={extra}
                 selected={isSelected}
-                attributes={common(annotation)}
+                attributes={attributes}
               />
             );
           }
@@ -429,7 +441,7 @@ export function AnnotatePage({
                 to={toScreen({ x: annotation.x2, y: annotation.y2 })}
                 scale={scale}
                 selected={isSelected}
-                attributes={common(annotation)}
+                attributes={attributes}
               />
             );
           }
@@ -440,7 +452,8 @@ export function AnnotatePage({
               corners={boxCorners(annotation).map(toScreen)}
               scale={scale}
               selected={isSelected}
-              attributes={common(annotation)}
+              preview={Boolean(controller.preview)}
+              attributes={attributes}
             />
           );
         })}
@@ -475,7 +488,11 @@ function boxCorners(box: BoxAnnotation): Point[] {
 /** Een annotatie die wordt getekend, met het tweede punt op `to`. */
 function reshaped(annotation: Annotation, from: Point, to: Point): Annotation {
   if (annotation.kind === 'line') return { ...annotation, x2: to.x, y2: to.y };
-  if (annotation.kind === 'highlight' || annotation.kind === 'rect') {
+  if (
+    annotation.kind === 'highlight' ||
+    annotation.kind === 'rect' ||
+    annotation.kind === 'redact'
+  ) {
     return { ...annotation, ...boxFrom(from.x, from.y, to.x, to.y) };
   }
   return annotation;
@@ -491,7 +508,11 @@ function resized(annotation: Annotation, handle: string, to: Point): Annotation 
       ? { ...annotation, x1: to.x, y1: to.y }
       : { ...annotation, x2: to.x, y2: to.y };
   }
-  if (annotation.kind === 'highlight' || annotation.kind === 'rect') {
+  if (
+    annotation.kind === 'highlight' ||
+    annotation.kind === 'rect' ||
+    annotation.kind === 'redact'
+  ) {
     const opposite = boxCorners(annotation)[3 - Number(handle)]!;
     return { ...annotation, ...boxFrom(opposite.x, opposite.y, to.x, to.y) };
   }
@@ -566,12 +587,14 @@ function BoxShape({
   corners,
   scale,
   selected,
+  preview,
   attributes,
 }: {
   annotation: BoxAnnotation;
   corners: Point[];
   scale: number;
   selected: boolean;
+  preview: boolean;
   attributes: Attributes;
 }) {
   const [a, , , d] = corners as [Point, Point, Point, Point];
@@ -582,17 +605,34 @@ function BoxShape({
   const highlight = annotation.kind === 'highlight';
   return (
     <g {...attributes} class={`annotate-shape${selected ? ' annotate-shape--selected' : ''}`}>
-      <rect
-        x={x}
-        y={y}
-        width={width}
-        height={height}
-        fill={highlight ? annotation.color : 'none'}
-        fill-opacity={highlight ? 0.4 : undefined}
-        stroke={highlight ? 'none' : annotation.color}
-        stroke-width={highlight ? undefined : annotation.strokeWidth * scale}
-        pointer-events="visible"
-      />
+      {annotation.kind === 'redact' ? (
+        // Tijdens het werken half doorzichtig met een rode stippelrand, zodat je ziet wat eronder
+        // staat; in het voorbeeld effen zwart, zoals het resultaat.
+        <rect
+          x={x}
+          y={y}
+          width={width}
+          height={height}
+          fill="#000000"
+          fill-opacity={preview ? 1 : 0.35}
+          stroke={preview ? 'none' : '#d92d20'}
+          stroke-width={preview ? undefined : 2}
+          stroke-dasharray={preview ? undefined : '6 4'}
+          pointer-events="visible"
+        />
+      ) : (
+        <rect
+          x={x}
+          y={y}
+          width={width}
+          height={height}
+          fill={highlight ? annotation.color : 'none'}
+          fill-opacity={highlight ? 0.4 : undefined}
+          stroke={highlight ? 'none' : annotation.color}
+          stroke-width={highlight ? undefined : annotation.strokeWidth * scale}
+          pointer-events="visible"
+        />
+      )}
       {selected && (
         <rect
           class="annotate-shape__outline"

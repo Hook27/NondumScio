@@ -5,6 +5,7 @@ import { useUndoShortcuts } from '../document/useUndoShortcuts';
 import { useI18n } from '../i18n/LanguageContext';
 import { format, plural } from '../i18n/format';
 import { withoutPdfExtension } from '../lib/fileName';
+import { annotationsOf, hasRedactions, redactionsOf } from '../annotations/model';
 import { makeZip } from '../lib/zip';
 import { renderPageImage, type ImageFormat } from '../pdf/images';
 import { downloadFile } from '../pdf/save';
@@ -93,6 +94,8 @@ export function PdfToImages({ head }: { head: ComponentChildren }) {
           dpi: Number(dpi),
           format: imageFormat,
           quality: QUALITY[quality],
+          // Redactievakken worden altijd zwart in de afbeelding gezet.
+          redactions: redactionsOf(annotationsOf(annotations, page.key)),
         });
         reduced ||= result.reduced;
         files.push({ name: imageName(index + 1, true), data: result.bytes });
@@ -175,8 +178,11 @@ export function PdfToImages({ head }: { head: ComponentChildren }) {
             {info.button}
           </div>
           {info.panel}
-          {annotations.some((a) => pages.some((page) => page.key === a.page)) && (
-            <p class="page-editor__status">{t.convert.noAnnotations}</p>
+          {annotations.some(
+            (a) => a.kind !== 'redact' && pages.some((page) => page.key === a.page),
+          ) && <p class="page-editor__status">{t.convert.noAnnotations}</p>}
+          {hasRedactions(pages, annotations) && (
+            <p class="page-editor__status">{t.convert.redactionsApplied}</p>
           )}
           {save.status === 'saved' && (
             <>

@@ -299,6 +299,7 @@ describe('Omzetten: PDF naar afbeeldingen', () => {
       dpi: 150,
       format: 'png',
       quality: 0.85,
+      redactions: [],
     });
   });
 
@@ -396,6 +397,7 @@ describe('Omzetten: PDF naar afbeeldingen', () => {
       dpi: 300,
       format: 'jpeg',
       quality: 0.95,
+      redactions: [],
     });
   });
 

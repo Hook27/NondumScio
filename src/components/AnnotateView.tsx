@@ -13,18 +13,30 @@ import {
   TEXT_SIZES,
   annotationsOf,
   boxFrom,
+  hasRedactions,
+  redactionsOf,
   moved,
   tooSmall,
   unsupportedChars,
   type Annotation,
   type Tool,
 } from '../annotations/model';
-import { PdfSaveError, buildPdf, downloadPdf, editedFileName, readSources } from '../pdf/save';
+import {
+  PdfSaveError,
+  buildPdf,
+  downloadPdf,
+  editedFileName,
+  readSources,
+  type SaveErrorCode,
+} from '../pdf/save';
 import { AnnotatePage, type AnnotateController } from './AnnotatePage';
 import { FileList } from './FilesParts';
-import { Icon, IconButton } from './Icon';
+import { RadioGroup } from './ConvertParts';
+import { Icon, IconButton, type IconName } from './Icon';
 import { SaveDialog } from './SaveDialog';
 import { PaneHead, Split, useInfo } from './WorkspaceParts';
+import { DPI_CHOICES } from '../pdf/redactOptions';
+import type { RedactionReport } from '../pdf/redact';
 
 /**
  * De zoomstanden. Bij 25, 33 en 50% staan 4, 3 of 2 pagina's naast elkaar (een overzicht, zoals
@@ -50,7 +62,7 @@ type SaveState =
   | { status: 'idle' }
   | { status: 'saving' }
   | { status: 'saved'; fileName: string }
-  | { status: 'error'; code: 'encrypted' | 'failed' };
+  | { status: 'error'; code: SaveErrorCode };
 
 /** Het gereedschap met zijn symbool en de sneltoets. */
 const TOOLS = [
@@ -61,20 +73,33 @@ const TOOLS = [
   { id: 'line', icon: 'lineTool', key: 'l' },
 ] as const;
 
+/** Bij Redigeren: alleen selecteren en redactievakken zetten. */
+const REDACT_TOOLS = [
+  { id: 'select', icon: 'cursor', key: 'v' },
+  { id: 'redact', icon: 'redactTool', key: 'r' },
+] as const;
+
 type DrawingTool = Exclude<Tool, 'select'>;
+type ToolEntry = { id: Tool; icon: IconName; key: string };
 
 /**
  * Bewerken: tekst, markeringen en vormen op de pagina's zetten, met een grote paginaweergave
  * en zoomen. De bediening (bestanden, ongedaan maken, downloaden) is zoals bij de andere taken;
  * annotaties horen bij hun pagina en worden bij het downloaden in de pagina zelf getekend.
+ *
+ * Met `mode="redact"` is het Redigeren: dezelfde weergave, maar met redactievakken als enige
+ * gereedschap. Zulke vakken zijn een opdracht: bij het downloaden worden de pagina's waarop ze
+ * staan afbeeldingen met het vak zwart erin (zie `pdf/redact.ts`).
  */
-export function AnnotateView() {
+export function AnnotateView({ mode = 'annotate' }: { mode?: 'annotate' | 'redact' }) {
   const {
     doc,
     pages,
     activeSources,
     sourceOf,
     annotations,
+    redaction,
+    setRedaction,
     annotate,
     newAnnotationId,
     undo,
@@ -87,10 +112,15 @@ export function AnnotateView() {
     unsaved,
   } = useDocument();
   const { t } = useI18n();
+  const redactMode = mode === 'redact';
+  const rt = t.redact;
+  const tools: readonly ToolEntry[] = redactMode ? REDACT_TOOLS : TOOLS;
+  const toolName = (id: Tool) =>
+    redactMode ? (id === 'select' ? rt.select : rt.redact) : t.edit[id as Exclude<Tool, 'redact'>];
   const info = useInfo(
     <>
-      <p>{t.edit.hint}</p>
-      <p>{t.edit.shortcuts}</p>
+      <p>{redactMode ? rt.hint : t.edit.hint}</p>
+      <p>{redactMode ? rt.shortcuts : t.edit.shortcuts}</p>
     </>,
   );
 
@@ -103,6 +133,9 @@ export function AnnotateView() {
   const [zoomIndex, setZoomIndex] = useState(FIT);
   const [save, setSave] = useState<SaveState>({ status: 'idle' });
   const [asking, setAsking] = useState(false);
+  const [preview, setPreview] = useState(false);
+  const [progress, setProgress] = useState<{ done: number; total: number } | null>(null);
+  const [report, setReport] = useState<RedactionReport | null>(null);
 
   // Het concept (wat je nu tekent, sleept of typt) staat ook in een ref, zodat twee handelingen
   // vlak na elkaar (zoals een klik naast het tekstveld, waarna het veld zijn focus verliest)
@@ -143,6 +176,9 @@ export function AnnotateView() {
     selectedId,
     editingId,
     draft,
+    preview: redactMode && preview,
+    // Bij Redigeren pak je alleen redactievakken aan; de rest van de annotaties staat er alleen.
+    interactive: (kind) => !redactMode || kind === 'redact',
     newId: newAnnotationId,
     create: (kind, page, from, to = from) => {
       const id = newAnnotationId();
@@ -178,7 +214,7 @@ export function AnnotateView() {
         kind,
         ...boxFrom(from.x, from.y, to.x, to.y),
         color: colors[kind],
-        strokeWidth,
+        strokeWidth: kind === 'redact' ? 0 : strokeWidth,
       };
     },
     setDraft,
@@ -254,7 +290,7 @@ export function AnnotateView() {
     const onKey = (event: KeyboardEvent) => {
       if (event.ctrlKey || event.metaKey || event.altKey || typingIn(event.target)) return;
       const key = event.key.toLowerCase();
-      const match = TOOLS.find((entry) => entry.key === key);
+      const match = tools.find((entry) => entry.key === key);
       if (match) {
         setTool(match.id);
         event.preventDefault();
@@ -284,27 +320,48 @@ export function AnnotateView() {
   /* Opslaan */
 
   const first = activeSources[0];
-  const suggestion = first ? editedFileName(first.name, t.edit.suffix) : '';
+  const suggestion = first
+    ? editedFileName(first.name, redactMode ? rt.suffix : t.edit.suffix)
+    : '';
   const saveAs = async (fileName: string) => {
     setAsking(false);
     setSave({ status: 'saving' });
+    setReport(null);
+    setProgress(null);
     try {
       const files = new Map(
         (doc.status === 'ready' ? doc.sources : []).map((source) => [source.id, source.file]),
       );
-      const bytes = await buildPdf(await readSources(files, pages), pages, { annotations });
+      const bytes = await buildPdf(await readSources(files, pages), pages, {
+        annotations,
+        redaction: {
+          ...redaction,
+          onProgress: (done, total) => setProgress({ done, total }),
+          onDone: setReport,
+        },
+      });
+      setProgress(null);
       downloadPdf(bytes, fileName);
       markSaved();
       setSave({ status: 'saved', fileName });
     } catch (error) {
+      setProgress(null);
       setSave({ status: 'error', code: error instanceof PdfSaveError ? error.code : 'failed' });
     }
   };
 
-  const used = annotations.filter((a) => pages.some((page) => page.key === a.page));
-  const unsupported = unsupportedChars(
-    [...used, ...(draft ? [draft] : [])].map((a) => (a.kind === 'text' ? a.text : '')).join(''),
+  // Bij Bewerken tellen de annotaties, bij Redigeren de redactievakken.
+  const used = annotations.filter(
+    (a) => (a.kind === 'redact') === redactMode && pages.some((page) => page.key === a.page),
   );
+  const redactedPages = redactMode
+    ? pages.filter((page) => redactionsOf(annotationsOf(annotations, page.key)).length > 0).length
+    : 0;
+  const unsupported = redactMode
+    ? []
+    : unsupportedChars(
+        [...used, ...(draft ? [draft] : [])].map((a) => (a.kind === 'text' ? a.text : '')).join(''),
+      );
   const stop = ZOOMS[zoomIndex]!;
   const percent = stop.percent;
   const columns = 'columns' in stop ? stop.columns : 1;
@@ -312,6 +369,7 @@ export function AnnotateView() {
   const pageWidth = columns > 1 ? (fitWidth - (columns - 1) * PAGE_GAP) / columns : fitWidth;
   const zoom = 'columns' in stop ? 1 : stop.percent / 100;
   const busy = save.status === 'saving';
+  const anyRedaction = hasRedactions(pages, annotations);
 
   return (
     <Split
@@ -319,16 +377,20 @@ export function AnnotateView() {
         <div class="merge annotate">
           <FileList />
           <span id="annotate-help" class="visually-hidden">
-            {t.edit.pageHelp}
+            {redactMode ? rt.pageHelp : t.edit.pageHelp}
           </span>
-          <div class="toolbar toolbar--tools" role="toolbar" aria-label={t.edit.toolbar}>
+          <div
+            class="toolbar toolbar--tools"
+            role="toolbar"
+            aria-label={redactMode ? rt.toolbar : t.edit.toolbar}
+          >
             <div class="toolbar__group" role="group" aria-label={t.edit.tools}>
-              {TOOLS.map((entry) => (
+              {tools.map((entry) => (
                 <IconButton
                   key={entry.id}
                   icon={entry.icon}
-                  label={t.edit[entry.id]}
-                  tip={`${t.edit[entry.id]} (${entry.key.toUpperCase()})`}
+                  label={toolName(entry.id)}
+                  tip={`${toolName(entry.id)} (${entry.key.toUpperCase()})`}
                   aria-pressed={tool === entry.id}
                   aria-keyshortcuts={entry.key.toUpperCase()}
                   onClick={() => chooseTool(entry.id)}
@@ -404,66 +466,36 @@ export function AnnotateView() {
             </div>
           </div>
 
-          <fieldset class="split-method annotate__options">
-            <legend class="split-method__legend">{t.edit.options}</legend>
-            {!(subject && currentColor) && <p class="annotate__hint">{t.edit.optionsHint}</p>}
-            {subject && currentColor && (
-              <>
-                <div class="annotate__row" role="group" aria-label={t.edit.color}>
-                  {COLORS.map((color) => (
-                    <button
-                      key={color.id}
-                      type="button"
-                      class="swatch"
-                      style={{ backgroundColor: color.value }}
-                      aria-label={t.edit.colors[color.id]}
-                      aria-pressed={currentColor.toLowerCase() === color.value}
-                      onClick={() => pickColor(color.value)}
-                    />
-                  ))}
-                </div>
-                {subject === 'text' && (
-                  <div class="convert__field">
-                    <label for="annotate-size" class="convert__label">
-                      {t.edit.textSize}
-                    </label>
-                    <select
-                      id="annotate-size"
-                      class="convert__select"
-                      value={currentTextSize}
-                      onChange={(event) => pickTextSize(Number(event.currentTarget.value))}
-                    >
-                      {[...new Set<number>([...TEXT_SIZES, currentTextSize])]
-                        .sort((a, b) => a - b)
-                        .map((size) => (
-                          <option key={size} value={size}>
-                            {size} pt
-                          </option>
-                        ))}
-                    </select>
-                  </div>
-                )}
-                {(subject === 'rect' || subject === 'line') && (
-                  <div class="convert__field">
-                    <label for="annotate-stroke" class="convert__label">
-                      {t.edit.strokeWidth}
-                    </label>
-                    <select
-                      id="annotate-stroke"
-                      class="convert__select"
-                      value={currentStroke}
-                      onChange={(event) => pickStroke(Number(event.currentTarget.value))}
-                    >
-                      {[...new Set<number>([...STROKE_WIDTHS, currentStroke])]
-                        .sort((a, b) => a - b)
-                        .map((width) => (
-                          <option key={width} value={width}>
-                            {width} pt
-                          </option>
-                        ))}
-                    </select>
-                  </div>
-                )}
+          {redactMode && (
+            <div class="annotate__options">
+              <RadioGroup
+                legend={rt.resolution}
+                name="redact-dpi"
+                value={String(redaction.dpi)}
+                onChange={(value) => setRedaction({ dpi: Number(value) })}
+                options={DPI_CHOICES.map((dpi) => ({
+                  value: String(dpi),
+                  label: rt[`dpi${dpi}` as 'dpi150' | 'dpi200' | 'dpi300'],
+                }))}
+              >
+                <label class="merge-option">
+                  <input
+                    type="checkbox"
+                    checked={redaction.stripMetadata}
+                    onChange={(event) =>
+                      setRedaction({ stripMetadata: event.currentTarget.checked })
+                    }
+                  />
+                  {rt.stripMetadata}
+                </label>
+                <label class="merge-option">
+                  <input
+                    type="checkbox"
+                    checked={preview}
+                    onChange={(event) => setPreview(event.currentTarget.checked)}
+                  />
+                  {rt.preview}
+                </label>
                 {selected && (
                   <div class="annotate__row">
                     <button
@@ -476,24 +508,135 @@ export function AnnotateView() {
                     </button>
                   </div>
                 )}
-              </>
-            )}
-          </fieldset>
+              </RadioGroup>
+            </div>
+          )}
+          {!redactMode && (
+            <fieldset class="split-method annotate__options">
+              <legend class="split-method__legend">{t.edit.options}</legend>
+              {!(subject && currentColor) && <p class="annotate__hint">{t.edit.optionsHint}</p>}
+              {subject && currentColor && (
+                <>
+                  <div class="annotate__row" role="group" aria-label={t.edit.color}>
+                    {COLORS.map((color) => (
+                      <button
+                        key={color.id}
+                        type="button"
+                        class="swatch"
+                        style={{ backgroundColor: color.value }}
+                        aria-label={t.edit.colors[color.id]}
+                        aria-pressed={currentColor.toLowerCase() === color.value}
+                        onClick={() => pickColor(color.value)}
+                      />
+                    ))}
+                  </div>
+                  {subject === 'text' && (
+                    <div class="convert__field">
+                      <label for="annotate-size" class="convert__label">
+                        {t.edit.textSize}
+                      </label>
+                      <select
+                        id="annotate-size"
+                        class="convert__select"
+                        value={currentTextSize}
+                        onChange={(event) => pickTextSize(Number(event.currentTarget.value))}
+                      >
+                        {[...new Set<number>([...TEXT_SIZES, currentTextSize])]
+                          .sort((a, b) => a - b)
+                          .map((size) => (
+                            <option key={size} value={size}>
+                              {size} pt
+                            </option>
+                          ))}
+                      </select>
+                    </div>
+                  )}
+                  {(subject === 'rect' || subject === 'line') && (
+                    <div class="convert__field">
+                      <label for="annotate-stroke" class="convert__label">
+                        {t.edit.strokeWidth}
+                      </label>
+                      <select
+                        id="annotate-stroke"
+                        class="convert__select"
+                        value={currentStroke}
+                        onChange={(event) => pickStroke(Number(event.currentTarget.value))}
+                      >
+                        {[...new Set<number>([...STROKE_WIDTHS, currentStroke])]
+                          .sort((a, b) => a - b)
+                          .map((width) => (
+                            <option key={width} value={width}>
+                              {width} pt
+                            </option>
+                          ))}
+                      </select>
+                    </div>
+                  )}
+                  {selected && (
+                    <div class="annotate__row">
+                      <button
+                        type="button"
+                        class="button button--secondary"
+                        onClick={() => controller.remove(selected.id)}
+                      >
+                        <Icon name="trash" />
+                        {t.edit.remove}
+                      </button>
+                    </div>
+                  )}
+                </>
+              )}
+            </fieldset>
+          )}
 
           <div class="tools-status">
             <p class="page-editor__status" aria-live="polite">
-              {[
-                used.length === 0
-                  ? t.edit.none
-                  : plural(used.length, t.edit.countOne, format(t.edit.count, { n: used.length })),
-                unsaved && t.pages.unsaved,
-              ]
-                .filter(Boolean)
-                .join(' · ')}
+              {progress
+                ? format(rt.progress, progress)
+                : [
+                    used.length === 0
+                      ? redactMode
+                        ? rt.none
+                        : t.edit.none
+                      : redactMode
+                        ? plural(used.length, rt.countOne, format(rt.count, { n: used.length }))
+                        : plural(
+                            used.length,
+                            t.edit.countOne,
+                            format(t.edit.count, { n: used.length }),
+                          ),
+                    unsaved && t.pages.unsaved,
+                  ]
+                    .filter(Boolean)
+                    .join(' · ')}
             </p>
             {info.button}
           </div>
           {info.panel}
+          {redactMode && redactedPages > 0 && (
+            <p class="page-editor__status">
+              {plural(
+                redactedPages,
+                rt.affectedOne,
+                format(rt.affectedOther, { n: redactedPages }),
+              )}
+            </p>
+          )}
+          {!redactMode && anyRedaction && (
+            <p class="page-editor__status">
+              {plural(
+                pages.filter(
+                  (page) => redactionsOf(annotationsOf(annotations, page.key)).length > 0,
+                ).length,
+                rt.affectedOne,
+                format(rt.affectedOther, {
+                  n: pages.filter(
+                    (page) => redactionsOf(annotationsOf(annotations, page.key)).length > 0,
+                  ).length,
+                }),
+              )}
+            </p>
+          )}
           {unsupported.length > 0 && (
             <p class="page-editor__error" role="status">
               {format(t.edit.unsupported, { chars: unsupported.join(' ') })}
@@ -502,6 +645,17 @@ export function AnnotateView() {
           {save.status === 'saved' && (
             <p class="page-editor__saved" role="status">
               {format(t.pages.saved, { name: save.fileName })}
+              {report && report.pages.length > 0 && (
+                <>
+                  {' '}
+                  {plural(
+                    report.pages.length,
+                    rt.verifiedOne,
+                    format(rt.verifiedOther, { n: report.pages.length }),
+                  )}
+                  {report.reduced && ` ${t.convert.reduced}`}
+                </>
+              )}
             </p>
           )}
           {save.status === 'error' && (

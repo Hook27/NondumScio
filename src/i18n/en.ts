@@ -68,6 +68,8 @@ export const en: Messages = {
     errors: {
       encrypted: 'This PDF is protected. Saving is not supported for it yet.',
       failed: 'Saving failed. Please try again.',
+      redaction:
+        'Redacting failed or could not be verified. Nothing was downloaded; try again or choose a lower resolution.',
     },
   },
   merge: {
@@ -188,6 +190,7 @@ export const en: Messages = {
     saveOneTitle: 'Save image',
     saveAllTitle: 'Save all images as ZIP',
     reduced: 'A very large page was made smaller than requested so that it fits on any device.',
+    redactionsApplied: 'Redaction boxes are applied: that area is black in the images.',
     noAnnotations:
       'Annotations from Edit (text, highlights, shapes) are not included in the images.',
     imagesFailed: 'The images could not be made. Please try again.',
@@ -235,6 +238,31 @@ export const en: Messages = {
       'Shortcuts: V select, T text, H highlight, R rectangle, L line, Escape back to select.',
     suffix: 'edited',
   },
+  redact: {
+    toolbar: 'Redact',
+    select: 'Select',
+    redact: 'Redaction box',
+    boxOf: 'Redaction box',
+    pageHelp: 'With Redaction box chosen, Enter places a redaction box here.',
+    hint: 'With Redaction box (R) you drag boxes over everything that has to go. Adjust them with Select (move, drag a corner, Delete removes). Nothing changes in your file until you download. Then every page with a box becomes an image with the box in black: whatever was underneath, including hidden text, is no longer in the file and cannot be recovered. The other pages stay as they are. The result is a new file: bookmarks, forms and attachments are not carried over, and pages you removed are really gone. After making it, the app checks for itself that the pages with a box have no text left; if that fails, nothing is downloaded. Use Preview to see what the result looks like. The boxes also apply when you download from Pages, Merge, Split or Convert.',
+    shortcuts: 'Shortcuts: V select, R redaction box, Escape back to select.',
+    options: 'Redaction',
+    resolution: 'Resolution of pages with a box',
+    dpi150: '150 dpi (smaller file)',
+    dpi200: '200 dpi',
+    dpi300: '300 dpi (sharpest)',
+    stripMetadata: 'Do not carry over title, author and other document information',
+    preview: 'Preview: show the boxes in black',
+    none: 'No redaction boxes yet',
+    countOne: '1 redaction box',
+    count: '{n} redaction boxes',
+    affectedOne: '1 page becomes an image: its text can no longer be selected.',
+    affectedOther: '{n} pages become an image: their text can no longer be selected.',
+    progress: 'Redacting: {done} of {total} pages…',
+    verifiedOne: 'Verified: 1 page has no text left.',
+    verifiedOther: 'Verified: {n} pages have no text left.',
+    suffix: 'redacted',
+  },
   saveDialog: {
     saveTitle: 'Save PDF',
     extractTitle: 'Save selected pages',
@@ -243,8 +271,6 @@ export const en: Messages = {
     download: 'Download',
     cancel: 'Cancel',
   },
-  comingSoon: 'Coming soon.',
-  comingSoonDetail: 'The tools for this task will come in a later version.',
   notFound: {
     title: 'Page not found',
     detail: 'This address does not exist. Go back to the overview to pick a task.',

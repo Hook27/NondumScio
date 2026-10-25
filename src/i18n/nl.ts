@@ -72,6 +72,8 @@ export const nl = {
     errors: {
       encrypted: 'Deze PDF is beveiligd. Opslaan wordt daarvoor nog niet ondersteund.',
       failed: 'Opslaan is mislukt. Probeer het opnieuw.',
+      redaction:
+        'Redigeren is mislukt of kon niet worden gecontroleerd. Er is niets gedownload; probeer het opnieuw of kies een lagere resolutie.',
     },
   },
   merge: {
@@ -194,6 +196,7 @@ export const nl = {
     saveAllTitle: 'Alle afbeeldingen opslaan als ZIP',
     reduced:
       'Een heel grote pagina is kleiner gemaakt dan gevraagd, zodat hij op elk apparaat past.',
+    redactionsApplied: 'Redactievakken zijn wel toegepast: dat gebied is zwart in de afbeeldingen.',
     noAnnotations:
       'Annotaties uit Bewerken (tekst, markeringen, vormen) komen niet in de afbeeldingen.',
     imagesFailed: 'De afbeeldingen konden niet worden gemaakt. Probeer het opnieuw.',
@@ -241,6 +244,31 @@ export const nl = {
       'Sneltoetsen: V selecteren, T tekst, H markeren, R rechthoek, L lijn, Escape terug naar selecteren.',
     suffix: 'bewerkt',
   },
+  redact: {
+    toolbar: 'Redigeren',
+    select: 'Selecteren',
+    redact: 'Redactievak',
+    boxOf: 'Redactievak',
+    pageHelp: 'Met Redactievak gekozen plaatst Enter hier een redactievak.',
+    hint: 'Zet met Redactievak (R) vakken over alles wat weg moet: sleep over de pagina. Pas ze aan met Selecteren (verplaatsen, een hoekpunt slepen, Delete verwijdert). Er verandert niets aan je bestand tot je downloadt. Dan wordt elke pagina met een vak een afbeelding, met het vak zwart erin: wat eronder stond, ook verborgen tekst, staat dan niet meer in het bestand en is niet terug te halen. De andere pagina’s blijven zoals ze zijn. Het resultaat is een nieuw bestand: bladwijzers, formulieren en bijlagen worden niet overgenomen, en pagina’s die je hebt weggehaald zijn ook echt weg. Na het maken controleert de app zelf dat er op de pagina’s met een vak geen tekst meer staat; lukt dat niet, dan wordt er niets gedownload. Bekijk vooraf met Voorbeeld hoe het resultaat eruitziet. De vakken gelden ook als je bij Pagina’s, Samenvoegen, Splitsen of Omzetten downloadt.',
+    shortcuts: 'Sneltoetsen: V selecteren, R redactievak, Escape terug naar selecteren.',
+    options: 'Redactie',
+    resolution: 'Resolutie van pagina’s met een vak',
+    dpi150: '150 dpi (kleiner bestand)',
+    dpi200: '200 dpi',
+    dpi300: '300 dpi (scherpst)',
+    stripMetadata: 'Titel, auteur en andere documentgegevens niet overnemen',
+    preview: 'Voorbeeld: toon de vakken zwart',
+    none: 'Nog geen redactievakken',
+    countOne: '1 redactievak',
+    count: '{n} redactievakken',
+    affectedOne: '1 pagina wordt een afbeelding: de tekst erop is niet meer te selecteren.',
+    affectedOther: '{n} pagina’s worden een afbeelding: de tekst erop is niet meer te selecteren.',
+    progress: 'Bezig met redigeren: {done} van {total} pagina’s…',
+    verifiedOne: 'Gecontroleerd: op 1 pagina staat geen tekst meer.',
+    verifiedOther: 'Gecontroleerd: op {n} pagina’s staat geen tekst meer.',
+    suffix: 'geredigeerd',
+  },
   saveDialog: {
     saveTitle: 'PDF opslaan',
     extractTitle: 'Gekozen pagina’s opslaan',
@@ -249,8 +277,6 @@ export const nl = {
     download: 'Downloaden',
     cancel: 'Annuleren',
   },
-  comingSoon: 'Binnenkort beschikbaar.',
-  comingSoonDetail: 'De gereedschappen voor deze taak komen in een volgende versie.',
   notFound: {
     title: 'Pagina niet gevonden',
     detail: 'Dit adres bestaat niet. Ga terug naar het overzicht om een taak te kiezen.',

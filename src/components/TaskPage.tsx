@@ -1,16 +1,10 @@
 import { useI18n } from '../i18n/LanguageContext';
 import { hrefFor, type TaskId } from '../router';
-import { Workspace, type WorkspaceMode } from './Workspace';
+import { Workspace } from './Workspace';
 
 export function TaskPage({ id }: { id: TaskId }) {
   const { t } = useI18n();
   const task = t.tasks[id];
-  // Taken die al werken; de andere tonen alleen de pagina's en "Binnenkort".
-  const mode: WorkspaceMode =
-    id === 'pages' || id === 'merge' || id === 'split' || id === 'convert' || id === 'edit'
-      ? id
-      : 'view';
-
   return (
     <>
       {/* Eén smalle regel, zodat het werkgebied zoveel mogelijk ruimte krijgt. */}
@@ -23,7 +17,7 @@ export function TaskPage({ id }: { id: TaskId }) {
         </h1>
         <p class="task-head__lead">{task.description}</p>
       </div>
-      <Workspace mode={mode} />
+      <Workspace mode={id} />
     </>
   );
 }

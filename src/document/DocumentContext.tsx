@@ -10,6 +10,7 @@ import {
 } from 'preact/hooks';
 import type { PDFDocumentProxy } from 'pdfjs-dist';
 import type { Annotation } from '../annotations/model';
+import { DEFAULT_REDACTION, type RedactionOptions } from '../pdf/redactOptions';
 import {
   docOrder,
   initialPages,
@@ -98,6 +99,9 @@ type DocApi = {
   annotate: (change: (items: Annotation[]) => Annotation[], mergeKey?: string) => void;
   /** Een nieuw nummer voor een annotatie. */
   newAnnotationId: () => number;
+  /** Hoe redactie wordt uitgevoerd (resolutie, documentgegevens), bij elke download met redactievakken. */
+  redaction: RedactionOptions;
+  setRedaction: (change: Partial<RedactionOptions>) => void;
   /** Gewijzigd sinds het openen of de laatste download. */
   unsaved: boolean;
   /**
@@ -138,6 +142,7 @@ export function DocumentProvider({
   const [fileErrors, setFileErrors] = useState<FileError[]>([]);
   const [adding, setAdding] = useState(false);
   const [bookmarks, setBookmarks] = useState<Bookmarks>(NO_BOOKMARKS);
+  const [redaction, setRedactionState] = useState<RedactionOptions>(DEFAULT_REDACTION);
   // De bewerkingen (pagina's en annotaties) horen bij wat er open staat en blijven bewaard als
   // je van taak wisselt. Alles samen één ongedaan-maken-reeks: je laatste stap, waar je die ook deed.
   const [history, setHistory] = useState<History<Snapshot>>(() => startHistory(EMPTY));
@@ -289,6 +294,11 @@ export function DocumentProvider({
     setDoc({ status: 'empty' });
   }, [release]);
 
+  const setRedaction = useCallback(
+    (change: Partial<RedactionOptions>) =>
+      setRedactionState((current) => ({ ...current, ...change })),
+    [],
+  );
   const setBookmarksOn = useCallback(
     (on: boolean) => setBookmarks((current) => ({ ...current, on })),
     [],
@@ -404,6 +414,8 @@ export function DocumentProvider({
       annotations: history.present.annotations,
       annotate,
       newAnnotationId,
+      redaction,
+      setRedaction,
       unsaved,
       markSaved,
       bookmarks,
@@ -427,6 +439,8 @@ export function DocumentProvider({
     edit,
     undo,
     redo,
+    redaction,
+    setRedaction,
     unsaved,
     markSaved,
     bookmarks,

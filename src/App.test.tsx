@@ -45,15 +45,15 @@ describe('App', () => {
     goTo('#/redact');
     renderApp();
     expect(screen.getByRole('heading', { level: 1, name: nl.tasks.redact.title })).toBeTruthy();
-    expect(screen.getByText(nl.comingSoon)).toBeTruthy();
+    // Zonder PDF: eerst het vak om er een te openen.
+    expect(screen.getByRole('heading', { name: nl.document.openTitle })).toBeTruthy();
   });
 
-  it('toont geen "Binnenkort" bij taken die al werken', () => {
-    for (const id of ['merge', 'pages', 'split', 'convert', 'edit'] as const) {
+  it('heeft voor elke taak een werkgebied', () => {
+    for (const id of TASK_IDS) {
       goTo(`#/${id}`);
       renderApp();
       expect(screen.getByRole('heading', { level: 1, name: nl.tasks[id].title })).toBeTruthy();
-      expect(screen.queryByText(nl.comingSoon)).toBeNull();
       cleanup();
     }
   });
