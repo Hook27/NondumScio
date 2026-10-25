@@ -122,6 +122,15 @@ describe('Footer', () => {
     expect(screen.getByText('PR.009').getAttribute('title')).toBe(`${nl.version} PR.009`);
   });
 
+  it('toont naast het versienummer dat alles in de browser gebeurt', () => {
+    render(
+      <LanguageProvider initial="nl">
+        <Footer version="PR.009" />
+      </LanguageProvider>,
+    );
+    expect(screen.getByText(nl.privacyNote)).toBeTruthy();
+  });
+
   it('vertaalt de uitleg bij het versienummer', () => {
     render(
       <LanguageProvider initial="en">

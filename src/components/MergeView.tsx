@@ -309,6 +309,7 @@ export function MergeView() {
               <PaneHead
                 title={format(t.merge.picking, { name: pickingSource.name })}
                 titleId="merge-view-title"
+                sticky
                 meta={format(t.merge.pagesChosen, {
                   n: chosenOf(pickingSource.id).size,
                   total: pickingSource.pageCount,

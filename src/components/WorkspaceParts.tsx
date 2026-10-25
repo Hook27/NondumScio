@@ -30,15 +30,18 @@ export function PaneHead({
   title,
   titleId,
   meta,
+  sticky,
   children,
 }: {
   title: string;
   titleId?: string;
   meta?: string;
+  /** Blijft op een smal scherm onder de knoppenbalk hangen. */
+  sticky?: boolean;
   children?: ComponentChildren;
 }) {
   return (
-    <div class="pane-head">
+    <div class={`pane-head${sticky ? ' pane-head--sticky' : ''}`}>
       <div>
         <h3 id={titleId} class="pane-head__title" tabIndex={-1}>
           {title}

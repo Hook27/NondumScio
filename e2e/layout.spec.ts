@@ -47,6 +47,122 @@ test.describe('layout', () => {
     }
   });
 
+  test('op een telefoon is de kop compact en de hoofdactie altijd bereikbaar', async ({
+    page,
+    isMobile,
+  }) => {
+    test.skip(!isMobile, 'Alleen voor de telefoonindeling');
+    await openPages(page);
+    const viewport = page.viewportSize()!;
+
+    // Kop: merk, taal en thema op één regel, het menu als één rij eronder.
+    const header = (await page.locator('.site-header').boundingBox())!;
+    expect(header.height).toBeLessThan(130);
+    await expect(page.locator('.brand__tagline')).toBeHidden();
+    const nav = page.getByRole('navigation', { name: nl.mainMenu });
+    const current = nav.getByRole('link', { name: nl.tasks.pages.title });
+    expect(await inViewport(page, current)).toBe(true);
+    expect((await current.boundingBox())!.height).toBeGreaterThanOrEqual(36);
+
+    // De uitleg van de taak is weg zodra er een document openstaat.
+    await expect(page.locator('.task-head__lead')).toBeHidden();
+
+    // Symboolknoppen zijn minstens 44 px, en de balk is één rij.
+    const rotate = toolbar(page).getByRole('button', { name: nl.pages.rotateLeft });
+    const box = (await rotate.boundingBox())!;
+    expect(box.width).toBeGreaterThanOrEqual(44);
+    expect(box.height).toBeGreaterThanOrEqual(44);
+    const first = (await toolbar(page).getByRole('button').first().boundingBox())!;
+    expect(box.y).toBeCloseTo(first.y, 0);
+
+    // De downloadknop staat vast onderaan, ook na scrollen, en is direct aan te tikken.
+    const save = page.getByRole('button', { name: nl.pages.save });
+    await page.getByRole('option').last().scrollIntoViewIfNeeded();
+    const saveBox = (await save.boundingBox())!;
+    expect(saveBox.height).toBeGreaterThanOrEqual(44);
+    expect(saveBox.y + saveBox.height).toBeGreaterThan(viewport.height - 20);
+    expect(await inViewport(page, save)).toBe(true);
+    await save.click();
+    await expect(page.getByRole('dialog')).toBeVisible();
+  });
+
+  test('op een telefoon past de hoofdpagina zonder dat kop en titel wegscrollen', async ({
+    page,
+    isMobile,
+  }) => {
+    test.skip(!isMobile, 'Alleen voor de telefoonindeling');
+    await page.setViewportSize({ width: 360, height: 740 });
+    await openPage(page, '/', { lang: 'nl' });
+    const title = page.getByRole('heading', { level: 1 });
+    // Op een telefoon staat de korte titel; de uitleg staat in de voettekst, niet meer boven de blokjes.
+    await expect(page.locator('.home-title__short')).toBeVisible();
+    await expect(page.locator('.home-title__short')).toHaveText(nl.home.titleShort);
+    await expect(page.locator('.site-main').getByText(nl.privacyNote)).toHaveCount(0);
+    // De titel past op één regel (een regel is minder dan 1,6 keer de lettergrootte hoog).
+    const { height, fontSize } = await title.evaluate((el) => ({
+      height: el.getBoundingClientRect().height,
+      fontSize: parseFloat(getComputedStyle(el).fontSize),
+    }));
+    expect(height).toBeLessThan(fontSize * 1.6 * 1.25);
+    // De pagina zelf scrolt niet: alleen de keuzeblokjes hebben een eigen scrolvak.
+    expect(await page.evaluate(() => document.documentElement.scrollHeight)).toBeLessThanOrEqual(
+      740,
+    );
+    const grid = page.locator('.card-grid');
+    expect(await grid.evaluate((el) => getComputedStyle(el).overflowY)).toBe('auto');
+    await grid.evaluate((el) => el.scrollTo(0, el.scrollHeight));
+    expect(await inViewport(page, page.getByRole('navigation', { name: nl.mainMenu }))).toBe(true);
+    expect(await inViewport(page, title)).toBe(true);
+    expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(
+      360,
+    );
+  });
+
+  test('op een telefoon staan de miniaturen in drie kolommen', async ({ page, isMobile }) => {
+    test.skip(!isMobile, 'Alleen voor de telefoonindeling');
+    await openPages(page);
+    const boxes = await page
+      .getByRole('option')
+      .evaluateAll((els) => els.slice(0, 4).map((el) => el.getBoundingClientRect().y));
+    // De eerste drie staan op één rij, de vierde op de volgende.
+    expect(boxes[1]).toBeCloseTo(boxes[0]!, 0);
+    expect(boxes[2]).toBeCloseTo(boxes[0]!, 0);
+    expect(boxes[3]).toBeGreaterThan(boxes[0]! + 20);
+  });
+
+  test('bij Samenvoegen blijft zichtbaar welk bestand je kiest en hoeveel er gekozen zijn', async ({
+    page,
+    isMobile,
+  }) => {
+    test.skip(!isMobile, 'Alleen voor de telefoonindeling');
+    await openPage(page, '/#/merge', { lang: 'nl' });
+    await page.locator('#pdf-file').setInputFiles([
+      { name: 'een.pdf', mimeType: 'application/pdf', buffer: await makeSizedPdf(a4(2)) },
+      { name: 'twee.pdf', mimeType: 'application/pdf', buffer: await makeSizedPdf(a4(30)) },
+    ]);
+    const toggle = page.getByRole('button', { name: `${nl.merge.showPages}: twee.pdf` });
+    await toggle.click();
+    // De knop is gevuld (aan) en de kop met de naam blijft in beeld als je ver scrolt.
+    const background = () => toggle.evaluate((el) => getComputedStyle(el).backgroundColor);
+    const accent = await page.evaluate(() => {
+      const probe = document.createElement('i');
+      probe.style.color = 'var(--accent)';
+      document.body.append(probe);
+      const color = getComputedStyle(probe).color;
+      probe.remove();
+      return color;
+    });
+    expect(await background()).toBe(accent);
+    const heading = page.getByRole('heading', { name: 'twee.pdf: pagina’s kiezen' });
+    await page
+      .getByRole('group', { name: 'Miniaturen van twee.pdf' })
+      .locator('label')
+      .last()
+      .scrollIntoViewIfNeeded();
+    expect(await inViewport(page, heading)).toBe(true);
+    await expect(page.getByText(/30 van 30 pagina’s/)).toBeVisible();
+  });
+
   test('symboolknoppen tonen hun naam als hover-tekst, ook als ze uit staan', async ({
     page,
     isMobile,

@@ -1,5 +1,5 @@
 import { expect, test } from '@playwright/test';
-import { ROUTES, openPage, url } from './helpers';
+import { ROUTES, messages, openPage, url } from './helpers';
 
 test.describe('de site als geheel', () => {
   test('geeft op geen enkele pagina een fout in de console', async ({ page }) => {
@@ -25,6 +25,18 @@ test.describe('de site als geheel', () => {
       );
       expect(overflow, `breedte-overschot op ${route}`).toBeLessThanOrEqual(0);
     }
+  });
+
+  test('toont in de voettekst dat alles in de browser gebeurt, in klein lettertype', async ({
+    page,
+  }) => {
+    await openPage(page, '/', { lang: 'nl' });
+    const note = page.locator('.site-footer .footer-note');
+    await expect(note).toHaveText(messages.nl.privacyNote);
+    const size = await note.evaluate((el) => parseFloat(getComputedStyle(el).fontSize));
+    expect(size).toBeLessThanOrEqual(13);
+    await openPage(page, '/', { lang: 'en' });
+    await expect(note).toHaveText(messages.en.privacyNote);
   });
 
   test('toont linksonder een versienummer', async ({ page }) => {
