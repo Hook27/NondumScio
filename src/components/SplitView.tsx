@@ -34,7 +34,7 @@ type Request = { kind: 'part'; index: number } | { kind: 'zip' };
  * worden gedownload, of alle delen samen als één ZIP.
  */
 export function SplitView() {
-  const { doc, pages, activeSources, sourceOf } = useDocument();
+  const { doc, pages, activeSources, sourceOf, annotations } = useDocument();
   const { t } = useI18n();
   const [method, setMethod] = useState<Method>('every');
   const [size, setSize] = useState('1');
@@ -85,7 +85,12 @@ export function SplitView() {
     );
     const plans = wanted.map((part) => part.map((position) => pages[position - 1]!));
     const sources = await readSources(files, plans.flat());
-    return buildParts(sources, plans, (done, total) => setSave({ status: 'saving', done, total }));
+    return buildParts(
+      sources,
+      plans,
+      (done, total) => setSave({ status: 'saving', done, total }),
+      annotations,
+    );
   };
 
   const saveAs = async (current: Request, fileName: string) => {

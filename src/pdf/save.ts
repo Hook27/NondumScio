@@ -1,5 +1,7 @@
 import type { PDFDocument as PdfLibDocument } from 'pdf-lib';
+import { annotationsOf, type Annotation } from '../annotations/model';
 import type { PageItem } from '../pages/plan';
+import { drawAnnotations, type FontCache } from './annotate';
 
 export type SaveErrorCode = 'encrypted' | 'failed';
 
@@ -22,6 +24,12 @@ export type BuildOptions = {
    * niet (meer) in het plan staat, wordt overgeslagen; de volgorde volgt het resultaat.
    */
   bookmarks?: readonly BookmarkFor[];
+  /**
+   * Annotaties (tekst, markeringen, vormen), die in de pagina zelf worden getekend. Ze horen
+   * bij een pagina van het plan (`PageItem.key`); die van pagina's die niet in het plan staan,
+   * doen niet mee.
+   */
+  annotations?: readonly Annotation[];
 };
 
 /**
@@ -40,7 +48,7 @@ export type BuildOptions = {
 export async function buildPdf(
   sources: SourceBytes,
   pages: readonly PageItem[],
-  { bookmarks }: BuildOptions = {},
+  { bookmarks, annotations = [] }: BuildOptions = {},
 ): Promise<Uint8Array> {
   if (pages.length === 0) throw new PdfSaveError('failed');
   const lib = await import('pdf-lib');
@@ -53,8 +61,10 @@ export async function buildPdf(
       const sourcePages = doc.getPages();
       // Alle pagina's uit de paginaboom halen en in de nieuwe volgorde terugzetten.
       for (let i = sourcePages.length - 1; i >= 0; i -= 1) doc.removePage(i);
+      const fonts: FontCache = {};
       for (const item of pages) {
         const page = sourcePages[item.source]!;
+        await drawAnnotations(lib, doc, page, annotationsOf(annotations, item.key), fonts);
         page.setRotation(rotated(page.getRotation().angle, item.rotation));
         doc.addPage(page);
       }
@@ -62,7 +72,7 @@ export async function buildPdf(
       return await doc.save();
     }
 
-    const out = await assemble(lib, docs, pages);
+    const out = await assemble(lib, docs, pages, annotations);
     if (bookmarks) setBookmarks(lib, out, outlineEntries(bookmarks, pages));
     return await out.save();
   } catch {
@@ -80,6 +90,7 @@ export async function buildParts(
   sources: SourceBytes,
   parts: readonly (readonly PageItem[])[],
   onProgress?: (done: number, total: number) => void,
+  annotations: readonly Annotation[] = [],
 ): Promise<Uint8Array[]> {
   if (parts.length === 0 || parts.some((part) => part.length === 0)) {
     throw new PdfSaveError('failed');
@@ -89,7 +100,7 @@ export async function buildParts(
   const result: Uint8Array[] = [];
   try {
     for (const part of parts) {
-      result.push(await (await assemble(lib, docs, part)).save());
+      result.push(await (await assemble(lib, docs, part, annotations)).save());
       onProgress?.(result.length, parts.length);
       await new Promise((resolve) => setTimeout(resolve, 0));
     }
@@ -140,6 +151,7 @@ async function assemble(
   lib: PdfLib,
   docs: ReadonlyMap<number, PdfLibDocument>,
   pages: readonly PageItem[],
+  annotations: readonly Annotation[] = [],
 ) {
   const rotated = rotation(lib);
   const out = await lib.PDFDocument.create();
@@ -158,8 +170,10 @@ async function assemble(
     const copied = await out.copyPages(doc, indices);
     indices.forEach((index, i) => copies.set(`${id}:${index}`, copied[i]!));
   }
+  const fonts: FontCache = {};
   for (const item of pages) {
     const page = copies.get(`${item.doc}:${item.source}`)!;
+    await drawAnnotations(lib, out, page, annotationsOf(annotations, item.key), fonts);
     page.setRotation(rotated(page.getRotation().angle, item.rotation));
     out.addPage(page);
   }

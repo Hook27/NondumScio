@@ -27,8 +27,18 @@ type SaveState =
  * Pagina's: wat je daar doet, zie je hier, en andersom.
  */
 export function MergeView() {
-  const { doc, pages, activeSources, undo, redo, unsaved, markSaved, bookmarks, setBookmarksOn } =
-    useDocument();
+  const {
+    doc,
+    pages,
+    activeSources,
+    annotations,
+    undo,
+    redo,
+    unsaved,
+    markSaved,
+    bookmarks,
+    setBookmarksOn,
+  } = useDocument();
   const { t } = useI18n();
   const [asking, setAsking] = useState(false);
   const [save, setSave] = useState<SaveState>({ status: 'idle' });
@@ -55,14 +65,17 @@ export function MergeView() {
       const files = new Map(
         (doc.status === 'ready' ? doc.sources : []).map((source) => [source.id, source.file]),
       );
-      const options = bookmarks.on
-        ? {
-            bookmarks: activeSources.map((source) => ({
-              doc: source.id,
-              title: titleOf(source.id, source.name),
-            })),
-          }
-        : {};
+      const options = {
+        annotations,
+        ...(bookmarks.on
+          ? {
+              bookmarks: activeSources.map((source) => ({
+                doc: source.id,
+                title: titleOf(source.id, source.name),
+              })),
+            }
+          : {}),
+      };
       const bytes = await buildPdf(await readSources(files, pages), pages, options);
       downloadPdf(bytes, fileName);
       markSaved();

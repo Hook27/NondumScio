@@ -42,14 +42,14 @@ describe('App', () => {
   });
 
   it('opent de juiste taakpagina vanuit het adres', () => {
-    goTo('#/edit');
+    goTo('#/redact');
     renderApp();
-    expect(screen.getByRole('heading', { level: 1, name: nl.tasks.edit.title })).toBeTruthy();
+    expect(screen.getByRole('heading', { level: 1, name: nl.tasks.redact.title })).toBeTruthy();
     expect(screen.getByText(nl.comingSoon)).toBeTruthy();
   });
 
   it('toont geen "Binnenkort" bij taken die al werken', () => {
-    for (const id of ['merge', 'pages', 'split', 'convert'] as const) {
+    for (const id of ['merge', 'pages', 'split', 'convert', 'edit'] as const) {
       goTo(`#/${id}`);
       renderApp();
       expect(screen.getByRole('heading', { level: 1, name: nl.tasks[id].title })).toBeTruthy();

@@ -22,6 +22,18 @@ const PATHS = {
   download: ['M12 4v11', 'M7 10l5 5 5-5', 'M5 20h14'],
   extract: ['M14 3H6v18h12V7z', 'M14 3v4h4', 'M12 10v7', 'M9 14l3 3 3-3'],
   filePlus: ['M14 3H6v18h12V7z', 'M14 3v4h4', 'M12 11v6', 'M9 14h6'],
+  cursor: ['M5 3l14 8-6 2-3 6z'],
+  textTool: ['M5 7V4h14v3', 'M12 4v16', 'M9 20h6'],
+  highlighter: ['M9 20H4v-4L14 6l4 4-9 10z', 'M12 8l4 4'],
+  rectangle: ['M4 6h16v12H4z'],
+  lineTool: ['M5 19L19 5'],
+  zoomIn: [
+    'M10.5 4a6.5 6.5 0 1 0 0 13 6.5 6.5 0 0 0 0-13z',
+    'M20 20l-4.5-4.5',
+    'M8 10.5h5',
+    'M10.5 8v5',
+  ],
+  zoomOut: ['M10.5 4a6.5 6.5 0 1 0 0 13 6.5 6.5 0 0 0 0-13z', 'M20 20l-4.5-4.5', 'M8 10.5h5'],
 } as const;
 
 export type IconName = keyof typeof PATHS;

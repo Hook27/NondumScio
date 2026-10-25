@@ -33,7 +33,7 @@ type SaveState =
  * pagina, zodat ook een lang document het geheugen niet vol zet.
  */
 export function PdfToImages({ head }: { head: ComponentChildren }) {
-  const { pages, activeSources, sourceOf, undo, redo, unsaved } = useDocument();
+  const { pages, activeSources, sourceOf, annotations, undo, redo, unsaved } = useDocument();
   const { t } = useI18n();
   useUndoShortcuts(undo, redo);
   const { picking, pickingSource, showPicker } = useFilePicking();
@@ -175,6 +175,9 @@ export function PdfToImages({ head }: { head: ComponentChildren }) {
             {info.button}
           </div>
           {info.panel}
+          {annotations.some((a) => pages.some((page) => page.key === a.page)) && (
+            <p class="page-editor__status">{t.convert.noAnnotations}</p>
+          )}
           {save.status === 'saved' && (
             <>
               <p class="page-editor__saved" role="status">

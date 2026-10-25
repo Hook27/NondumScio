@@ -248,7 +248,7 @@ describe('Samenvoegen', () => {
     fireEvent.click(button(nl.merge.download));
     fireEvent.click(screen.getByRole('button', { name: nl.saveDialog.download }));
     await waitFor(() => expect(downloadPdf).toHaveBeenCalledTimes(1));
-    expect(vi.mocked(buildPdf).mock.calls[0]![2]).toEqual({});
+    expect(vi.mocked(buildPdf).mock.calls[0]![2]).toEqual({ annotations: [] });
   });
 
   it('maakt met de optie een bladwijzer per bestand, met een aanpasbare titel', async () => {
@@ -272,6 +272,7 @@ describe('Samenvoegen', () => {
     fireEvent.click(screen.getByRole('button', { name: nl.saveDialog.download }));
     await waitFor(() => expect(downloadPdf).toHaveBeenCalledTimes(1));
     expect(vi.mocked(buildPdf).mock.calls[0]![2]).toEqual({
+      annotations: [],
       bookmarks: [
         { doc: 2, title: 'Bijlage A' },
         { doc: 1, title: 'offerte' },

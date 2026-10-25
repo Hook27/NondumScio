@@ -227,29 +227,30 @@ export function samePlan(a: readonly PageItem[], b: readonly PageItem[]): boolea
 
 /* Ongedaan maken en opnieuw */
 
-export type History = {
-  past: PageItem[][];
-  present: PageItem[];
-  future: PageItem[][];
+/** De stappen van een bewerking, voor ongedaan maken en opnieuw. Voor het pagina-plan, maar ook voor annotaties. */
+export type History<T = PageItem[]> = {
+  past: T[];
+  present: T;
+  future: T[];
 };
 
 /** Zoveel stappen kun je terug; genoeg voor gewoon gebruik, en het geheugen blijft begrensd. */
 export const HISTORY_LIMIT = 100;
 
-export function startHistory(pages: PageItem[]): History {
-  return { past: [], present: pages, future: [] };
+export function startHistory<T = PageItem[]>(present: T): History<T> {
+  return { past: [], present, future: [] };
 }
 
 /** Een nieuwe stap. Een stap die niets verandert telt niet mee; "opnieuw" vervalt. */
-export function record(history: History, next: PageItem[]): History {
+export function record<T>(history: History<T>, next: T): History<T> {
   if (next === history.present) return history;
   const past = [...history.past, history.present].slice(-HISTORY_LIMIT);
   return { past, present: next, future: [] };
 }
 
-export function undo(history: History): History {
+export function undo<T>(history: History<T>): History<T> {
   const previous = history.past.at(-1);
-  if (!previous) return history;
+  if (previous === undefined) return history;
   return {
     past: history.past.slice(0, -1),
     present: previous,
@@ -257,8 +258,8 @@ export function undo(history: History): History {
   };
 }
 
-export function redo(history: History): History {
-  const [next, ...rest] = history.future;
-  if (!next) return history;
+export function redo<T>(history: History<T>): History<T> {
+  if (history.future.length === 0) return history;
+  const [next, ...rest] = history.future as [T, ...T[]];
   return { past: [...history.past, history.present], present: next, future: rest };
 }
