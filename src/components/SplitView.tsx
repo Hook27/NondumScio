@@ -190,7 +190,11 @@ export function SplitView() {
             })}
           </ol>
 
-          <div class="toolbar toolbar--tools" role="toolbar" aria-label={t.split.actions}>
+          <div
+            class="toolbar toolbar--tools toolbar--bar-only"
+            role="toolbar"
+            aria-label={t.split.actions}
+          >
             <div class="toolbar__group toolbar__group--wide">
               <button
                 type="button"

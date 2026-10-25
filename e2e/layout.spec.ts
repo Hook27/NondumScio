@@ -47,6 +47,45 @@ test.describe('layout', () => {
     }
   });
 
+  test('op een telefoon is de kop compact en de hoofdactie altijd bereikbaar', async ({
+    page,
+    isMobile,
+  }) => {
+    test.skip(!isMobile, 'Alleen voor de telefoonindeling');
+    await openPages(page);
+    const viewport = page.viewportSize()!;
+
+    // Kop: merk, taal en thema op één regel, het menu als één rij eronder.
+    const header = (await page.locator('.site-header').boundingBox())!;
+    expect(header.height).toBeLessThan(130);
+    await expect(page.locator('.brand__tagline')).toBeHidden();
+    const nav = page.getByRole('navigation', { name: nl.mainMenu });
+    const current = nav.getByRole('link', { name: nl.tasks.pages.title });
+    expect(await inViewport(page, current)).toBe(true);
+    expect((await current.boundingBox())!.height).toBeGreaterThanOrEqual(44);
+
+    // De uitleg van de taak is weg zodra er een document openstaat.
+    await expect(page.locator('.task-head__lead')).toBeHidden();
+
+    // Symboolknoppen zijn minstens 44 px, en de balk is één rij.
+    const rotate = toolbar(page).getByRole('button', { name: nl.pages.rotateLeft });
+    const box = (await rotate.boundingBox())!;
+    expect(box.width).toBeGreaterThanOrEqual(44);
+    expect(box.height).toBeGreaterThanOrEqual(44);
+    const first = (await toolbar(page).getByRole('button').first().boundingBox())!;
+    expect(box.y).toBeCloseTo(first.y, 0);
+
+    // De downloadknop staat vast onderaan, ook na scrollen, en is direct aan te tikken.
+    const save = page.getByRole('button', { name: nl.pages.save });
+    await page.getByRole('option').last().scrollIntoViewIfNeeded();
+    const saveBox = (await save.boundingBox())!;
+    expect(saveBox.height).toBeGreaterThanOrEqual(44);
+    expect(saveBox.y + saveBox.height).toBeGreaterThan(viewport.height - 20);
+    expect(await inViewport(page, save)).toBe(true);
+    await save.click();
+    await expect(page.getByRole('dialog')).toBeVisible();
+  });
+
   test('symboolknoppen tonen hun naam als hover-tekst, ook als ze uit staan', async ({
     page,
     isMobile,

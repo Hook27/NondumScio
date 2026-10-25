@@ -1158,9 +1158,136 @@ h1 {
     flex-direction: column;
   }
 
-  /* Zo weinig mogelijk regels voor de vaste knoppenbalk: alles loopt door. */
-  .toolbar__group--wide {
-    flex-basis: auto;
+  /* De knoppenbalk is één rij die je zijwaarts kunt schuiven; knoppen zijn minstens 44 px. */
+  .toolbar--tools {
+    flex-wrap: nowrap;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.4rem;
+    overflow-x: auto;
+    overscroll-behavior-x: contain;
+    scrollbar-width: thin;
+  }
+
+  /* Krap genoeg, zodat de volgende knop half in beeld steekt: het is te zien dat er meer is. */
+  .toolbar--tools .toolbar__group:not(.toolbar__group--wide) {
+    flex: none;
+    flex-wrap: nowrap;
+    gap: 0.25rem;
+  }
+
+  .toolbar--tools .button {
+    min-height: 2.75rem;
+  }
+
+  .toolbar--tools .button--icon {
+    width: 2.75rem;
+    height: 2.75rem;
+  }
+
+  /* De hoofdacties (toevoegen, uitpakken, downloaden) staan vast onderaan, binnen duimbereik. */
+  .toolbar--tools .toolbar__group--wide {
+    position: fixed;
+    inset: auto 0 0 0;
+    z-index: 5;
+    flex-wrap: nowrap;
+    justify-content: center;
+    gap: 0.5rem;
+    padding: 0.5rem 0.75rem;
+    background: var(--surface);
+    border-top: 1px solid var(--border);
+    box-shadow: 0 -2px 8px rgb(0 0 0 / 10%);
+  }
+
+  .toolbar--tools .toolbar__group--wide .button {
+    flex: 1 1 0;
+    flex-direction: column;
+    gap: 0.15rem;
+    min-width: 0;
+    max-width: 20rem;
+    padding: 0.35rem 0.25rem;
+    font-size: 0.8rem;
+    line-height: 1.15;
+    text-align: center;
+  }
+
+  .toolbar--tools .toolbar__group--wide .button:not(.button--secondary) {
+    flex-grow: 1.6;
+  }
+
+  /* Een balk met alleen de vaste knop heeft zelf niets te tonen. */
+  .toolbar--bar-only {
+    margin: 0;
+    padding: 0;
+    overflow: visible;
+    background: none;
+    border: 0;
+  }
+
+  /* Ruimte onderaan, zodat de vaste balk de laatste pagina's en het versienummer niet bedekt. */
+  #app:has(.toolbar__group--wide) .site-footer {
+    padding-bottom: 5rem;
+  }
+}
+
+/* Telefoon: compacte kop. Merk, taal en thema op één regel; het menu eronder als één rij. */
+@media (max-width: 40rem) {
+  .site-header__inner {
+    gap: 0.25rem 0.75rem;
+    padding: 0.5rem 1rem;
+  }
+
+  .brand__tagline {
+    display: none;
+  }
+
+  .header-controls {
+    order: 2;
+  }
+
+  .main-nav {
+    order: 3;
+    flex-basis: 100%;
+    min-width: 0;
+    margin-inline: -1rem;
+    padding-inline: 1rem;
+    overflow-x: auto;
+    scrollbar-width: none;
+  }
+
+  .main-nav ul {
+    flex-wrap: nowrap;
+  }
+
+  .main-nav a {
+    display: flex;
+    align-items: center;
+    min-height: 2.75rem;
+    padding-block: 0;
+    white-space: nowrap;
+  }
+
+  .lang-switch button {
+    min-width: 2.75rem;
+    min-height: 2.75rem;
+  }
+
+  .theme-toggle {
+    width: 2.75rem;
+    height: 2.75rem;
+  }
+
+  .site-main {
+    padding: 0.75rem 1rem 3rem;
+  }
+
+  .task-head {
+    margin-bottom: 0.5rem;
+  }
+
+  /* Met een document open is de uitleg van de taak niet meer nodig: het gereedschap eerst. */
+  .task-head:has(+ .workspace) .task-head__lead {
+    display: none;
   }
 }
 
