@@ -1310,6 +1310,23 @@ h1 {
     padding: 0.75rem 1rem 3rem;
   }
 
+  .segmented__button {
+    padding-inline: 0.4rem;
+    font-size: 0.85rem;
+  }
+
+  .image-item {
+    flex-wrap: wrap;
+  }
+
+  .image-item__info {
+    flex-basis: 8rem;
+  }
+
+  .image-item__actions {
+    margin-left: auto;
+  }
+
   /* Miniaturen in drie kolommen: veel minder scrollen. */
   .thumbs {
     grid-template-columns: repeat(3, minmax(0, 1fr));
@@ -1488,6 +1505,144 @@ h1 {
     padding: 4px 0 0.5rem;
     background: var(--bg);
   }
+}
+
+/* Omzetten */
+.convert-mode {
+  max-width: 42rem;
+  margin: 0 0 0.75rem;
+}
+
+/* De keuze tussen twee soorten omzetten: twee knoppen die samen één schakelaar vormen. */
+.segmented {
+  display: flex;
+  gap: 2px;
+  margin: 0 0 0.75rem;
+  padding: 2px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+}
+
+.convert-mode .segmented {
+  margin: 0;
+}
+
+.segmented__button {
+  flex: 1;
+  min-height: 2.25rem;
+  padding: 0.3rem 0.75rem;
+  background: transparent;
+  border: 0;
+  border-radius: 999px;
+  color: var(--text);
+  font: inherit;
+  font-size: 0.9rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.segmented__button:hover {
+  background: var(--bg);
+}
+
+.segmented__button[aria-pressed='true'] {
+  background: var(--accent);
+  color: var(--accent-contrast);
+}
+
+.split-method__row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem 1.25rem;
+}
+
+.convert__field {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-top: 0.25rem;
+}
+
+.convert__label {
+  font-weight: 600;
+}
+
+.convert__select {
+  justify-self: start;
+  padding: 0.35rem 0.5rem;
+  background: var(--bg);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  font: inherit;
+}
+
+.convert__select:disabled {
+  opacity: 0.5;
+}
+
+/* Pagina's die niet worden omgezet staan er wel, maar gedempt. */
+.thumbs__off .thumb {
+  opacity: 0.4;
+}
+
+.image-list {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 0.5rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.image-item {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  padding: 0.4rem 0.5rem;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+}
+
+.image-item__number {
+  min-width: 1.2rem;
+  color: var(--text-muted);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  text-align: right;
+}
+
+.image-item__thumb {
+  flex: none;
+  width: 3.5rem;
+  height: 3.5rem;
+  background: var(--bg);
+  border-radius: 6px;
+  object-fit: contain;
+}
+
+.image-item__info {
+  flex: 1;
+  min-width: 0;
+}
+
+.image-item__name {
+  margin: 0;
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+
+.image-item__meta {
+  margin: 0;
+  color: var(--text-muted);
+  font-size: 0.85rem;
+}
+
+.image-item__actions {
+  display: flex;
+  flex: none;
+  gap: 0.25rem;
 }
 
 /* Versienummer linksonder */

@@ -6,7 +6,8 @@ export function TaskPage({ id }: { id: TaskId }) {
   const { t } = useI18n();
   const task = t.tasks[id];
   // Taken die al werken; de andere tonen alleen de pagina's en "Binnenkort".
-  const mode: WorkspaceMode = id === 'pages' || id === 'merge' || id === 'split' ? id : 'view';
+  const mode: WorkspaceMode =
+    id === 'pages' || id === 'merge' || id === 'split' || id === 'convert' ? id : 'view';
 
   return (
     <>
