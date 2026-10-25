@@ -6,10 +6,10 @@ export function Home() {
 
   return (
     <>
-      <h1 id="page-title" tabIndex={-1}>
+      <h1 id="page-title" class="home-title" tabIndex={-1}>
         {t.home.title}
       </h1>
-      <p class="lead">{t.home.intro}</p>
+      <p class="lead home-lead">{t.home.intro}</p>
       <ul class="card-grid">
         {TASK_IDS.map((id) => (
           <li key={id}>
