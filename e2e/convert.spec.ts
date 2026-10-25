@@ -398,6 +398,31 @@ test.describe('omzetten: PDF naar afbeeldingen', () => {
 });
 
 test.describe('omzetten: toegankelijkheid en wisselen', () => {
+  test('op een telefoon staat de tekst van beide keuzeknoppen op één regel', async ({
+    page,
+    isMobile,
+  }) => {
+    test.skip(!isMobile, 'Alleen voor de telefoonindeling');
+    for (const [language, width] of [
+      ['nl', 360],
+      ['nl', 320],
+      ['en', 360],
+    ] as const) {
+      await page.setViewportSize({ width, height: 740 });
+      await openPage(page, '/#/convert', { lang: language });
+      const group = page.getByRole('group', { name: messages[language].convert.mode });
+      for (const button of await group.getByRole('button').all()) {
+        // Eén regel is lager dan de knop met twee regels zou zijn, en de tekst loopt niet over.
+        const { height, overflows } = await button.evaluate((el) => ({
+          height: el.getBoundingClientRect().height,
+          overflows: el.scrollWidth > el.clientWidth,
+        }));
+        expect(height, `${language} ${width}`).toBeLessThan(44);
+        expect(overflows, `${language} ${width}`).toBe(false);
+      }
+    }
+  });
+
   test('de focus blijft op de gekozen knop als je wisselt', async ({ page }) => {
     await openImages(page);
     const toImages = page.getByRole('button', { name: nl.convert.toImages });

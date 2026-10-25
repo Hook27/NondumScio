@@ -1310,9 +1310,12 @@ h1 {
     padding: 0.75rem 1rem 3rem;
   }
 
-  .segmented__button {
-    padding-inline: 0.4rem;
-    font-size: 0.85rem;
+  /* Beide teksten op één regel, ook op een smal scherm (de regel staat vóór de basisregel, dus
+     met meer gewicht): de lettergrootte schaalt mee met de breedte. */
+  .segmented .segmented__button {
+    padding-inline: 0.25rem;
+    font-size: min(0.85rem, 3.5vw);
+    white-space: nowrap;
   }
 
   /* Miniaturen in drie kolommen: veel minder scrollen. */
