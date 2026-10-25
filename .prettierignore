@@ -4,3 +4,4 @@ package-lock.json
 public/pdfjs
 playwright-report
 test-results
+public/ocr

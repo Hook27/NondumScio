@@ -439,6 +439,9 @@ test.describe('redigeren: toegankelijkheid en telefoon', () => {
       await pages(page).first().focus();
       await page.keyboard.press('Enter');
       await expect(boxes(page)).toHaveCount(1);
+      // Met de OCR-keuze en de uitleg erbij aan.
+      await page.getByLabel(nl.redact.ocr).check();
+      await expect(page.getByText(nl.redact.ocrHelp)).toBeVisible();
       await page.getByRole('button', { name: nl.info }).click();
       const result = await new AxeBuilder({ page })
         .withTags(['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa'])
@@ -478,5 +481,86 @@ test.describe('redigeren: toegankelijkheid en telefoon', () => {
     await expect(
       page.getByText(/bladwijzers, formulieren en bijlagen worden niet overgenomen/),
     ).toBeVisible();
+  });
+});
+
+test.describe('redigeren: tekstherkenning (OCR)', () => {
+  test.skip(({ isMobile }) => isMobile, 'Precies slepen op de pagina: desktop');
+  // De eerste keer laadt de herkenning (enkele MB) en een pagina op 300 dpi kost even.
+  test.setTimeout(180_000);
+
+  const ocrBox = (page: Page) => page.getByLabel(nl.redact.ocr);
+
+  test('staat standaard uit: dan staat er op de pagina met een vak geen tekst', async ({
+    page,
+  }) => {
+    const verzoeken: string[] = [];
+    page.on('request', (request) => verzoeken.push(request.url()));
+    await openRedact(page);
+    await expect(ocrBox(page)).not.toBeChecked();
+    await boxOverSecret(page);
+    const result = await download(page);
+    expect((await textOf(result))[1]!.trim()).toBe('');
+    // Zonder OCR wordt er niets van de herkenning geladen.
+    expect(verzoeken.filter((url) => url.includes('/ocr/'))).toEqual([]);
+  });
+
+  test('met OCR is de overgebleven tekst terug, en het geheim niet', async ({ page, baseURL }) => {
+    const elders: string[] = [];
+    const verzoeken: string[] = [];
+    page.on('request', (request) => {
+      verzoeken.push(request.url());
+      if (!request.url().startsWith(baseURL!) && !/^(blob|data):/.test(request.url())) {
+        elders.push(request.url());
+      }
+    });
+    await openRedact(page);
+    await ocrBox(page).check();
+    // Toetsen als R gelden niet in een veld: eerst de focus naar de pagina.
+    await pages(page).first().focus();
+    await boxOverSecret(page);
+    await expect(page.getByText(nl.redact.affectedOcrOne)).toBeVisible();
+    const result = await download(page);
+
+    // Het geheim en het rekeningnummer zijn weg, in tekst én in het bestand.
+    expect(await leaks(result, SECRET)).toBe(false);
+    expect(await leaks(result, IBAN)).toBe(false);
+    const text = await textOf(result);
+    expect(text[1]).not.toMatch(/GEHEIM|4711|IBAN|NL00|TEST0123|wachtwoord/i);
+    // De kop buiten het vak is herkend en dus weer te zoeken en te selecteren.
+    expect(text[1]).toMatch(/KOP/i);
+    expect(text[1]).toMatch(/boven/i);
+    // De andere pagina's hebben hun eigen tekst nog.
+    expect(text[0]).toContain('OPENBAAR een');
+    expect(text[2]).toContain('OPENBAAR drie');
+
+    // De herkende tekst is onzichtbaar: de pagina ziet er nog steeds uit als de afbeelding.
+    const doc = await PDFDocument.load(result, { updateMetadata: false });
+    expect(doc.getTitle()).toBeUndefined();
+
+    // Alles kwam van de eigen site, en de herkenning is echt geladen.
+    expect(elders).toEqual([]);
+    expect(verzoeken.some((url) => url.includes('/ocr/lang/nld.traineddata.gz'))).toBe(true);
+    expect(verzoeken.some((url) => url.includes('/ocr/lang/eng.traineddata.gz'))).toBe(true);
+    await expect(page.getByText(/herkende tekst toegevoegd/)).toBeVisible();
+  });
+
+  test('stoppen laat niets downloaden', async ({ page }) => {
+    await openRedact(page);
+    await ocrBox(page).check();
+    // Toetsen als R gelden niet in een veld: eerst de focus naar de pagina.
+    await pages(page).first().focus();
+    await boxOverSecret(page);
+    let gedownload = false;
+    page.on('download', () => (gedownload = true));
+    await page.getByRole('button', { name: nl.pages.save }).click();
+    await page.getByRole('dialog').getByRole('button', { name: nl.saveDialog.download }).click();
+    await page.getByRole('button', { name: nl.redact.stop }).click();
+    await expect(page.getByText(nl.pages.errors.cancelled)).toBeVisible();
+    expect(gedownload).toBe(false);
+    // Daarna kan het gewoon opnieuw (zonder OCR).
+    await ocrBox(page).uncheck();
+    const result = await download(page);
+    expect(await leaks(result, SECRET)).toBe(false);
   });
 });

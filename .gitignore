@@ -5,5 +5,7 @@ playwright-report/
 test-results/
 # Gekopieerd uit pdfjs-dist bij dev/build (scripts/copy-pdfjs-assets.ts)
 public/pdfjs/
+# Gekopieerd uit tesseract.js en @tesseract.js-data bij dev/build (scripts/copy-ocr-assets.ts)
+public/ocr/
 *.log
 .DS_Store

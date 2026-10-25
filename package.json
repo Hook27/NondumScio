@@ -8,9 +8,9 @@
     "node": ">=24"
   },
   "scripts": {
-    "predev": "node scripts/copy-pdfjs-assets.ts",
+    "predev": "node scripts/copy-pdfjs-assets.ts && node scripts/copy-ocr-assets.ts",
     "dev": "vite",
-    "prebuild": "node scripts/copy-pdfjs-assets.ts",
+    "prebuild": "node scripts/copy-pdfjs-assets.ts && node scripts/copy-ocr-assets.ts",
     "build": "tsc --noEmit && vite build",
     "preview": "vite preview",
     "typecheck": "tsc --noEmit",
@@ -38,9 +38,12 @@
     "vitest": "^5.0.5"
   },
   "dependencies": {
+    "@tesseract.js-data/eng": "^1.0.0",
+    "@tesseract.js-data/nld": "^1.0.0",
     "fflate": "^0.8.3",
     "pdf-lib": "^1.17.1",
     "pdfjs-dist": "^6.4.299",
-    "preact": "^11.0.2"
+    "preact": "^11.0.2",
+    "tesseract.js": "^7.0.0"
   }
 }

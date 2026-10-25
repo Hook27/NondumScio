@@ -74,6 +74,7 @@ export const nl = {
       failed: 'Opslaan is mislukt. Probeer het opnieuw.',
       redaction:
         'Redigeren is mislukt of kon niet worden gecontroleerd. Er is niets gedownload; probeer het opnieuw of kies een lagere resolutie.',
+      cancelled: 'Gestopt. Er is niets gedownload.',
     },
   },
   merge: {
@@ -267,6 +268,17 @@ export const nl = {
     progress: 'Bezig met redigeren: {done} van {total} pagina’s…',
     verifiedOne: 'Gecontroleerd: op 1 pagina staat geen tekst meer.',
     verifiedOther: 'Gecontroleerd: op {n} pagina’s staat geen tekst meer.',
+    ocr: 'Tekst herkennen (OCR) op pagina’s met een vak',
+    ocrHelp:
+      'Na het zwartmaken wordt de tekst op de afbeelding herkend (Nederlands en Engels) en onzichtbaar toegevoegd, zodat de pagina doorzoekbaar blijft. Het zwart blijft zwart: wat onder een vak stond, komt er niet in. Dit duurt langer; de eerste keer wordt de herkenning geladen. Herkende tekst kan fouten bevatten. Het geldt ook als je bij Pagina’s, Samenvoegen, Splitsen of Omzetten downloadt.',
+    ocrLoading: 'Tekstherkenning laden… {percent}%',
+    stop: 'Stoppen',
+    affectedOcrOne: '1 pagina wordt een afbeelding met onzichtbare, herkende tekst.',
+    affectedOcrOther: '{n} pagina’s worden een afbeelding met onzichtbare, herkende tekst.',
+    recognizedOne:
+      'Op 1 pagina is herkende tekst toegevoegd; gecontroleerd dat niets ervan in een zwart vak ligt.',
+    recognizedOther:
+      'Op {n} pagina’s is herkende tekst toegevoegd; gecontroleerd dat niets ervan in een zwart vak ligt.',
     suffix: 'geredigeerd',
   },
   saveDialog: {

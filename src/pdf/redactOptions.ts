@@ -4,9 +4,15 @@ export type RedactionOptions = {
   dpi: number;
   /** Titel, auteur en andere documentgegevens niet overnemen. */
   stripMetadata: boolean;
+  /** Op de pagina's met een vak na het zwartmaken tekst herkennen (OCR) en onzichtbaar toevoegen. */
+  ocr: boolean;
 };
 
-export const DEFAULT_REDACTION: RedactionOptions = { dpi: 300, stripMetadata: true };
+export const DEFAULT_REDACTION: RedactionOptions = {
+  dpi: 300,
+  stripMetadata: true,
+  ocr: false,
+};
 
 /** De resoluties om uit te kiezen. */
 export const DPI_CHOICES = [150, 200, 300] as const;

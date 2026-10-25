@@ -6,7 +6,7 @@ import { pruneUnreachable } from './prune';
 import type { RedactionReport } from './redact';
 import { DEFAULT_REDACTION, type RedactionOptions } from './redactOptions';
 
-export type SaveErrorCode = 'encrypted' | 'failed' | 'redaction';
+export type SaveErrorCode = 'encrypted' | 'failed' | 'redaction' | 'cancelled';
 
 export class PdfSaveError extends Error {
   constructor(readonly code: SaveErrorCode) {
@@ -41,6 +41,10 @@ export type BuildOptions = {
   redaction?: Partial<RedactionOptions> & {
     onProgress?: (done: number, total: number) => void;
     onDone?: (report: RedactionReport) => void;
+    /** Meldt hoever het laden van de tekstherkenning is (0 tot 1). */
+    onOcrStatus?: (progress: number) => void;
+    /** Om te stoppen met redigeren (er komt dan geen bestand). */
+    signal?: AbortSignal;
     /**
      * Is er ergens in het hele document (niet alleen in deze pagina's) een redactievak? Dan
      * krijgt ook een deel of uittreksel zonder vak geen documentgegevens mee. Zonder opgave
@@ -65,17 +69,29 @@ async function applyRedactions(
   alsoWithout = false,
 ): Promise<Uint8Array> {
   if (!hasRedactions(pages, annotations) && !alsoWithout) return bytes;
-  const { redactPdf } = await import('./redact');
-  const { onProgress, onDone } = run;
+  const { redactPdf, RedactionError } = await import('./redact');
+  const { onProgress, onDone, onOcrStatus, signal } = run;
   const options: RedactionOptions = {
     dpi: run.dpi ?? DEFAULT_REDACTION.dpi,
     stripMetadata: run.stripMetadata ?? DEFAULT_REDACTION.stripMetadata,
+    ocr: run.ocr ?? DEFAULT_REDACTION.ocr,
   };
   try {
-    const result = await redactPdf(bytes, pages, annotations, options, onProgress, {}, alsoWithout);
+    const result = await redactPdf(
+      bytes,
+      pages,
+      annotations,
+      options,
+      onProgress,
+      { onOcrStatus, signal },
+      alsoWithout,
+    );
     onDone?.(result.report);
     return result.bytes;
-  } catch {
+  } catch (error) {
+    if (error instanceof RedactionError && error.code === 'cancelled') {
+      throw new PdfSaveError('cancelled');
+    }
     throw new PdfSaveError('redaction');
   }
 }
