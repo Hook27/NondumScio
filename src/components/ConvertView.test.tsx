@@ -358,6 +358,12 @@ describe('Omzetten: PDF naar afbeeldingen', () => {
     expect(zipped[12]).toBe('13 - rapport (pagina 10).png');
   });
 
+  it('meldt dat annotaties uit Bewerken niet in de afbeeldingen komen, maar alleen als die er zijn', async () => {
+    setup();
+    await openPdfs(pdfFile('rapport.pdf', 2));
+    expect(screen.queryByText(nl.convert.noAnnotations)).toBeNull();
+  });
+
   it('kiest met ⊞ pagina’s met miniaturen en toont dat in het rechtervak', async () => {
     setup();
     await openPdfs(pdfFile('rapport.pdf', 3));

@@ -1318,6 +1318,11 @@ h1 {
     white-space: nowrap;
   }
 
+  .swatch {
+    width: 2.75rem;
+    height: 2.75rem;
+  }
+
   /* Miniaturen in drie kolommen: veel minder scrollen. */
   .thumbs {
     grid-template-columns: repeat(3, minmax(0, 1fr));
@@ -1596,6 +1601,182 @@ h1 {
   background: var(--paper);
   box-shadow: var(--shadow);
   object-fit: contain;
+}
+
+/* Bewerken: pagina's op leesbare grootte met annotaties erbovenop */
+.annotate-pages {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  /* Midden, maar bij een pagina die breder is dan het vak: vanaf links, zodat niets wegvalt. */
+  justify-content: safe center;
+  gap: 20px;
+  margin: 0;
+  padding: 0;
+  overflow-x: auto;
+  list-style: none;
+}
+
+.annotate-pages__item {
+  flex: none;
+  min-width: 0;
+}
+
+.annotate-pages__caption {
+  margin: 0 0 0.3rem;
+  color: var(--text-muted);
+  font-size: 0.85rem;
+}
+
+.annotate-page {
+  position: relative;
+  flex: none;
+  background: var(--paper);
+  box-shadow: var(--shadow);
+}
+
+.annotate-page:focus-visible {
+  outline: 3px solid var(--focus);
+  outline-offset: 3px;
+}
+
+.annotate-page__canvas {
+  position: absolute;
+  inset: 0;
+  display: block;
+}
+
+.annotate-overlay {
+  position: absolute;
+  inset: 0;
+  -webkit-user-select: none;
+  user-select: none;
+}
+
+/* Met een tekengereedschap sleep je op de pagina: dan scrolt een vinger niet mee. */
+.annotate-overlay--text,
+.annotate-overlay--highlight,
+.annotate-overlay--rect,
+.annotate-overlay--line {
+  touch-action: none;
+}
+
+.annotate-overlay--text {
+  cursor: text;
+}
+
+.annotate-overlay--highlight,
+.annotate-overlay--rect,
+.annotate-overlay--line {
+  cursor: crosshair;
+}
+
+.annotate-shape {
+  cursor: move;
+  outline: none;
+  touch-action: none;
+}
+
+/* Alleen bij Selecteren (en tekst bij het tekstgereedschap) pak je een bestaande annotatie op. */
+.annotate-overlay--highlight .annotate-shape,
+.annotate-overlay--rect .annotate-shape,
+.annotate-overlay--line .annotate-shape,
+.annotate-overlay--text .annotate-shape:not(.annotate-shape--text) {
+  pointer-events: none;
+}
+
+.annotate-shape__hit {
+  fill: transparent;
+  stroke: none;
+  pointer-events: all;
+}
+
+.annotate-shape--selected .annotate-shape__hit {
+  stroke: var(--accent);
+  stroke-dasharray: 5 4;
+  stroke-width: 1.5;
+}
+
+.annotate-shape__outline {
+  fill: none;
+  stroke: var(--accent);
+  stroke-dasharray: 5 4;
+  stroke-width: 1.5;
+}
+
+.annotate-shape--line.annotate-shape--selected {
+  filter: drop-shadow(0 0 3px var(--accent));
+}
+
+.annotate-shape:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 2px;
+}
+
+.annotate-handle {
+  fill: var(--surface);
+  stroke: var(--accent);
+  stroke-width: 2;
+  cursor: crosshair;
+  pointer-events: all;
+}
+
+.annotate-editor {
+  position: absolute;
+  z-index: 3;
+  box-sizing: content-box;
+  min-width: 3em;
+  margin: 0;
+  padding: 0;
+  overflow: hidden;
+  background: color-mix(in srgb, var(--paper) 70%, transparent);
+  border: 0;
+  outline: 1px dashed var(--accent);
+  outline-offset: 2px;
+  font-family: Helvetica, Arial, sans-serif;
+  resize: none;
+  transform-origin: 0 0;
+  white-space: pre;
+}
+
+.annotate-editor:focus {
+  outline: 2px solid var(--accent);
+}
+
+.annotate__options {
+  margin-top: 0.75rem;
+}
+
+.annotate__hint {
+  margin: 0;
+  color: var(--text-muted);
+  font-size: 0.9rem;
+}
+
+.annotate__row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin-top: 0.25rem;
+}
+
+.swatch {
+  width: 2.25rem;
+  height: 2.25rem;
+  padding: 0;
+  border: 2px solid var(--border);
+  border-radius: 50%;
+  cursor: pointer;
+}
+
+.swatch[aria-pressed='true'] {
+  outline: 3px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.annotate__zoom {
+  min-width: 4.2rem;
+  font-variant-numeric: tabular-nums;
 }
 
 /* Versienummer linksonder */

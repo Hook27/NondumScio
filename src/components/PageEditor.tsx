@@ -42,6 +42,7 @@ export function PageEditor() {
     doc,
     pages,
     activeSources,
+    annotations,
     sourceOf,
     add,
     adding,
@@ -187,7 +188,9 @@ export function PageEditor() {
       const files = new Map(
         (doc.status === 'ready' ? doc.sources : []).map((source) => [source.id, source.file]),
       );
-      const bytes = await buildPdf(await readSources(files, current.pages), current.pages);
+      const bytes = await buildPdf(await readSources(files, current.pages), current.pages, {
+        annotations,
+      });
       downloadPdf(bytes, fileName);
       // Bij uitpakken is het document zelf niet veranderd: "niet gedownload" blijft wat het was.
       if (current.kind === 'save') markSaved();

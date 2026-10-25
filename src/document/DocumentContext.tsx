@@ -9,6 +9,7 @@ import {
   useState,
 } from 'preact/hooks';
 import type { PDFDocumentProxy } from 'pdfjs-dist';
+import type { Annotation } from '../annotations/model';
 import {
   docOrder,
   initialPages,
@@ -87,6 +88,16 @@ type DocApi = {
   redo: () => void;
   canUndo: boolean;
   canRedo: boolean;
+  /** Annotaties (tekst, markeringen, vormen) op de pagina's; ze horen bij `PageItem.key`. */
+  annotations: Annotation[];
+  /**
+   * Een annotatie-bewerking vastleggen; kan ongedaan worden gemaakt. Met een `mergeKey` smelten
+   * snelle opeenvolgende bewerkingen met dezelfde sleutel (bijvoorbeeld pijltjestoetsen) samen
+   * tot één stap.
+   */
+  annotate: (change: (items: Annotation[]) => Annotation[], mergeKey?: string) => void;
+  /** Een nieuw nummer voor een annotatie. */
+  newAnnotationId: () => number;
   /** Gewijzigd sinds het openen of de laatste download. */
   unsaved: boolean;
   /**
@@ -101,6 +112,16 @@ type DocApi = {
 };
 
 const DocContext = createContext<DocApi | null>(null);
+
+/** Wat een stap in de ongedaan-maken-reeks vasthoudt: de pagina's en de annotaties. */
+type Snapshot = { pages: PageItem[]; annotations: Annotation[] };
+const EMPTY: Snapshot = { pages: [], annotations: [] };
+
+/** Een nieuwe stap met andere pagina's; dezelfde lijst teruggeven verandert niets. */
+function withPages(history: History<Snapshot>, pages: PageItem[]): History<Snapshot> {
+  if (pages === history.present.pages) return history;
+  return record(history, { ...history.present, pages });
+}
 
 export function DocumentProvider({
   children,
@@ -117,10 +138,13 @@ export function DocumentProvider({
   const [fileErrors, setFileErrors] = useState<FileError[]>([]);
   const [adding, setAdding] = useState(false);
   const [bookmarks, setBookmarks] = useState<Bookmarks>(NO_BOOKMARKS);
-  // De bewerkingen horen bij wat er open staat en blijven bewaard als je van taak wisselt.
-  const [history, setHistory] = useState<History>(() => startHistory([]));
-  // Het plan dat het laatst is gedownload (of het begin), om "niet opgeslagen" te kunnen tonen.
-  const [savedPages, setSavedPages] = useState<PageItem[] | null>(null);
+  // De bewerkingen (pagina's en annotaties) horen bij wat er open staat en blijven bewaard als
+  // je van taak wisselt. Alles samen één ongedaan-maken-reeks: je laatste stap, waar je die ook deed.
+  const [history, setHistory] = useState<History<Snapshot>>(() => startHistory(EMPTY));
+  // De stand die het laatst is gedownload (of het begin), om "niet opgeslagen" te kunnen tonen.
+  const [saved, setSaved] = useState<Snapshot | null>(null);
+  const nextAnnotation = useRef(1);
+  const lastMerge = useRef<{ key: string; time: number; present: Snapshot } | null>(null);
   // Elk openverzoek krijgt een nummer; een trager, ouder verzoek mag een nieuwer niet overschrijven.
   const latest = useRef(0);
   const loaded = useRef<PDFDocumentProxy[]>([]);
@@ -209,16 +233,17 @@ export function DocumentProvider({
       release();
       if (sources.length === 0) {
         const first = errors[0]!;
-        setHistory(startHistory([]));
-        setSavedPages(null);
+        setHistory(startHistory(EMPTY));
+        setSaved(null);
         setDoc({ status: 'error', name: first.name, code: first.code });
         setFileErrors(errors.slice(1));
         return;
       }
       loaded.current = sources.map((source) => source.pdf);
-      const start = pagesOf(sources);
+      const start: Snapshot = { pages: pagesOf(sources), annotations: [] };
+      lastMerge.current = null;
       setHistory(startHistory(start));
-      setSavedPages(start);
+      setSaved(start);
       setBookmarks(NO_BOOKMARKS);
       setDoc({ status: 'ready', sources });
       setFileErrors(errors);
@@ -248,7 +273,7 @@ export function DocumentProvider({
           ? { status: 'ready', sources: [...current.sources, ...sources] }
           : current,
       );
-      setHistory((h) => record(h, [...h.present, ...extra]));
+      setHistory((h) => withPages(h, [...h.present.pages, ...extra]));
     },
     [doc.status, loadFiles, unload],
   );
@@ -256,8 +281,9 @@ export function DocumentProvider({
   const close = useCallback(() => {
     latest.current += 1;
     release();
-    setHistory(startHistory([]));
-    setSavedPages(null);
+    setHistory(startHistory(EMPTY));
+    setSaved(null);
+    lastMerge.current = null;
     setFileErrors([]);
     setBookmarks(NO_BOOKMARKS);
     setDoc({ status: 'empty' });
@@ -273,35 +299,65 @@ export function DocumentProvider({
     [],
   );
 
-  const edit = useCallback((next: PageItem[]) => setHistory((h) => record(h, next)), []);
+  const annotate = useCallback(
+    (change: (items: Annotation[]) => Annotation[], mergeKey?: string) =>
+      setHistory((h) => {
+        const next = change(h.present.annotations);
+        if (next === h.present.annotations) return h;
+        const now = Date.now();
+        const last = lastMerge.current;
+        const snapshot = { ...h.present, annotations: next };
+        // Snelle opeenvolgende wijzigingen met dezelfde sleutel smelten samen, zolang er
+        // ondertussen niets anders is gebeurd: de vorige stap blijft het terugkeerpunt.
+        const merge =
+          mergeKey !== undefined &&
+          last?.key === mergeKey &&
+          last.present === h.present &&
+          now - last.time < 800 &&
+          h.past.length > 0;
+        lastMerge.current =
+          mergeKey === undefined ? null : { key: mergeKey, time: now, present: snapshot };
+        if (merge) return { past: h.past, present: snapshot, future: [] };
+        return record(h, snapshot);
+      }),
+    [],
+  );
+  const newAnnotationId = useCallback(() => nextAnnotation.current++, []);
+
+  const edit = useCallback((next: PageItem[]) => setHistory((h) => withPages(h, next)), []);
   const undo = useCallback(() => setHistory(undoHistory), []);
   const redo = useCallback(() => setHistory(redoHistory), []);
   const removeSource = useCallback(
-    (id: number) => setHistory((h) => record(h, removeDoc(h.present, id))),
+    (id: number) => setHistory((h) => withPages(h, removeDoc(h.present.pages, id))),
     [],
   );
   const moveSource = useCallback(
-    (id: number, step: -1 | 1) => setHistory((h) => record(h, moveDoc(h.present, id, step))),
+    (id: number, step: -1 | 1) =>
+      setHistory((h) => withPages(h, moveDoc(h.present.pages, id, step))),
     [],
   );
   const setSourcePages = useCallback(
     (id: number, sources: ReadonlySet<number>) =>
       setHistory((h) =>
-        record(
+        withPages(
           h,
-          setDocPages(h.present, id, sources, () => nextKey.current++),
+          setDocPages(h.present.pages, id, sources, () => nextKey.current++),
         ),
       ),
     [],
   );
   const moveSourceTo = useCallback(
-    (id: number, target: number) => setHistory((h) => record(h, moveDocTo(h.present, id, target))),
+    (id: number, target: number) =>
+      setHistory((h) => withPages(h, moveDocTo(h.present.pages, id, target))),
     [],
   );
 
-  const markSaved = useCallback(() => setSavedPages(history.present), [history.present]);
+  const markSaved = useCallback(() => setSaved(history.present), [history.present]);
   const unsaved =
-    doc.status === 'ready' && savedPages !== null && !samePlan(history.present, savedPages);
+    doc.status === 'ready' &&
+    saved !== null &&
+    (!samePlan(history.present.pages, saved.pages) ||
+      history.present.annotations !== saved.annotations);
 
   // Wie de pagina sluit met niet-gedownloade wijzigingen, krijgt een waarschuwing van de browser.
   // Bewust direct bij het tekenen (layout-effect): zo staat de waarschuwing aan op het
@@ -323,7 +379,7 @@ export function DocumentProvider({
   const value = useMemo(() => {
     const sources = doc.status === 'ready' ? doc.sources : [];
     const byId = new Map(sources.map((source) => [source.id, source]));
-    const activeSources = docOrder(history.present)
+    const activeSources = docOrder(history.present.pages)
       .map((id) => byId.get(id))
       .filter((source): source is Source => source !== undefined);
     return {
@@ -333,7 +389,7 @@ export function DocumentProvider({
       adding,
       fileErrors,
       close,
-      pages: history.present,
+      pages: history.present.pages,
       activeSources,
       sourceOf: (page: PageItem) => byId.get(page.doc),
       removeSource,
@@ -345,6 +401,9 @@ export function DocumentProvider({
       redo,
       canUndo: history.past.length > 0,
       canRedo: history.future.length > 0,
+      annotations: history.present.annotations,
+      annotate,
+      newAnnotationId,
       unsaved,
       markSaved,
       bookmarks,
@@ -359,6 +418,8 @@ export function DocumentProvider({
     fileErrors,
     close,
     history,
+    annotate,
+    newAnnotationId,
     removeSource,
     moveSource,
     moveSourceTo,

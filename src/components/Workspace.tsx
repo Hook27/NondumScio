@@ -1,6 +1,7 @@
 import { useDocument } from '../document/DocumentContext';
 import { useI18n } from '../i18n/LanguageContext';
 import { format } from '../i18n/format';
+import { AnnotateView } from './AnnotateView';
 import { ConvertView } from './ConvertView';
 import { MergeView } from './MergeView';
 import { OpenPdf } from './OpenPdf';
@@ -9,7 +10,7 @@ import { SplitView } from './SplitView';
 import { ComingSoon, PageThumbs, PaneHead, Split } from './WorkspaceParts';
 
 /** Wat het werkgebied laat doen: alleen bekijken, pagina's bewerken, samenvoegen, splitsen of omzetten. */
-export type WorkspaceMode = 'view' | 'pages' | 'merge' | 'split' | 'convert';
+export type WorkspaceMode = 'view' | 'pages' | 'merge' | 'split' | 'convert' | 'edit';
 
 /** Het werkgebied van een taak: PDF's openen, en daarna de pagina's ervan. */
 export function Workspace({ mode = 'view' }: { mode?: WorkspaceMode }) {
@@ -22,6 +23,7 @@ export function Workspace({ mode = 'view' }: { mode?: WorkspaceMode }) {
     if (mode === 'pages') return <PageEditor />;
     if (mode === 'merge') return <MergeView />;
     if (mode === 'split') return <SplitView />;
+    if (mode === 'edit') return <AnnotateView />;
     return <ViewDocument />;
   }
   return (
