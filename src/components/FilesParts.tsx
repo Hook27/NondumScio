@@ -185,8 +185,8 @@ export function FileList({
 }
 
 /**
- * De knoppenbalk onder een lijst: toevoegen, ongedaan maken en opnieuw. De hoofdactie
- * (downloaden) komt als `children` in een eigen groep, die op een telefoon vast onderaan staat.
+ * De knoppenbalk onder een lijst: ongedaan maken en opnieuw, en onderaan (op een telefoon vast)
+ * toevoegen naast de hoofdactie (downloaden), die als `children` meekomt. Zo staat het bij elke taak.
  * Gedeeld door de bestanden (PDF's) en de afbeeldingen.
  */
 export function ListToolbar({
@@ -218,6 +218,22 @@ export function ListToolbar({
   return (
     <div class="toolbar toolbar--tools" role="toolbar" aria-label={label}>
       <div class="toolbar__group">
+        <IconButton
+          icon="undo"
+          label={t.pages.undo}
+          tip={`${t.pages.undo} (Ctrl + Z)`}
+          disabled={!canUndo}
+          onClick={undo}
+        />
+        <IconButton
+          icon="redo"
+          label={t.pages.redo}
+          tip={`${t.pages.redo} (Ctrl + Y)`}
+          disabled={!canRedo}
+          onClick={redo}
+        />
+      </div>
+      <div class="toolbar__group toolbar__group--wide">
         <input
           id={addId}
           class="visually-hidden"
@@ -235,24 +251,8 @@ export function ListToolbar({
           <Icon name="filePlus" />
           {addLabel}
         </label>
+        {children}
       </div>
-      <div class="toolbar__group">
-        <IconButton
-          icon="undo"
-          label={t.pages.undo}
-          tip={`${t.pages.undo} (Ctrl + Z)`}
-          disabled={!canUndo}
-          onClick={undo}
-        />
-        <IconButton
-          icon="redo"
-          label={t.pages.redo}
-          tip={`${t.pages.redo} (Ctrl + Y)`}
-          disabled={!canRedo}
-          onClick={redo}
-        />
-      </div>
-      <div class="toolbar__group toolbar__group--wide">{children}</div>
     </div>
   );
 }

@@ -108,13 +108,25 @@ describe('PageEditor', () => {
     expect(status()).toContain(nl.pages.unsaved);
   });
 
+  it('heeft dezelfde bestandslijst, kop en toevoegen-knop als Samenvoegen', async () => {
+    await openEditor(3);
+    const files = screen.getByRole('list', { name: nl.merge.files });
+    expect(files.querySelector('.merge-list__name')!.textContent).toBe('rapport.pdf');
+    expect(files.querySelector('.drag-handle')).not.toBeNull();
+    // Rechts is het pagina-overzicht al het vak om pagina's te kiezen: geen ⊞-knop.
+    expect(screen.queryByRole('button', { name: new RegExp(nl.merge.showPages) })).toBeNull();
+    expect(screen.getByRole('heading', { name: nl.merge.result })).toBeTruthy();
+    expect(screen.getByText(nl.merge.add)).toBeTruthy();
+    expect(screen.queryByText(nl.pages.addPdf)).toBeNull();
+  });
+
   it('verwijdert de gekozen pagina’s en past het aantal aan', async () => {
     await openEditor(4);
     fireEvent.click(options()[0]!);
     fireEvent.click(options()[2]!, { ctrlKey: true });
     fireEvent.click(button(nl.pages.remove));
     expect(options()).toHaveLength(2);
-    expect(screen.getByText(/2 pagina’s/)).toBeTruthy();
+    expect(screen.getByText('2 pagina’s', { selector: '.pane-head__meta' })).toBeTruthy();
     expect(status()).toContain('0 van 2 gekozen');
   });
 
@@ -266,7 +278,8 @@ describe('PageEditor', () => {
 
   it('heeft een greepje per pagina om te slepen, verborgen voor schermlezers', async () => {
     await openEditor(2);
-    const handles = document.querySelectorAll('.drag-handle');
+    // Bij de pagina's zelf (de bestandslijst erboven heeft er ook een).
+    const handles = document.querySelectorAll('.thumbs .drag-handle');
     expect(handles).toHaveLength(2);
     expect(handles[0]!.getAttribute('aria-hidden')).toBe('true');
   });

@@ -75,13 +75,71 @@ describe('Splitsen', () => {
     expect(parts()).toEqual(['Deel 1pagina’s 1-2', 'Deel 2pagina’s 3-4', 'Deel 3pagina 5']);
   });
 
+  it('heeft dezelfde bestandslijst en balk als Samenvoegen', async () => {
+    await setup(4);
+    const files = screen.getByRole('list', { name: nl.merge.files });
+    expect(within(files).getAllByRole('listitem')).toHaveLength(1);
+    expect(files.querySelector('.drag-handle')).not.toBeNull();
+    expect(screen.getByLabelText('Pagina’s kiezen uit rapport.pdf')).toBeTruthy();
+    // Geen apart vak om pagina's te kiezen: rechts staat het resultaat.
+    expect(screen.queryByRole('button', { name: new RegExp(nl.merge.showPages) })).toBeNull();
+    const toolbar = screen.getByRole('toolbar', { name: nl.split.actions });
+    expect(within(toolbar).getByRole('button', { name: nl.pages.undo })).toBeTruthy();
+    expect(within(toolbar).getByRole('button', { name: nl.pages.redo })).toBeTruthy();
+    // Toevoegen staat onderaan, naast de hoofdactie.
+    const wide = toolbar.querySelector('.toolbar__group--wide')!;
+    expect(within(wide as HTMLElement).getByText(nl.merge.add)).toBeTruthy();
+    expect(
+      within(wide as HTMLElement).getByRole('button', { name: 'Alle 4 delen downloaden (ZIP)' }),
+    ).toBeTruthy();
+  });
+
+  it('toont alle pagina’s in één raster, met het deel waar elke pagina bij hoort', async () => {
+    await setup(5);
+    fireEvent.input(screen.getByLabelText(nl.split.size), { target: { value: '2' } });
+    expect(screen.getByRole('heading', { name: nl.merge.result })).toBeTruthy();
+    const grid = screen.getByRole('list', { name: nl.merge.result });
+    const cells = within(grid).getAllByRole('listitem');
+    expect(cells.map((cell) => cell.querySelector('.page-option__file')!.textContent)).toEqual([
+      'Deel 1',
+      'Deel 1',
+      'Deel 2',
+      'Deel 2',
+      'Deel 3',
+    ]);
+    // Om en om een tint, zodat de delen te onderscheiden zijn; de tekst zegt het ook.
+    expect(cells.map((cell) => cell.classList.contains('thumbs__part--alt'))).toEqual([
+      false,
+      false,
+      true,
+      true,
+      false,
+    ]);
+  });
+
+  it('maakt wijzigingen aan het bestand ongedaan, en de delen volgen', async () => {
+    await setup(5);
+    expect(parts()).toHaveLength(5);
+    const field = screen.getByLabelText('Pagina’s kiezen uit rapport.pdf');
+    fireEvent.input(field, { target: { value: '1-3' } });
+    fireEvent.keyDown(field, { key: 'Enter' });
+    expect(parts()).toHaveLength(3);
+    fireEvent.click(screen.getByRole('button', { name: nl.pages.undo }));
+    expect(parts()).toHaveLength(5);
+    fireEvent.click(screen.getByRole('button', { name: nl.pages.redo }));
+    expect(parts()).toHaveLength(3);
+  });
+
   it('splitst op bereiken, toont wat niet in een deel zit, en meldt fouten', async () => {
     await setup(5);
     fireEvent.click(screen.getByLabelText(nl.split.ranges));
     const field = screen.getByLabelText(nl.split.rangesLabel);
     fireEvent.input(field, { target: { value: '1-2, 4-' } });
     expect(parts()).toEqual(['Deel 1pagina’s 1-2', 'Deel 2pagina’s 4-5']);
-    expect(screen.getByRole('region', { name: nl.split.unused })).toBeTruthy();
+    // Pagina 3 zit in geen deel: gedempt in het raster, met dat label.
+    const dimmed = document.querySelectorAll('.thumbs__off');
+    expect(dimmed).toHaveLength(1);
+    expect(dimmed[0]!.textContent).toContain(nl.split.unused);
 
     fireEvent.input(field, { target: { value: '1-2, 9' } });
     expect(screen.getByRole('alert').textContent).toBe(

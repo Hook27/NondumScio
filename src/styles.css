@@ -1108,22 +1108,9 @@ h1 {
   white-space: nowrap;
 }
 
-.split-group {
-  margin: 0 0 1.25rem;
-}
-
-.split-group__title {
-  display: flex;
-  align-items: baseline;
-  gap: 0.6rem;
-  margin: 0 0 0.5rem;
-  font-size: 0.95rem;
-}
-
-.split-group__meta {
-  color: var(--text-muted);
-  font-size: 0.85rem;
-  font-weight: 400;
+.thumbs__part--alt .thumb__page {
+  background: color-mix(in srgb, var(--accent) 10%, var(--surface));
+  border-color: color-mix(in srgb, var(--accent) 45%, var(--border));
 }
 
 /* Kop van een vak (rechts: resultaat of pagina's kiezen) */

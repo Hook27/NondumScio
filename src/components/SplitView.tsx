@@ -1,5 +1,6 @@
 import { useState } from 'preact/hooks';
 import { useDocument } from '../document/DocumentContext';
+import { useUndoShortcuts } from '../document/useUndoShortcuts';
 import { useI18n } from '../i18n/LanguageContext';
 import { format, plural } from '../i18n/format';
 import { chunkParts, formatRanges, parseParts, type RangeProblem } from '../pages/ranges';
@@ -12,6 +13,7 @@ import {
   readSources,
 } from '../pdf/save';
 import { makeZip } from '../lib/zip';
+import { FileList, FilesToolbar } from './FilesParts';
 import { Icon, IconButton } from './Icon';
 import { SaveDialog } from './SaveDialog';
 import { Thumbnail } from './Thumbnail';
@@ -34,7 +36,8 @@ type Request = { kind: 'part'; index: number } | { kind: 'zip' };
  * worden gedownload, of alle delen samen als één ZIP.
  */
 export function SplitView() {
-  const { doc, pages, activeSources, sourceOf, annotations } = useDocument();
+  const { doc, pages, activeSources, sourceOf, annotations, undo, redo } = useDocument();
+  useUndoShortcuts(undo, redo);
   const { t } = useI18n();
   const [method, setMethod] = useState<Method>('every');
   const [size, setSize] = useState('1');
@@ -115,11 +118,26 @@ export function SplitView() {
 
   const used = new Set(parts.flat());
   const unused = pages.map((_, i) => i + 1).filter((position) => !used.has(position));
+  // Alle pagina's in één raster, elk met het deel waar hij bij hoort (deel -1: niet in een deel).
+  const entries = [
+    ...parts.flatMap((part, index) =>
+      part.map((position) => ({
+        position,
+        part: index,
+        label: format(t.split.part, { n: index + 1 }),
+      })),
+    ),
+    ...(unused.length > 0 && method === 'ranges'
+      ? unused.map((position) => ({ position, part: -1, label: t.split.unused }))
+      : []),
+  ];
 
   return (
     <Split
       tools={
         <div class="split">
+          <FileList />
+
           <fieldset class="split-method">
             <legend class="split-method__legend">{t.split.method}</legend>
             <label class="split-method__option">
@@ -195,23 +213,17 @@ export function SplitView() {
             })}
           </ol>
 
-          <div
-            class="toolbar toolbar--tools toolbar--bar-only"
-            role="toolbar"
-            aria-label={t.split.actions}
-          >
-            <div class="toolbar__group toolbar__group--wide">
-              <button
-                type="button"
-                class="button"
-                disabled={busy || parts.length === 0}
-                onClick={() => setRequest({ kind: 'zip' })}
-              >
-                <Icon name="download" />
-                {format(t.split.downloadAll, { n: parts.length })}
-              </button>
-            </div>
-          </div>
+          <FilesToolbar label={t.split.actions}>
+            <button
+              type="button"
+              class="button"
+              disabled={busy || parts.length === 0}
+              onClick={() => setRequest({ kind: 'zip' })}
+            >
+              <Icon name="download" />
+              {format(t.split.downloadAll, { n: parts.length })}
+            </button>
+          </FilesToolbar>
 
           <div class="tools-status">
             <p class="page-editor__status" aria-live="polite">
@@ -250,43 +262,36 @@ export function SplitView() {
       view={
         <>
           <PaneHead
-            title={t.split.parts}
+            title={t.merge.result}
             meta={plural(parts.length, t.split.countOne, t.split.countOther)}
           />
-          {[
-            ...parts.map((part, index) => ({
-              part,
-              title: format(t.split.part, { n: index + 1 }),
-            })),
-            ...(unused.length > 0 && method === 'ranges'
-              ? [{ part: unused, title: t.split.unused }]
-              : []),
-          ].map(({ part, title }) => (
-            <section key={title} class="split-group" aria-label={title}>
-              <h4 class="split-group__title">
-                {title}
-                <span class="split-group__meta">{pagesText(part)}</span>
-              </h4>
-              <ol class="thumbs">
-                {part.map((position) => {
-                  const page = pages[position - 1]!;
-                  const source = sourceOf(page);
-                  if (!source) return null;
-                  return (
-                    <li key={`${title}-${page.key}`}>
-                      <Thumbnail
-                        pdf={source.pdf}
-                        pageNumber={page.source + 1}
-                        rotation={page.rotation}
-                        caption={position}
-                        label={format(t.document.page, { n: position })}
-                      />
-                    </li>
-                  );
-                })}
-              </ol>
-            </section>
-          ))}
+          <ol class="thumbs thumbs--parts" aria-label={t.merge.result}>
+            {entries.map(({ position, part, label }) => {
+              const page = pages[position - 1]!;
+              const source = sourceOf(page);
+              if (!source) return null;
+              const classes = [
+                part < 0 && 'thumbs__off',
+                part >= 0 && part % 2 === 1 && 'thumbs__part--alt',
+              ]
+                .filter(Boolean)
+                .join(' ');
+              return (
+                <li key={`${position}-${page.key}`} class={classes || undefined}>
+                  <Thumbnail
+                    pdf={source.pdf}
+                    pageNumber={page.source + 1}
+                    rotation={page.rotation}
+                    caption={position}
+                    label={`${format(t.document.page, { n: position })}, ${label}`}
+                  />
+                  <span class="page-option__file" aria-hidden="true">
+                    {label}
+                  </span>
+                </li>
+              );
+            })}
+          </ol>
         </>
       }
     />
