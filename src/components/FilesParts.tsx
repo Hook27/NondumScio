@@ -45,12 +45,14 @@ export const defaultBookmarkTitle = (name: string) => name.replace(/\.pdf$/i, ''
  * `bookmarkFields` staat bij elk bestand ook de titel van de nieuwe bladwijzer.
  */
 export function FileList({
-  picking,
+  picking = null,
   onPick,
   bookmarkFields = false,
 }: {
-  picking: number | null;
-  onPick: (id: number | null) => void;
+  /** Welk bestand rechts zijn pagina's met vinkjes toont (alleen met `onPick`). */
+  picking?: number | null;
+  /** Zonder dit is er geen ⊞-knop: de taak heeft rechts geen vak om pagina's te kiezen. */
+  onPick?: (id: number | null) => void;
   bookmarkFields?: boolean;
 }) {
   const {
@@ -124,14 +126,16 @@ export function FileList({
                 onChange={(sources) => setSourcePages(source.id, sources)}
               />
               <span class="merge-list__actions">
-                <IconButton
-                  icon="grid"
-                  label={`${t.merge.showPages}: ${source.name}`}
-                  tip={t.merge.showPages}
-                  aria-pressed={picking === source.id}
-                  aria-controls="merge-view"
-                  onClick={() => onPick(picking === source.id ? null : source.id)}
-                />
+                {onPick && (
+                  <IconButton
+                    icon="grid"
+                    label={`${t.merge.showPages}: ${source.name}`}
+                    tip={t.merge.showPages}
+                    aria-pressed={picking === source.id}
+                    aria-controls="merge-view"
+                    onClick={() => onPick(picking === source.id ? null : source.id)}
+                  />
+                )}
                 <IconButton
                   icon="arrowUp"
                   label={format(t.merge.moveUp, { name: source.name })}

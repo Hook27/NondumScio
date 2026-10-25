@@ -98,10 +98,6 @@ type DocApi = {
   annotate: (change: (items: Annotation[]) => Annotation[], mergeKey?: string) => void;
   /** Een nieuw nummer voor een annotatie. */
   newAnnotationId: () => number;
-  undoAnnotation: () => void;
-  redoAnnotation: () => void;
-  canUndoAnnotation: boolean;
-  canRedoAnnotation: boolean;
   /** Gewijzigd sinds het openen of de laatste download. */
   unsaved: boolean;
   /**
@@ -116,6 +112,16 @@ type DocApi = {
 };
 
 const DocContext = createContext<DocApi | null>(null);
+
+/** Wat een stap in de ongedaan-maken-reeks vasthoudt: de pagina's en de annotaties. */
+type Snapshot = { pages: PageItem[]; annotations: Annotation[] };
+const EMPTY: Snapshot = { pages: [], annotations: [] };
+
+/** Een nieuwe stap met andere pagina's; dezelfde lijst teruggeven verandert niets. */
+function withPages(history: History<Snapshot>, pages: PageItem[]): History<Snapshot> {
+  if (pages === history.present.pages) return history;
+  return record(history, { ...history.present, pages });
+}
 
 export function DocumentProvider({
   children,
@@ -132,18 +138,13 @@ export function DocumentProvider({
   const [fileErrors, setFileErrors] = useState<FileError[]>([]);
   const [adding, setAdding] = useState(false);
   const [bookmarks, setBookmarks] = useState<Bookmarks>(NO_BOOKMARKS);
-  // De bewerkingen horen bij wat er open staat en blijven bewaard als je van taak wisselt.
-  const [history, setHistory] = useState<History>(() => startHistory([]));
-  // Het plan dat het laatst is gedownload (of het begin), om "niet opgeslagen" te kunnen tonen.
-  const [savedPages, setSavedPages] = useState<PageItem[] | null>(null);
-  // Annotaties hebben een eigen ongedaan-maken-reeks: bij Bewerken maak je die ongedaan, bij
-  // de andere taken de wijzigingen aan de pagina's. Ze blijven bewaard als je van taak wisselt.
-  const [annotHistory, setAnnotHistory] = useState<History<Annotation[]>>(() =>
-    startHistory<Annotation[]>([]),
-  );
-  const [savedAnnotations, setSavedAnnotations] = useState<Annotation[]>(annotHistory.present);
+  // De bewerkingen (pagina's en annotaties) horen bij wat er open staat en blijven bewaard als
+  // je van taak wisselt. Alles samen één ongedaan-maken-reeks: je laatste stap, waar je die ook deed.
+  const [history, setHistory] = useState<History<Snapshot>>(() => startHistory(EMPTY));
+  // De stand die het laatst is gedownload (of het begin), om "niet opgeslagen" te kunnen tonen.
+  const [saved, setSaved] = useState<Snapshot | null>(null);
   const nextAnnotation = useRef(1);
-  const lastMerge = useRef<{ key: string; time: number } | null>(null);
+  const lastMerge = useRef<{ key: string; time: number; present: Snapshot } | null>(null);
   // Elk openverzoek krijgt een nummer; een trager, ouder verzoek mag een nieuwer niet overschrijven.
   const latest = useRef(0);
   const loaded = useRef<PDFDocumentProxy[]>([]);
@@ -216,14 +217,6 @@ export function DocumentProvider({
       return pages;
     });
 
-  /** Begint met een lege lijst annotaties (bij openen en sluiten). */
-  const resetAnnotations = useCallback(() => {
-    const empty = startHistory<Annotation[]>([]);
-    lastMerge.current = null;
-    setAnnotHistory(empty);
-    setSavedAnnotations(empty.present);
-  }, []);
-
   const open = useCallback(
     async (input: File | File[]) => {
       const files = Array.isArray(input) ? input : [input];
@@ -240,24 +233,23 @@ export function DocumentProvider({
       release();
       if (sources.length === 0) {
         const first = errors[0]!;
-        setHistory(startHistory([]));
-        setSavedPages(null);
-        resetAnnotations();
+        setHistory(startHistory(EMPTY));
+        setSaved(null);
         setDoc({ status: 'error', name: first.name, code: first.code });
         setFileErrors(errors.slice(1));
         return;
       }
       loaded.current = sources.map((source) => source.pdf);
-      const start = pagesOf(sources);
+      const start: Snapshot = { pages: pagesOf(sources), annotations: [] };
+      lastMerge.current = null;
       setHistory(startHistory(start));
-      setSavedPages(start);
-      resetAnnotations();
+      setSaved(start);
       setBookmarks(NO_BOOKMARKS);
       setDoc({ status: 'ready', sources });
       setFileErrors(errors);
     },
     // pagesOf gebruikt alleen refs.
-    [loadFiles, release, resetAnnotations, unload],
+    [loadFiles, release, unload],
   );
 
   const add = useCallback(
@@ -281,7 +273,7 @@ export function DocumentProvider({
           ? { status: 'ready', sources: [...current.sources, ...sources] }
           : current,
       );
-      setHistory((h) => record(h, [...h.present, ...extra]));
+      setHistory((h) => withPages(h, [...h.present.pages, ...extra]));
     },
     [doc.status, loadFiles, unload],
   );
@@ -289,13 +281,13 @@ export function DocumentProvider({
   const close = useCallback(() => {
     latest.current += 1;
     release();
-    setHistory(startHistory([]));
-    setSavedPages(null);
-    resetAnnotations();
+    setHistory(startHistory(EMPTY));
+    setSaved(null);
+    lastMerge.current = null;
     setFileErrors([]);
     setBookmarks(NO_BOOKMARKS);
     setDoc({ status: 'empty' });
-  }, [release, resetAnnotations]);
+  }, [release]);
 
   const setBookmarksOn = useCallback(
     (on: boolean) => setBookmarks((current) => ({ ...current, on })),
@@ -309,63 +301,63 @@ export function DocumentProvider({
 
   const annotate = useCallback(
     (change: (items: Annotation[]) => Annotation[], mergeKey?: string) =>
-      setAnnotHistory((h) => {
-        const next = change(h.present);
-        if (next === h.present) return h;
+      setHistory((h) => {
+        const next = change(h.present.annotations);
+        if (next === h.present.annotations) return h;
         const now = Date.now();
         const last = lastMerge.current;
-        const merge = mergeKey !== undefined && last?.key === mergeKey && now - last.time < 800;
-        lastMerge.current = mergeKey === undefined ? null : { key: mergeKey, time: now };
-        // Samensmelten: de vorige stap blijft het terugkeerpunt, de nieuwe stand vervangt de huidige.
-        if (merge && h.past.length > 0) return { past: h.past, present: next, future: [] };
-        return record(h, next);
+        const snapshot = { ...h.present, annotations: next };
+        // Snelle opeenvolgende wijzigingen met dezelfde sleutel smelten samen, zolang er
+        // ondertussen niets anders is gebeurd: de vorige stap blijft het terugkeerpunt.
+        const merge =
+          mergeKey !== undefined &&
+          last?.key === mergeKey &&
+          last.present === h.present &&
+          now - last.time < 800 &&
+          h.past.length > 0;
+        lastMerge.current =
+          mergeKey === undefined ? null : { key: mergeKey, time: now, present: snapshot };
+        if (merge) return { past: h.past, present: snapshot, future: [] };
+        return record(h, snapshot);
       }),
     [],
   );
   const newAnnotationId = useCallback(() => nextAnnotation.current++, []);
-  const undoAnnotation = useCallback(() => {
-    lastMerge.current = null;
-    setAnnotHistory(undoHistory);
-  }, []);
-  const redoAnnotation = useCallback(() => {
-    lastMerge.current = null;
-    setAnnotHistory(redoHistory);
-  }, []);
 
-  const edit = useCallback((next: PageItem[]) => setHistory((h) => record(h, next)), []);
+  const edit = useCallback((next: PageItem[]) => setHistory((h) => withPages(h, next)), []);
   const undo = useCallback(() => setHistory(undoHistory), []);
   const redo = useCallback(() => setHistory(redoHistory), []);
   const removeSource = useCallback(
-    (id: number) => setHistory((h) => record(h, removeDoc(h.present, id))),
+    (id: number) => setHistory((h) => withPages(h, removeDoc(h.present.pages, id))),
     [],
   );
   const moveSource = useCallback(
-    (id: number, step: -1 | 1) => setHistory((h) => record(h, moveDoc(h.present, id, step))),
+    (id: number, step: -1 | 1) =>
+      setHistory((h) => withPages(h, moveDoc(h.present.pages, id, step))),
     [],
   );
   const setSourcePages = useCallback(
     (id: number, sources: ReadonlySet<number>) =>
       setHistory((h) =>
-        record(
+        withPages(
           h,
-          setDocPages(h.present, id, sources, () => nextKey.current++),
+          setDocPages(h.present.pages, id, sources, () => nextKey.current++),
         ),
       ),
     [],
   );
   const moveSourceTo = useCallback(
-    (id: number, target: number) => setHistory((h) => record(h, moveDocTo(h.present, id, target))),
+    (id: number, target: number) =>
+      setHistory((h) => withPages(h, moveDocTo(h.present.pages, id, target))),
     [],
   );
 
-  const markSaved = useCallback(() => {
-    setSavedPages(history.present);
-    setSavedAnnotations(annotHistory.present);
-  }, [history.present, annotHistory.present]);
+  const markSaved = useCallback(() => setSaved(history.present), [history.present]);
   const unsaved =
     doc.status === 'ready' &&
-    savedPages !== null &&
-    (!samePlan(history.present, savedPages) || annotHistory.present !== savedAnnotations);
+    saved !== null &&
+    (!samePlan(history.present.pages, saved.pages) ||
+      history.present.annotations !== saved.annotations);
 
   // Wie de pagina sluit met niet-gedownloade wijzigingen, krijgt een waarschuwing van de browser.
   // Bewust direct bij het tekenen (layout-effect): zo staat de waarschuwing aan op het
@@ -387,7 +379,7 @@ export function DocumentProvider({
   const value = useMemo(() => {
     const sources = doc.status === 'ready' ? doc.sources : [];
     const byId = new Map(sources.map((source) => [source.id, source]));
-    const activeSources = docOrder(history.present)
+    const activeSources = docOrder(history.present.pages)
       .map((id) => byId.get(id))
       .filter((source): source is Source => source !== undefined);
     return {
@@ -397,7 +389,7 @@ export function DocumentProvider({
       adding,
       fileErrors,
       close,
-      pages: history.present,
+      pages: history.present.pages,
       activeSources,
       sourceOf: (page: PageItem) => byId.get(page.doc),
       removeSource,
@@ -409,13 +401,9 @@ export function DocumentProvider({
       redo,
       canUndo: history.past.length > 0,
       canRedo: history.future.length > 0,
-      annotations: annotHistory.present,
+      annotations: history.present.annotations,
       annotate,
       newAnnotationId,
-      undoAnnotation,
-      redoAnnotation,
-      canUndoAnnotation: annotHistory.past.length > 0,
-      canRedoAnnotation: annotHistory.future.length > 0,
       unsaved,
       markSaved,
       bookmarks,
@@ -430,11 +418,8 @@ export function DocumentProvider({
     fileErrors,
     close,
     history,
-    annotHistory,
     annotate,
     newAnnotationId,
-    undoAnnotation,
-    redoAnnotation,
     removeSource,
     moveSource,
     moveSourceTo,

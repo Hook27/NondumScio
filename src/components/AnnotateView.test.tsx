@@ -85,11 +85,80 @@ describe('Bewerken: annoteren', () => {
     expect(screen.getByText(nl.edit.none)).toBeTruthy();
   });
 
-  it('heeft dezelfde balk als de andere taken: PDF toevoegen en downloaden', async () => {
+  it('heeft dezelfde balk als de andere taken: bestand toevoegen en downloaden', async () => {
     await setup();
-    expect(screen.getByText(nl.pages.addPdf)).toBeTruthy();
+    expect(screen.getByText(nl.merge.add)).toBeTruthy();
     expect(button(nl.pages.save)).toBeTruthy();
     expect(screen.getByRole('heading', { level: 2, name: 'rapport.pdf' })).toBeTruthy();
+  });
+
+  it('toont dezelfde bestandslijst als Samenvoegen, zonder de knop voor pagina’s kiezen', async () => {
+    await setup(3);
+    const list = screen.getByRole('list', { name: nl.merge.files });
+    const item = within(list).getAllByRole('listitem')[0]!;
+    expect(item.querySelector('.drag-handle')).not.toBeNull();
+    expect(item.querySelector('.merge-list__name')!.textContent).toBe('rapport.pdf');
+    expect(screen.getByLabelText('Pagina’s kiezen uit rapport.pdf')).toBeTruthy();
+    expect(button('rapport.pdf weghalen')).toBeTruthy();
+    // Rechts staan de pagina's zelf; een apart vak om pagina's te kiezen is er niet.
+    expect(screen.queryByRole('button', { name: new RegExp(nl.merge.showPages) })).toBeNull();
+    expect(screen.getByRole('heading', { name: nl.merge.result })).toBeTruthy();
+    expect(screen.getByText('3 pagina’s', { selector: '.pane-head__meta' })).toBeTruthy();
+  });
+
+  it('volgt het bereik van een bestand: weggehaalde pagina’s verdwijnen uit de weergave', async () => {
+    await setup(3);
+    const field = screen.getByLabelText('Pagina’s kiezen uit rapport.pdf');
+    fireEvent.input(field, { target: { value: '1, 3' } });
+    fireEvent.keyDown(field, { key: 'Enter' });
+    expect(screen.getAllByRole('group', { name: /^Pagina \d$/ })).toHaveLength(2);
+    fireEvent.click(button(nl.pages.undo));
+    expect(screen.getAllByRole('group', { name: /^Pagina \d$/ })).toHaveLength(3);
+  });
+
+  it('heeft één ongedaan-maken-reeks voor bestanden, pagina’s en annotaties', async () => {
+    await setup(3);
+    press('r');
+    fireEvent.keyDown(pageNr(1), { key: 'Enter' });
+    const field = screen.getByLabelText('Pagina’s kiezen uit rapport.pdf');
+    fireEvent.input(field, { target: { value: '1-2' } });
+    fireEvent.keyDown(field, { key: 'Enter' });
+    expect(screen.getAllByRole('group', { name: /^Pagina \d$/ })).toHaveLength(2);
+    expect(shapes()).toHaveLength(1);
+
+    // Eerst de laatste stap (het bereik), dan de annotatie: dezelfde knop en Ctrl+Z.
+    fireEvent.click(button(nl.pages.undo));
+    expect(screen.getAllByRole('group', { name: /^Pagina \d$/ })).toHaveLength(3);
+    expect(shapes()).toHaveLength(1);
+    fireEvent.keyDown(document, { key: 'z', ctrlKey: true });
+    expect(shapes()).toHaveLength(0);
+    // En weer vooruit, in dezelfde volgorde.
+    fireEvent.click(button(nl.pages.redo));
+    expect(shapes()).toHaveLength(1);
+    fireEvent.click(button(nl.pages.redo));
+    expect(screen.getAllByRole('group', { name: /^Pagina \d$/ })).toHaveLength(2);
+  });
+
+  it('smelt pijltjes niet samen met een andere stap ertussen', async () => {
+    await setup(2);
+    press('r');
+    fireEvent.keyDown(pageNr(1), { key: 'Enter' });
+    const shape = () => shapes()[0]!;
+    const x = () => Number(shape().querySelector('rect')!.getAttribute('x'));
+    const start = x();
+    fireEvent.keyDown(shape(), { key: 'ArrowRight' });
+    // Een andere stap vlak ertussen (het bereik wijzigen), daarna weer een pijltje.
+    const field = screen.getByLabelText('Pagina’s kiezen uit rapport.pdf');
+    fireEvent.input(field, { target: { value: '1' } });
+    fireEvent.keyDown(field, { key: 'Enter' });
+    fireEvent.keyDown(shape(), { key: 'ArrowRight' });
+    expect(x()).toBeCloseTo(start + 2, 5);
+    fireEvent.click(button(nl.pages.undo));
+    expect(x()).toBeCloseTo(start + 1, 5);
+    fireEvent.click(button(nl.pages.undo));
+    expect(screen.getAllByRole('group', { name: /^Pagina \d$/ })).toHaveLength(2);
+    fireEvent.click(button(nl.pages.undo));
+    expect(x()).toBeCloseTo(start, 5);
   });
 
   it('kiest gereedschap met sneltoetsen, en Escape gaat terug naar selecteren', async () => {
@@ -221,7 +290,7 @@ describe('Bewerken: annoteren', () => {
     fireEvent.input(field, { target: { value: 'Hallo α' } });
     expect(screen.getByRole('status').textContent).toContain('α');
     fireEvent.keyDown(field, { key: 'Escape' });
-    expect(screen.queryByRole('textbox')).toBeNull();
+    expect(screen.queryByRole('textbox', { name: nl.edit.textLabel })).toBeNull();
     expect(within(pageNr(1)).getByRole('button', { name: 'Tekst: Hallo α' })).toBeTruthy();
     expect(screen.getByText(/1 annotatie/)).toBeTruthy();
   });
@@ -250,6 +319,19 @@ describe('Bewerken: annoteren', () => {
     expect((screen.getByRole('button', { name: /^Zoom 100%/ }) as HTMLButtonElement).disabled).toBe(
       true,
     );
+  });
+
+  it('toont bij uitzoomen meer pagina’s naast elkaar, als overzicht', async () => {
+    await setup(4);
+    const label = () => screen.getByRole('button', { name: /^Zoom \d+%/ }).textContent;
+    expect(label()).toBe('100%');
+    for (const expected of ['75%', '50%', '33%', '25%']) {
+      fireEvent.click(button(nl.edit.zoomOut));
+      expect(label()).toBe(expected);
+    }
+    expect(button(nl.edit.zoomOut).disabled).toBe(true);
+    fireEvent.click(screen.getByRole('button', { name: /^Zoom 25%/ }));
+    expect(label()).toBe('100%');
   });
 
   it('downloadt met de annotaties en telt daarna als bewaard', async () => {

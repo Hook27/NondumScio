@@ -21,13 +21,30 @@ import {
 } from '../annotations/model';
 import { PdfSaveError, buildPdf, downloadPdf, editedFileName, readSources } from '../pdf/save';
 import { AnnotatePage, type AnnotateController } from './AnnotatePage';
+import { FileList } from './FilesParts';
 import { Icon, IconButton } from './Icon';
 import { SaveDialog } from './SaveDialog';
-import { Split, useInfo } from './WorkspaceParts';
+import { PaneHead, Split, useInfo } from './WorkspaceParts';
 
-/** De zoomstanden, als factor van "past op de breedte van het vak". */
-const ZOOMS = [0.5, 0.75, 1, 1.25, 1.5, 2, 3];
-const FIT = ZOOMS.indexOf(1);
+/**
+ * De zoomstanden. Bij 25, 33 en 50% staan 4, 3 of 2 pagina's naast elkaar (een overzicht, zoals
+ * het raster bij de andere taken); vanaf 75% staat er één pagina per regel, met 100% zo breed
+ * als het vak.
+ */
+const ZOOMS = [
+  { percent: 25, columns: 4 },
+  { percent: 33, columns: 3 },
+  { percent: 50, columns: 2 },
+  { percent: 75 },
+  { percent: 100 },
+  { percent: 125 },
+  { percent: 150 },
+  { percent: 200 },
+  { percent: 300 },
+] as const;
+const FIT = 4;
+/** De ruimte tussen pagina's (in beeldpunten), ook in de stijl. */
+const PAGE_GAP = 20;
 
 type SaveState =
   | { status: 'idle' }
@@ -60,10 +77,10 @@ export function AnnotateView() {
     annotations,
     annotate,
     newAnnotationId,
-    undoAnnotation,
-    redoAnnotation,
-    canUndoAnnotation,
-    canRedoAnnotation,
+    undo,
+    redo,
+    canUndo,
+    canRedo,
     add,
     adding,
     markSaved,
@@ -97,7 +114,7 @@ export function AnnotateView() {
     setDraftState(annotation);
   };
 
-  useUndoShortcuts(undoAnnotation, redoAnnotation);
+  useUndoShortcuts(undo, redo);
 
   const selected =
     (draft?.id === selectedId ? draft : annotations.find((a) => a.id === selectedId)) ?? null;
@@ -288,14 +305,19 @@ export function AnnotateView() {
   const unsupported = unsupportedChars(
     [...used, ...(draft ? [draft] : [])].map((a) => (a.kind === 'text' ? a.text : '')).join(''),
   );
-  const zoom = ZOOMS[zoomIndex]!;
-  const percent = Math.round(zoom * 100);
+  const stop = ZOOMS[zoomIndex]!;
+  const percent = stop.percent;
+  const columns = 'columns' in stop ? stop.columns : 1;
+  // In het overzicht delen de pagina's de breedte, met de ruimte ertussen eraf.
+  const pageWidth = columns > 1 ? (fitWidth - (columns - 1) * PAGE_GAP) / columns : fitWidth;
+  const zoom = 'columns' in stop ? 1 : stop.percent / 100;
   const busy = save.status === 'saving';
 
   return (
     <Split
       tools={
         <div class="merge annotate">
+          <FileList />
           <span id="annotate-help" class="visually-hidden">
             {t.edit.pageHelp}
           </span>
@@ -318,15 +340,15 @@ export function AnnotateView() {
                 icon="undo"
                 label={t.pages.undo}
                 tip={`${t.pages.undo} (Ctrl + Z)`}
-                disabled={!canUndoAnnotation}
-                onClick={undoAnnotation}
+                disabled={!canUndo}
+                onClick={undo}
               />
               <IconButton
                 icon="redo"
                 label={t.pages.redo}
                 tip={`${t.pages.redo} (Ctrl + Y)`}
-                disabled={!canRedoAnnotation}
-                onClick={redoAnnotation}
+                disabled={!canRedo}
+                onClick={redo}
               />
             </div>
             <div class="toolbar__group" role="group" aria-label={t.edit.zoom}>
@@ -368,7 +390,7 @@ export function AnnotateView() {
               />
               <label for="edit-add" class="button button--secondary">
                 <Icon name="filePlus" />
-                {adding ? t.merge.adding : t.pages.addPdf}
+                {adding ? t.merge.adding : t.merge.add}
               </label>
               <button
                 type="button"
@@ -498,29 +520,35 @@ export function AnnotateView() {
         </div>
       }
       view={
-        <ol ref={container} class="annotate-pages" aria-label={t.edit.pages}>
-          {pages.map((page, index) => {
-            const source = sourceOf(page);
-            if (!source) return null;
-            return (
-              <li key={page.key} class="annotate-pages__item">
-                <p class="annotate-pages__caption">
-                  {format(t.document.page, { n: index + 1 })}
-                  {activeSources.length > 1 && ` · ${source.name}`}
-                </p>
-                <AnnotatePage
-                  pdf={source.pdf}
-                  item={page}
-                  position={index + 1}
-                  fitWidth={fitWidth}
-                  zoom={zoom}
-                  annotations={annotationsOf(annotations, page.key)}
-                  controller={controller}
-                />
-              </li>
-            );
-          })}
-        </ol>
+        <>
+          <PaneHead
+            title={t.merge.result}
+            meta={plural(pages.length, t.document.pagesOne, t.document.pagesOther)}
+          />
+          <ol ref={container} class="annotate-pages" aria-label={t.edit.pages}>
+            {pages.map((page, index) => {
+              const source = sourceOf(page);
+              if (!source) return null;
+              return (
+                <li key={page.key} class="annotate-pages__item">
+                  <p class="annotate-pages__caption">
+                    {format(t.document.page, { n: index + 1 })}
+                    {activeSources.length > 1 && ` · ${source.name}`}
+                  </p>
+                  <AnnotatePage
+                    pdf={source.pdf}
+                    item={page}
+                    position={index + 1}
+                    fitWidth={pageWidth}
+                    zoom={zoom}
+                    annotations={annotationsOf(annotations, page.key)}
+                    controller={controller}
+                  />
+                </li>
+              );
+            })}
+          </ol>
+        </>
       }
     />
   );

@@ -137,6 +137,63 @@ test.describe('annotaties: de weergave en het maken', () => {
     expect((await pages(page).first().boundingBox())!.width / before.width).toBeCloseTo(0.75, 1);
   });
 
+  test('uitzoomen geeft een overzicht: 2, 3 of 4 pagina’s naast elkaar', async ({ page }) => {
+    await openEdit(page, 4);
+    const toolbar = page.getByRole('toolbar', { name: nl.edit.toolbar });
+    const row = async () => {
+      const boxes = await pages(page).evaluateAll((els) =>
+        els.map((el) => Math.round(el.getBoundingClientRect().top + window.scrollY)),
+      );
+      return boxes.filter((top) => top === boxes[0]).length;
+    };
+    expect(await row()).toBe(1);
+    for (const [times, columns] of [
+      [2, 2],
+      [1, 3],
+      [1, 4],
+    ] as const) {
+      for (let i = 0; i < times; i += 1) {
+        await toolbar.getByRole('button', { name: nl.edit.zoomOut }).click();
+      }
+      await expect.poll(row).toBe(columns);
+    }
+    // Het overzicht blijft binnen het vak.
+    const view = (await page.locator('.annotate-pages').boundingBox())!;
+    const last = (await pages(page).last().boundingBox())!;
+    expect(last.x + last.width).toBeLessThanOrEqual(view.x + view.width + 1);
+  });
+
+  test('de bestandslijst en de kop rechts zijn zoals bij Samenvoegen', async ({ page }) => {
+    await openPage(page, '/#/edit', { lang: 'nl' });
+    await page
+      .locator('#pdf-file')
+      .setInputFiles([await pdfFile('een.pdf', 2), await pdfFile('twee.pdf', 1)]);
+    const list = page.getByRole('list', { name: nl.merge.files });
+    await expect(list.getByRole('listitem')).toHaveCount(2, { timeout: 15_000 });
+    await expect(list.locator('.drag-handle')).toHaveCount(2);
+    await expect(page.getByRole('heading', { name: nl.merge.result })).toBeVisible();
+    await expect(pages(page)).toHaveCount(3);
+
+    // Volgorde en weghalen werken hier ook, en alles samen is één ongedaan-maken-reeks.
+    await page.getByRole('button', { name: 'twee.pdf omhoog' }).click();
+    await expect(list.locator('.merge-list__name')).toHaveText(['twee.pdf', 'een.pdf']);
+    await page.keyboard.press('r');
+    await pages(page).first().focus();
+    await page.keyboard.press('Enter');
+    await expect(annotations(page)).toHaveCount(1);
+    await page.getByRole('button', { name: 'een.pdf weghalen' }).click();
+    await expect(pages(page)).toHaveCount(1);
+
+    const undo = page.getByRole('button', { name: nl.pages.undo });
+    await undo.click();
+    await expect(pages(page)).toHaveCount(3);
+    await undo.click();
+    await expect(annotations(page)).toHaveCount(0);
+    await undo.click();
+    await expect(list.locator('.merge-list__name')).toHaveText(['een.pdf', 'twee.pdf']);
+    await expect(undo).toBeDisabled();
+  });
+
   test('tekst plaatsen, aanpassen en weghalen', async ({ page, isMobile }) => {
     test.skip(isMobile, 'Precies klikken op de pagina: desktop (op een telefoon: aparte test)');
     await openEdit(page);
