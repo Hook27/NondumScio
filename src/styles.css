@@ -1310,6 +1310,14 @@ h1 {
     padding: 0.75rem 1rem 3rem;
   }
 
+  /* Beide teksten op één regel, ook op een smal scherm (de regel staat vóór de basisregel, dus
+     met meer gewicht): de lettergrootte schaalt mee met de breedte. */
+  .segmented .segmented__button {
+    padding-inline: 0.25rem;
+    font-size: min(0.85rem, 3.5vw);
+    white-space: nowrap;
+  }
+
   /* Miniaturen in drie kolommen: veel minder scrollen. */
   .thumbs {
     grid-template-columns: repeat(3, minmax(0, 1fr));
@@ -1488,6 +1496,106 @@ h1 {
     padding: 4px 0 0.5rem;
     background: var(--bg);
   }
+}
+
+/* Omzetten */
+.convert-mode {
+  max-width: 42rem;
+  margin: 0 0 0.75rem;
+}
+
+/* De keuze tussen twee soorten omzetten: twee knoppen die samen één schakelaar vormen. */
+.segmented {
+  display: flex;
+  gap: 2px;
+  margin: 0 0 0.75rem;
+  padding: 2px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+}
+
+.convert-mode .segmented {
+  margin: 0;
+}
+
+.segmented__button {
+  flex: 1;
+  min-height: 2.25rem;
+  padding: 0.3rem 0.75rem;
+  background: transparent;
+  border: 0;
+  border-radius: 999px;
+  color: var(--text);
+  font: inherit;
+  font-size: 0.9rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.segmented__button:hover {
+  background: var(--bg);
+}
+
+.segmented__button[aria-pressed='true'] {
+  background: var(--accent);
+  color: var(--accent-contrast);
+}
+
+.split-method__row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem 1.25rem;
+}
+
+.convert__field {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-top: 0.25rem;
+}
+
+.convert__label {
+  font-weight: 600;
+}
+
+.convert__select {
+  justify-self: start;
+  padding: 0.35rem 0.5rem;
+  background: var(--bg);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  font: inherit;
+}
+
+.convert__select:disabled {
+  opacity: 0.5;
+}
+
+/* Pagina's die niet worden omgezet staan er wel, maar gedempt. */
+.thumbs__off .thumb {
+  opacity: 0.4;
+}
+
+/* Een kleine miniatuur van de afbeelding in de lijst, naast de naam. */
+.merge-list__thumb {
+  flex: none;
+  width: 2.25rem;
+  height: 2.25rem;
+  background: var(--bg);
+  border-radius: 4px;
+  object-fit: contain;
+}
+
+/* Een afbeelding als miniatuur in het resultaat. */
+.thumb img {
+  display: block;
+  max-width: 100%;
+  max-height: 14rem;
+  background: var(--paper);
+  box-shadow: var(--shadow);
+  object-fit: contain;
 }
 
 /* Versienummer linksonder */

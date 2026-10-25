@@ -12,10 +12,20 @@ import { Thumbnail } from './Thumbnail';
  * rechts de pagina's. Op een breed scherm scrollt elk vak los; op een smal scherm staan ze
  * onder elkaar en blijft de knoppenbalk bovenaan hangen.
  */
-export function Split({ tools, view }: { tools: ComponentChildren; view: ComponentChildren }) {
+export function Split({
+  head,
+  tools,
+  view,
+}: {
+  /** Boven de naam van het document, bijvoorbeeld een keuze tussen twee soorten omzetten. */
+  head?: ComponentChildren;
+  tools: ComponentChildren;
+  view: ComponentChildren;
+}) {
   return (
     <section class="workspace" aria-labelledby="document-title">
       <div class="workspace__tools">
+        {head}
         <DocumentBar />
         <FileErrors />
         {tools}

@@ -27,7 +27,7 @@ function inkedPixels(page: Page, index: number) {
 
 test.describe('PDF openen', () => {
   test('opent een PDF en tekent een miniatuur per pagina', async ({ page }) => {
-    await openPage(page, '/#/convert', { lang: 'nl' });
+    await openPage(page, '/#/edit', { lang: 'nl' });
     await fileInput(page).setInputFiles(await pdfFile('rapport.pdf', 3));
 
     await expect(page.getByRole('heading', { level: 2, name: 'rapport.pdf' })).toBeVisible();
@@ -47,7 +47,7 @@ test.describe('PDF openen', () => {
         waarschuwingen.push(message.text());
       }
     });
-    await openPage(page, '/#/convert', { lang: 'nl' });
+    await openPage(page, '/#/edit', { lang: 'nl' });
     await fileInput(page).setInputFiles({
       name: 'scan.pdf',
       mimeType: 'application/pdf',
@@ -83,7 +83,7 @@ test.describe('PDF openen', () => {
   });
 
   test('een liggende pagina krijgt een lagere miniatuur', async ({ page }) => {
-    await openPage(page, '/#/convert', { lang: 'nl' });
+    await openPage(page, '/#/edit', { lang: 'nl' });
     await fileInput(page).setInputFiles(await pdfFile('gemengd.pdf', 2, [2]));
     await expect(thumbnails(page).nth(1)).toHaveAttribute('data-rendered', 'true');
 
@@ -93,7 +93,7 @@ test.describe('PDF openen', () => {
   });
 
   test('tekent bij een groot document alleen wat in beeld komt', async ({ page }) => {
-    await openPage(page, '/#/convert', { lang: 'nl' });
+    await openPage(page, '/#/edit', { lang: 'nl' });
     await fileInput(page).setInputFiles(await pdfFile('dik.pdf', 120));
     await expect(thumbnails(page)).toHaveCount(120);
     await expect(thumbnails(page).first()).toHaveAttribute('data-rendered', 'true');
@@ -117,7 +117,7 @@ test.describe('PDF openen', () => {
         }
       } as typeof IntersectionObserver;
     });
-    await openPage(page, '/#/convert', { lang: 'nl' });
+    await openPage(page, '/#/edit', { lang: 'nl' });
     await fileInput(page).setInputFiles(await pdfFile('dik.pdf', 300));
     await expect(thumbnails(page)).toHaveCount(300);
     await expect(thumbnails(page).first()).toHaveAttribute('data-rendered', 'true');
@@ -125,7 +125,7 @@ test.describe('PDF openen', () => {
   });
 
   test('het document blijft open als je van taak wisselt, en sluiten werkt', async ({ page }) => {
-    await openPage(page, '/#/convert', { lang: 'nl' });
+    await openPage(page, '/#/edit', { lang: 'nl' });
     await fileInput(page).setInputFiles(await pdfFile('blijft.pdf', 2));
     await expect(page.getByRole('heading', { level: 2, name: 'blijft.pdf' })).toBeVisible();
 
@@ -143,7 +143,7 @@ test.describe('PDF openen', () => {
   });
 
   test('weigert een bestand dat geen PDF is', async ({ page }) => {
-    await openPage(page, '/#/convert', { lang: 'nl' });
+    await openPage(page, '/#/edit', { lang: 'nl' });
     await fileInput(page).setInputFiles({
       name: 'foto.jpg',
       mimeType: 'image/jpeg',
@@ -155,7 +155,7 @@ test.describe('PDF openen', () => {
   });
 
   test('meldt een beschadigde PDF', async ({ page }) => {
-    await openPage(page, '/#/convert', { lang: 'nl' });
+    await openPage(page, '/#/edit', { lang: 'nl' });
     await fileInput(page).setInputFiles({
       name: 'kapot.pdf',
       mimeType: 'application/pdf',
@@ -173,14 +173,14 @@ test.describe('PDF openen', () => {
         elders.push(request.url());
       }
     });
-    await openPage(page, '/#/convert', { lang: 'nl' });
+    await openPage(page, '/#/edit', { lang: 'nl' });
     await fileInput(page).setInputFiles(await pdfFile('privé.pdf', 2));
     await expect(thumbnails(page).nth(1)).toHaveAttribute('data-rendered', 'true');
     expect(elders).toEqual([]);
   });
 
   test('werkt in het Engels', async ({ page }) => {
-    await openPage(page, '/#/convert', { lang: 'en' });
+    await openPage(page, '/#/edit', { lang: 'en' });
     await fileInput(page).setInputFiles(await pdfFile('report.pdf', 1));
     await expect(page.locator('.document__meta')).toContainText('1 page');
     await expect(page.getByRole('img', { name: 'Page 1' })).toBeVisible();
@@ -188,7 +188,7 @@ test.describe('PDF openen', () => {
 
   for (const theme of ['light', 'dark'] as const) {
     test(`is toegankelijk met een geopend document (${theme})`, async ({ page }) => {
-      await openPage(page, '/#/convert', { lang: 'nl', theme });
+      await openPage(page, '/#/edit', { lang: 'nl', theme });
       await fileInput(page).setInputFiles(await pdfFile('toegankelijk.pdf', 2));
       await expect(thumbnails(page).nth(1)).toHaveAttribute('data-rendered', 'true');
 
