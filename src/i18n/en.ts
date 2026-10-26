@@ -96,10 +96,11 @@ export const en: Messages = {
     picking: '{name}: choose pages',
     showResult: 'Back to the result',
     bookmarks: 'Bookmark per file',
+    keepBookmarks: 'Keep existing bookmarks',
     bookmarkLabel: 'Bookmark',
     bookmarkFor: 'for {name}',
     bookmarksHint:
-      'With “Bookmark per file” the merged PDF gets a bookmark to the start of each file; you can change its title. Without that option, existing bookmarks are dropped when merging.',
+      'With “Bookmark per file” the merged PDF gets a bookmark to the start of each file; you can change its title. With “Keep existing bookmarks” (on by default) the bookmarks already in the files come along, pointing to the new place of their page: under the bookmark of their file, or without that option one after another. Bookmarks to a page you removed are left out. This also applies when you download several files from Pages or Edit.',
     pick: 'Thumbnails of {name}',
     keepPage: 'At least one page of this file must remain. To leave out a whole file, use ✕.',
     rangeErrors: {
@@ -332,7 +333,9 @@ export const en: Messages = {
     removedOne: '1 bookmark points to a removed page.',
     removedOther: '{n} bookmarks point to a removed page.',
     nowhere: 'In the downloaded file they no longer point anywhere.',
-    merged: 'With more than one file, the existing bookmarks are not kept in the downloaded file.',
+    left: 'They are left out of the downloaded file.',
+    merged:
+      'With more than one file, the existing bookmarks are not kept: “Keep existing bookmarks” (in Merge) is off.',
     redacted: 'With redaction boxes, the bookmarks are not kept in the downloaded file.',
   },
   saveDialog: {

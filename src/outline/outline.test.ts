@@ -3,8 +3,10 @@ import type { PageItem } from '../pages/plan';
 import {
   countEntries,
   loadOutline,
+  outlinesOf,
   placeOutline,
   readOutline,
+  remapOutline,
   type OutlineEntry,
   type OutlineSource,
 } from './outline';
@@ -117,6 +119,42 @@ describe('placeOutline', () => {
     expect(placed[0]!.target).toEqual({ kind: 'page', position: 2 });
     expect(placed[1]!.target).toEqual({ kind: 'page', position: 1 });
     expect(placed[1]!.children[0]!.target).toEqual({ kind: 'removed' });
+  });
+});
+
+describe('remapOutline', () => {
+  it('geeft de nieuwe plekken en laat weg wat geen pagina in het resultaat heeft', () => {
+    const outline = [
+      entry('0', 0),
+      // Weggehaald, maar met een onderliggende die wel meedoet: die schuift op.
+      entry('1', 1, [entry('1.0', 2), entry('1.1', 1)]),
+      entry('2', null),
+      entry('3', 3, [entry('3.0', 3)]),
+    ];
+    const pages = plan([1, 3], [1, 0], [1, 2]);
+    expect(remapOutline(outline, 1, pages)).toEqual([
+      { title: 'Bladwijzer 0', pageIndex: 1, children: [] },
+      { title: 'Bladwijzer 1.0', pageIndex: 2, children: [] },
+      {
+        title: 'Bladwijzer 3',
+        pageIndex: 0,
+        children: [{ title: 'Bladwijzer 3.0', pageIndex: 0, children: [] }],
+      },
+    ]);
+  });
+});
+
+describe('outlinesOf', () => {
+  it('geeft de bladwijzers per bestandsnummer', async () => {
+    const a = fakePdf([node('Een', [ref(0)])]);
+    const b = fakePdf(null);
+    const result = await outlinesOf([
+      { id: 7, pdf: a },
+      { id: 9, pdf: b },
+    ]);
+    expect([...result.keys()]).toEqual([7, 9]);
+    expect(result.get(7)![0]!.title).toBe('Een');
+    expect(result.get(9)).toEqual([]);
   });
 });
 

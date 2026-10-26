@@ -3,12 +3,14 @@ import {
   PDFDict,
   PDFDocument,
   PDFName,
+  PDFNumber,
   PDFRef,
   PDFString,
   degrees,
   type PDFHexString,
 } from 'pdf-lib';
 import { describe, expect, it } from 'vitest';
+import type { OutlineEntry } from '../outline/outline';
 import { initialPages, movePages, removePages, rotatePages } from '../pages/plan';
 import { PdfSaveError, buildParts, buildPdf, editedFileName } from './save';
 
@@ -265,6 +267,126 @@ describe('buildPdf met nieuwe bladwijzers', () => {
   it('zonder de optie: geen bladwijzers bij samenvoegen', async () => {
     const result = await readBookmarks(await buildPdf(await sources(), plan()));
     expect(result.bookmarks).toEqual([]);
+  });
+});
+
+type Tree = { title: string; page: number; count?: number; children: Tree[] };
+
+/** De hele boom van bladwijzers, met het aantal (Count) bij wie onderliggende heeft, en de Count van de lijst. */
+async function readTree(bytes: Uint8Array) {
+  const doc = await PDFDocument.load(bytes);
+  const pageRefs = doc.getPages().map((page) => page.ref);
+  const level = (parent: PDFDict | undefined): Tree[] => {
+    const result: Tree[] = [];
+    let item = parent?.lookupMaybe(PDFName.of('First'), PDFDict);
+    while (item) {
+      const title = item.lookup(PDFName.of('Title')) as PDFString | PDFHexString;
+      const dest = item.lookup(PDFName.of('Dest'), PDFArray).get(0) as PDFRef;
+      const count = item.lookupMaybe(PDFName.of('Count'), PDFNumber)?.asNumber();
+      result.push({
+        title: title.decodeText(),
+        page: pageRefs.indexOf(dest) + 1,
+        ...(count === undefined ? {} : { count }),
+        children: level(item),
+      });
+      item = item.lookupMaybe(PDFName.of('Next'), PDFDict);
+    }
+    return result;
+  };
+  const outlines = doc.catalog.lookupMaybe(PDFName.of('Outlines'), PDFDict);
+  return {
+    tree: level(outlines),
+    count: outlines?.lookupMaybe(PDFName.of('Count'), PDFNumber)?.asNumber(),
+  };
+}
+
+describe('buildPdf met bestaande bladwijzers', () => {
+  const entry = (title: string, page: number | null, children: OutlineEntry[] = []) => ({
+    id: title,
+    title,
+    page,
+    children,
+  });
+  // Bestand A (2 pagina's) en B (3 pagina's), elk met eigen bladwijzers (pagina's vanaf 0).
+  const outlines = new Map<number, OutlineEntry[]>([
+    [1, [entry('Inleiding', 0), entry('Hoofdstuk', 1, [entry('Paragraaf', 1)])]],
+    [2, [entry('Samenvatting', 0), entry('Website', null), entry('Bijlage', 2)]],
+  ]);
+  async function sources() {
+    return new Map([
+      [1, await samplePdf(2, {}, { title: 'Bestand A' })],
+      [2, await samplePdf(3, {}, { title: 'Bestand B', firstWidth: 1000 })],
+    ]);
+  }
+  const plan = () => [...initialPages(2, 1, 0), ...initialPages(3, 2, 2)];
+  const leaf = (title: string, page: number): Tree => ({ title, page, children: [] });
+
+  it('zet ze achter elkaar, naar de nieuwe plek van hun pagina, dichtgeklapt', async () => {
+    const result = await readTree(await buildPdf(await sources(), plan(), { outlines }));
+    expect(result.tree).toEqual([
+      leaf('Inleiding', 1),
+      { title: 'Hoofdstuk', page: 2, count: -1, children: [leaf('Paragraaf', 2)] },
+      leaf('Samenvatting', 3),
+      // De link naar een website heeft geen pagina en valt weg.
+      leaf('Bijlage', 5),
+    ]);
+    expect(result.count).toBe(4);
+  });
+
+  it('zet ze onder de bladwijzer per bestand, die opengeklapt staat', async () => {
+    const marks = [
+      { doc: 1, title: 'Offerte' },
+      { doc: 2, title: 'Bijlage B' },
+    ];
+    const result = await readTree(
+      await buildPdf(await sources(), plan(), { outlines, bookmarks: marks }),
+    );
+    expect(result.tree).toEqual([
+      {
+        title: 'Offerte',
+        page: 1,
+        count: 2,
+        children: [
+          leaf('Inleiding', 1),
+          { title: 'Hoofdstuk', page: 2, count: -1, children: [leaf('Paragraaf', 2)] },
+        ],
+      },
+      {
+        title: 'Bijlage B',
+        page: 3,
+        count: 2,
+        children: [leaf('Samenvatting', 3), leaf('Bijlage', 5)],
+      },
+    ]);
+    expect(result.count).toBe(6);
+  });
+
+  it('laat bladwijzers naar weggehaalde pagina’s weg en volgt verplaatste pagina’s', async () => {
+    // Pagina 1 van A en pagina 3 van B weg; B vooraan.
+    const pages = [...initialPages(3, 2, 2), ...initialPages(2, 1, 0)].filter(
+      (page) => page.key !== 0 && page.key !== 4,
+    );
+    const result = await readTree(await buildPdf(await sources(), pages, { outlines }));
+    expect(result.tree).toEqual([
+      leaf('Samenvatting', 1),
+      { title: 'Hoofdstuk', page: 3, count: -1, children: [leaf('Paragraaf', 3)] },
+    ]);
+  });
+
+  it('zet ze bij één bestand onder de nieuwe bladwijzer; zonder die blijft het origineel', async () => {
+    const one = new Map([[1, await withOldBookmark(await samplePdf(2))]]);
+    const mine = new Map([[1, [entry('Oud', 0)]]]);
+    const nested = await readTree(
+      await buildPdf(one, initialPages(2, 1), {
+        outlines: mine,
+        bookmarks: [{ doc: 1, title: 'Nieuw' }],
+      }),
+    );
+    expect(nested.tree).toEqual([
+      { title: 'Nieuw', page: 1, count: 1, children: [leaf('Oud', 1)] },
+    ]);
+    const untouched = await readTree(await buildPdf(one, initialPages(2, 1), { outlines: mine }));
+    expect(untouched.tree).toEqual([leaf('Oud', 1)]);
   });
 });
 

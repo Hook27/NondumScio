@@ -13,6 +13,7 @@ import {
   rotatePages,
   type PageItem,
 } from '../pages/plan';
+import { outlinesOf } from '../outline/outline';
 import { formatRanges } from '../pages/ranges';
 import {
   emptySelection,
@@ -64,6 +65,7 @@ export function PageEditor() {
     canRedo,
     unsaved,
     markSaved,
+    bookmarks,
   } = useDocument();
   // De naam van het eerste bestand is de basis voor voorgestelde bestandsnamen.
   const name = activeSources[0]?.name ?? '';
@@ -201,6 +203,8 @@ export function PageEditor() {
       );
       const bytes = await buildPdf(await readSources(files, current.pages), current.pages, {
         annotations,
+        // Bij meer bestanden komen de pagina's in een nieuw document: de bladwijzers gaan dan mee.
+        ...(bookmarks.keep ? { outlines: await outlinesOf(activeSources) } : {}),
         // Ook een uittreksel zonder vak hoort bij een document waarin geredigeerd is.
         redaction: { ...redaction, wholeDocument: hasRedactions(pages, annotations) },
       });

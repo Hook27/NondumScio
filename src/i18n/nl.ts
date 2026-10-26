@@ -100,10 +100,11 @@ export const nl = {
     picking: '{name}: pagina’s kiezen',
     showResult: 'Terug naar het resultaat',
     bookmarks: 'Bladwijzer per bestand',
+    keepBookmarks: 'Bestaande bladwijzers behouden',
     bookmarkLabel: 'Bladwijzer',
     bookmarkFor: 'voor {name}',
     bookmarksHint:
-      'Met “Bladwijzer per bestand” krijgt de samengevoegde PDF een bladwijzer naar het begin van elk bestand; de titel kun je aanpassen. Zonder die optie vervallen bestaande bladwijzers bij samenvoegen.',
+      'Met “Bladwijzer per bestand” krijgt de samengevoegde PDF een bladwijzer naar het begin van elk bestand; de titel kun je aanpassen. Met “Bestaande bladwijzers behouden” (standaard aan) gaan de bladwijzers die al in de bestanden staan mee, naar de nieuwe plek van hun pagina: onder de bladwijzer van hun bestand, of zonder die optie achter elkaar. Bladwijzers naar een pagina die je hebt weggehaald, vallen weg. Dit geldt ook als je met meer bestanden bij Pagina’s of Bewerken downloadt.',
     pick: 'Miniaturen van {name}',
     keepPage:
       'Er moet minstens één pagina van dit bestand overblijven. Een heel bestand weghalen doe je met ✕.',
@@ -340,8 +341,9 @@ export const nl = {
     removedOne: '1 bladwijzer wijst naar een weggehaalde pagina.',
     removedOther: '{n} bladwijzers wijzen naar een weggehaalde pagina.',
     nowhere: 'In het gedownloade bestand wijzen die nergens meer heen.',
+    left: 'In het gedownloade bestand vallen die weg.',
     merged:
-      'Met meer dan één bestand gaan de bestaande bladwijzers niet mee in het gedownloade bestand.',
+      'Met meer dan één bestand gaan de bestaande bladwijzers niet mee: “Bestaande bladwijzers behouden” (bij Samenvoegen) staat uit.',
     redacted: 'Met redactievakken gaan de bladwijzers niet mee in het gedownloade bestand.',
   },
   saveDialog: {

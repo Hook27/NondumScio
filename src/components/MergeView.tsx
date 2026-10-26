@@ -3,6 +3,7 @@ import { useDocument } from '../document/DocumentContext';
 import { useUndoShortcuts } from '../document/useUndoShortcuts';
 import { useI18n } from '../i18n/LanguageContext';
 import { format } from '../i18n/format';
+import { outlinesOf } from '../outline/outline';
 import {
   PdfSaveError,
   buildPdf,
@@ -46,6 +47,7 @@ export function MergeView() {
     markSaved,
     bookmarks,
     setBookmarksOn,
+    setBookmarksKeep,
   } = useDocument();
   const { t } = useI18n();
   const [asking, setAsking] = useState(false);
@@ -76,6 +78,7 @@ export function MergeView() {
       const options = {
         annotations,
         redaction,
+        ...(bookmarks.keep ? { outlines: await outlinesOf(activeSources) } : {}),
         ...(bookmarks.on
           ? {
               bookmarks: activeSources.map((source) => ({
@@ -107,6 +110,14 @@ export function MergeView() {
               onChange={(event) => setBookmarksOn(event.currentTarget.checked)}
             />
             {t.merge.bookmarks}
+          </label>
+          <label class="merge-option">
+            <input
+              type="checkbox"
+              checked={bookmarks.keep}
+              onChange={(event) => setBookmarksKeep(event.currentTarget.checked)}
+            />
+            {t.merge.keepBookmarks}
           </label>
 
           <FilesToolbar label={t.merge.actions}>

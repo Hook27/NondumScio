@@ -54,7 +54,7 @@ export function OutlinePanel({
   /** Bij het downloaden gaan de bladwijzers niet mee (bijvoorbeeld door redactievakken). */
   dropped?: boolean;
 }) {
-  const { pages, activeSources, outlineView, setOutlineView } = useDocument();
+  const { pages, activeSources, outlineView, setOutlineView, bookmarks } = useDocument();
   const { t } = useI18n();
   const o = t.outline;
   const outlines = useOutlines(activeSources);
@@ -74,8 +74,10 @@ export function OutlinePanel({
     (sum, group) => sum + countEntries(group.entries, (entry) => entry.target.kind === 'removed'),
     0,
   );
-  // Met meer dan één bestand worden de pagina's in een nieuw document gezet, zonder de oude bladwijzers.
+  // Met meer dan één bestand komen de pagina's in een nieuw document: de bladwijzers gaan dan
+  // alleen mee met "Bestaande bladwijzers behouden" (bij Samenvoegen), zonder die naar weggehaalde pagina's.
   const merged = activeSources.length > 1;
+  const removedNote = dropped || (merged && !bookmarks.keep) ? '' : merged ? o.left : o.nowhere;
 
   const toggle = (id: string) => {
     const next = new Set(expanded);
@@ -147,13 +149,13 @@ export function OutlinePanel({
       {removed > 0 && (
         <p class="page-editor__status outline__note">
           {plural(removed, o.removedOne, format(o.removedOther, { n: removed }))}
-          {!dropped && !merged && ` ${o.nowhere}`}
+          {removedNote && ` ${removedNote}`}
         </p>
       )}
       {dropped ? (
         <p class="page-editor__status outline__note">{o.redacted}</p>
       ) : (
-        merged && <p class="page-editor__status outline__note">{o.merged}</p>
+        merged && !bookmarks.keep && <p class="page-editor__status outline__note">{o.merged}</p>
       )}
       {groups.map(({ source, entries }) => (
         <div key={source.id} class="outline__group">

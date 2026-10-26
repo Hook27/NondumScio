@@ -38,6 +38,7 @@ import { PaneHead, Split, useInfo } from './WorkspaceParts';
 import { DPI_CHOICES } from '../pdf/redactOptions';
 import type { RedactionReport } from '../pdf/redact';
 import { useRedactSearch } from '../search/useRedactSearch';
+import { outlinesOf } from '../outline/outline';
 import { RedactSearchPanel } from './RedactSearch';
 import { OutlinePanel } from './OutlinePanel';
 
@@ -113,6 +114,7 @@ export function AnnotateView({ mode = 'annotate' }: { mode?: 'annotate' | 'redac
     adding,
     markSaved,
     unsaved,
+    bookmarks,
   } = useDocument();
   const { t } = useI18n();
   const redactMode = mode === 'redact';
@@ -381,6 +383,8 @@ export function AnnotateView({ mode = 'annotate' }: { mode?: 'annotate' | 'redac
       );
       const bytes = await buildPdf(await readSources(files, pages), pages, {
         annotations,
+        // Bij meer bestanden komen de pagina's in een nieuw document: de bladwijzers gaan dan mee.
+        ...(bookmarks.keep ? { outlines: await outlinesOf(activeSources) } : {}),
         redaction: {
           ...redaction,
           onProgress: (done, total) => {

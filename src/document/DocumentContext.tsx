@@ -54,9 +54,13 @@ export type DocState =
   | { status: 'ready'; sources: Source[] }
   | { status: 'error'; name: string; code: LoadErrorCode };
 
-export type Bookmarks = { on: boolean; titles: ReadonlyMap<number, string> };
+/**
+ * Bladwijzers bij het opslaan: nieuwe per bestand (aan of uit, met eigen titels) en of de
+ * bestaande bladwijzers meegaan als de pagina's in een nieuw document komen (meer bestanden).
+ */
+export type Bookmarks = { on: boolean; keep: boolean; titles: ReadonlyMap<number, string> };
 
-const NO_BOOKMARKS: Bookmarks = { on: false, titles: new Map() };
+const NO_BOOKMARKS: Bookmarks = { on: false, keep: true, titles: new Map() };
 
 /** Hoe het blok met de bladwijzers van de geopende bestanden erbij staat: open, en welke delen uitgeklapt. */
 export type OutlineView = { open: boolean; expanded: ReadonlySet<string> };
@@ -115,6 +119,8 @@ type DocApi = {
    */
   bookmarks: Bookmarks;
   setBookmarksOn: (on: boolean) => void;
+  /** Bestaande bladwijzers meenemen (standaard aan). */
+  setBookmarksKeep: (keep: boolean) => void;
   setBookmarkTitle: (id: number, title: string) => void;
   /**
    * Het blok met de bestaande bladwijzers (bij Pagina's, Bewerken en Redigeren): open of dicht,
@@ -321,6 +327,10 @@ export function DocumentProvider({
     (change: Partial<OutlineView>) => setOutlineViewState((current) => ({ ...current, ...change })),
     [],
   );
+  const setBookmarksKeep = useCallback(
+    (keep: boolean) => setBookmarks((current) => ({ ...current, keep })),
+    [],
+  );
   const setBookmarkTitle = useCallback(
     (id: number, title: string) =>
       setBookmarks((current) => ({ ...current, titles: new Map(current.titles).set(id, title) })),
@@ -438,6 +448,7 @@ export function DocumentProvider({
       markSaved,
       bookmarks,
       setBookmarksOn,
+      setBookmarksKeep,
       setBookmarkTitle,
       outlineView,
       setOutlineView,
@@ -465,6 +476,7 @@ export function DocumentProvider({
     markSaved,
     bookmarks,
     setBookmarksOn,
+    setBookmarksKeep,
     setBookmarkTitle,
     outlineView,
     setOutlineView,

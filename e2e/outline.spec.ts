@@ -1,76 +1,17 @@
 import AxeBuilder from '@axe-core/playwright';
 import { expect, test, type Page } from '@playwright/test';
-import { PDFDocument, PDFHexString, PDFName, PDFString, StandardFonts, type PDFRef } from 'pdf-lib';
 import { messages, openPage } from './helpers';
+import { REPORT_OUTLINE, makeOutlinePdf } from './outline-fixtures';
 
 const nl = messages.nl;
 const o = nl.outline;
-
-type Item = { title: string; page?: number; uri?: string; children?: Item[] };
-
-/** Bladwijzers zoals in een rapport: genest, één naar een bijlage en één naar een website. */
-const OUTLINE: Item[] = [
-  { title: 'Inleiding', page: 0 },
-  {
-    title: 'Hoofdstuk 1',
-    page: 1,
-    children: [
-      { title: 'Paragraaf 1.1', page: 2 },
-      { title: 'Paragraaf 1.2', page: 3 },
-    ],
-  },
-  { title: 'Bijlage', page: 5 },
-  { title: 'Website', uri: 'https://example.com/' },
-];
-
-/** Een PDF van zes pagina's, met (of zonder) bladwijzers volgens de PDF-norm. */
-async function makePdf(withOutline = true): Promise<Buffer> {
-  const doc = await PDFDocument.create();
-  const font = await doc.embedFont(StandardFonts.Helvetica);
-  const pages = Array.from({ length: 6 }, (_, i) => {
-    const page = doc.addPage([595, 842]);
-    page.drawText(`Pagina ${i + 1}`, { x: 60, y: 760, size: 28, font });
-    return page;
-  });
-  if (withOutline) {
-    const context = doc.context;
-    const build = (items: Item[], parent: PDFRef) => {
-      const refs = items.map(() => context.nextRef());
-      items.forEach((item, i) => {
-        const dict: Record<string, unknown> = {
-          Title: PDFHexString.fromText(item.title),
-          Parent: parent,
-        };
-        if (i > 0) dict.Prev = refs[i - 1];
-        if (i < items.length - 1) dict.Next = refs[i + 1];
-        if (item.page !== undefined) dict.Dest = [pages[item.page]!.ref, 'Fit'];
-        if (item.uri) dict.A = { S: 'URI', URI: PDFString.of(item.uri) };
-        if (item.children) {
-          const sub = build(item.children, refs[i]!);
-          // Een negatief aantal: in een PDF-lezer staat dit deel ingeklapt.
-          Object.assign(dict, { First: sub.first, Last: sub.last, Count: -sub.count });
-        }
-        context.assign(refs[i]!, context.obj(dict as never));
-      });
-      return { first: refs[0]!, last: refs.at(-1)!, count: items.length };
-    };
-    const root = context.nextRef();
-    const top = build(OUTLINE, root);
-    context.assign(
-      root,
-      context.obj({ Type: 'Outlines', First: top.first, Last: top.last, Count: top.count }),
-    );
-    doc.catalog.set(PDFName.of('Outlines'), root);
-  }
-  return Buffer.from(await doc.save());
-}
 
 async function open(page: Page, task: 'pages' | 'edit' | 'redact', withOutline = true) {
   await openPage(page, `/#/${task}`, { lang: 'nl' });
   await page.locator('#pdf-file').setInputFiles({
     name: 'rapport.pdf',
     mimeType: 'application/pdf',
-    buffer: await makePdf(withOutline),
+    buffer: await makeOutlinePdf(withOutline ? REPORT_OUTLINE : null),
   });
 }
 
