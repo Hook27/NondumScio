@@ -37,6 +37,8 @@ import { SaveDialog } from './SaveDialog';
 import { PaneHead, Split, useInfo } from './WorkspaceParts';
 import { DPI_CHOICES } from '../pdf/redactOptions';
 import type { RedactionReport } from '../pdf/redact';
+import { useRedactSearch } from '../search/useRedactSearch';
+import { RedactSearchPanel } from './RedactSearch';
 
 /**
  * De zoomstanden. Bij 25, 33 en 50% staan 4, 3 of 2 pagina's naast elkaar (een overzicht, zoals
@@ -120,6 +122,7 @@ export function AnnotateView({ mode = 'annotate' }: { mode?: 'annotate' | 'redac
   const info = useInfo(
     <>
       <p>{redactMode ? rt.hint : t.edit.hint}</p>
+      {redactMode && <p>{rt.search.hint}</p>}
       <p>{redactMode ? rt.shortcuts : t.edit.shortcuts}</p>
     </>,
   );
@@ -151,6 +154,21 @@ export function AnnotateView({ mode = 'annotate' }: { mode?: 'annotate' | 'redac
   };
 
   useUndoShortcuts(undo, redo);
+
+  // Zoeken en markeren (alleen bij Redigeren in beeld): de treffers staan als oranje vakken op de pagina's.
+  const search = useRedactSearch({
+    pages,
+    annotations,
+    sourceOf,
+    annotate,
+    newAnnotationId,
+    color: colors.redact,
+  });
+  useEffect(() => {
+    if (search.focus === null) return;
+    const shape = document.querySelector(`[data-candidate="${search.focus}"]`);
+    shape?.scrollIntoView?.({ block: 'center', inline: 'nearest' });
+  }, [search.focus]);
 
   const selected =
     (draft?.id === selectedId ? draft : annotations.find((a) => a.id === selectedId)) ?? null;
@@ -255,6 +273,8 @@ export function AnnotateView({ mode = 'annotate' }: { mode?: 'annotate' | 'redac
     },
     nudge: (id, dx, dy) =>
       annotate((items) => items.map((a) => (a.id === id ? moved(a, dx, dy) : a)), `nudge-${id}`),
+    toggleCandidate: search.toggle,
+    focusedCandidate: search.focus,
   };
 
   /* Kleur, lettergrootte en dikte: voor het gereedschap, en voor wat geselecteerd is */
@@ -481,6 +501,7 @@ export function AnnotateView({ mode = 'annotate' }: { mode?: 'annotate' | 'redac
             </div>
           </div>
 
+          {redactMode && <RedactSearchPanel search={search} pages={pages} />}
           {redactMode && (
             <div class="annotate__options">
               <RadioGroup
@@ -755,6 +776,9 @@ export function AnnotateView({ mode = 'annotate' }: { mode?: 'annotate' | 'redac
                     fitWidth={pageWidth}
                     zoom={zoom}
                     annotations={annotationsOf(annotations, page.key)}
+                    candidates={
+                      redactMode ? search.candidates.filter((c) => c.page === page.key) : undefined
+                    }
                     controller={controller}
                   />
                 </li>

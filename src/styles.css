@@ -14,6 +14,8 @@
   --focus: #2c56c9;
   /* Een PDF-pagina is altijd wit papier, ook in het donkere thema. */
   --paper: #ffffff;
+  /* Treffers van het zoeken, op de witte pagina en op de donkere of lichte rand eromheen. */
+  --candidate: #d97706;
   --radius: 10px;
   --shadow: 0 1px 2px rgb(20 28 48 / 6%);
   --font: system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
@@ -1769,6 +1771,123 @@ h1 {
 .annotate__zoom {
   min-width: 4.2rem;
   font-variant-numeric: tabular-nums;
+}
+
+/* Treffers van het zoeken bij Redigeren: oranje vakken op de pagina, nog geen echte vakken. */
+.annotate-candidate rect {
+  fill: var(--candidate);
+  fill-opacity: 0.28;
+  stroke: var(--candidate);
+  stroke-dasharray: 5 3;
+  stroke-width: 1.5;
+  pointer-events: none;
+}
+
+.annotate-candidate--off rect {
+  fill: none;
+  stroke-dasharray: 2 4;
+  stroke-opacity: 0.7;
+}
+
+.annotate-candidate--focus rect {
+  fill-opacity: 0.55;
+  stroke-width: 3;
+}
+
+.search__terms {
+  box-sizing: border-box;
+  width: 100%;
+  font: inherit;
+  resize: vertical;
+}
+
+.search__patterns {
+  margin: 0 0 0.25rem;
+  padding: 0;
+  border: 0;
+}
+
+.search__patterns .convert__label {
+  padding: 0;
+}
+
+.search__status p {
+  margin: 0.25rem 0 0;
+}
+
+.search__hits {
+  max-height: 16rem;
+  margin: 0.5rem 0;
+  padding: 0;
+  overflow-y: auto;
+  list-style: none;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+}
+
+.search__hit {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.25rem 0.5rem;
+  border-bottom: 1px solid var(--border);
+}
+
+.search__hit:last-child {
+  border-bottom: 0;
+}
+
+.search__hit input {
+  flex: none;
+  width: 1.1rem;
+  height: 1.1rem;
+  accent-color: var(--accent);
+}
+
+.search__go {
+  display: flex;
+  flex: 1;
+  align-items: baseline;
+  gap: 0.5rem;
+  min-width: 0;
+  padding: 0.25rem 0;
+  background: none;
+  border: 0;
+  color: inherit;
+  cursor: pointer;
+  font: inherit;
+  text-align: left;
+}
+
+.search__page {
+  flex: none;
+  color: var(--text-muted);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 0.85rem;
+}
+
+.search__context {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  font-size: 0.9rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.search__context mark {
+  background: color-mix(in srgb, var(--candidate) 35%, transparent);
+  color: inherit;
+  font-weight: 600;
+}
+
+.search__tag {
+  flex: none;
+  padding: 0 0.35rem;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  color: var(--text-muted);
+  font-size: 0.75rem;
 }
 
 /* Versienummer linksonder */
