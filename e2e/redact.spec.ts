@@ -205,6 +205,9 @@ async function pageTwoOnly(bytes: Buffer): Promise<Buffer> {
 }
 
 test.describe('redigeren: de vakken gelden bij elke taak', () => {
+  // Meerdere downloads met redactie op 300 dpi per test: bij een volledige testrun (druk) past
+  // dat niet altijd in de standaard 30 s.
+  test.setTimeout(60_000);
   test.skip(({ isMobile }) => isMobile, 'Precies slepen op de pagina: desktop');
 
   test('Pagina’s: downloaden neemt de redactie mee, en weggehaalde pagina’s zijn echt weg', async ({
