@@ -49,20 +49,27 @@ function fakeLoad(bytes: Uint8Array): Promise<LoadedPdf> {
   return Promise.resolve({ pdf, pageCount });
 }
 
+const app = (mode: WorkspaceMode) => (
+  <LanguageProvider initial="nl">
+    <DocumentProvider load={fakeLoad} unload={() => {}}>
+      <Workspace mode={mode} />
+    </DocumentProvider>
+  </LanguageProvider>
+);
+
+/** Opent het bestand bij een taak; geeft een functie om naar een andere taak te wisselen. */
 async function setup(mode: WorkspaceMode, content = '%PDF-1.7 6 outline\n') {
-  render(
-    <LanguageProvider initial="nl">
-      <DocumentProvider load={fakeLoad} unload={() => {}}>
-        <Workspace mode={mode} />
-      </DocumentProvider>
-    </LanguageProvider>,
-  );
+  const view = render(app(mode));
   fireEvent.change(document.querySelector('input[type="file"]')!, {
     target: { files: [new File([content], 'rapport.pdf')] },
   });
   await act(() => new Promise((resolve) => setTimeout(resolve, 200)));
   // De bladwijzers worden na het openen apart ingelezen.
   if (content.includes('outline')) await screen.findByText(/^Bladwijzers \(\d+\)$/);
+  return async (next: WorkspaceMode) => {
+    view.rerender(app(next));
+    await screen.findByText(/^Bladwijzers \(\d+\)$/);
+  };
 }
 
 const summary = () => screen.getByText(o.title.replace('{n}', '6'));
@@ -142,6 +149,28 @@ describe('Bladwijzers tonen', () => {
     fireEvent.keyDown(screen.getByRole('group', { name: 'Pagina 1' }), { key: 'Enter' });
     expect(document.querySelectorAll('[data-annotation]')).toHaveLength(1);
     expect(within(panel()).getByText(o.redacted)).toBeTruthy();
+  });
+
+  it('blijft open en uitgeklapt bij het wisselen van taak, in elke richting', async () => {
+    const switchTo = await setup('pages');
+    fireEvent.click(summary());
+    expect(panel().open).toBe(true);
+    // De browser meldt het open- en dichtklappen ("toggle") net na de klik.
+    await act(() => new Promise((resolve) => setTimeout(resolve, 0)));
+    fireEvent.click(
+      within(panel()).getByRole('button', { name: 'Onderliggende bladwijzers van Hoofdstuk 1' }),
+    );
+    for (const mode of ['edit', 'redact', 'pages', 'redact', 'edit', 'pages'] as const) {
+      await switchTo(mode);
+      expect(panel().open, mode).toBe(true);
+      expect(within(panel()).getByText('Paragraaf 1.1'), mode).toBeTruthy();
+    }
+    // En dicht blijft ook dicht.
+    fireEvent.click(summary());
+    expect(panel().open).toBe(false);
+    await act(() => new Promise((resolve) => setTimeout(resolve, 0)));
+    await switchTo('edit');
+    expect(panel().open).toBe(false);
   });
 
   it('groepeert per bestand en meldt dat ze bij meer bestanden niet meegaan', async () => {

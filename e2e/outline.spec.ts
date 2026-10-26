@@ -154,6 +154,29 @@ test.describe('bladwijzers van een geopend bestand', () => {
     await expect(panel(page).getByText(o.redacted)).toBeVisible();
   });
 
+  test('open en uitgeklapt blijft zo bij het wisselen tussen Pagina’s, Bewerken en Redigeren', async ({
+    page,
+  }) => {
+    await open(page, 'pages');
+    await summary(page).click();
+    await panel(page)
+      .getByRole('button', { name: 'Onderliggende bladwijzers van Hoofdstuk 1' })
+      .click();
+    for (const task of ['edit', 'redact', 'pages', 'redact', 'edit', 'pages']) {
+      await page.goto(`./#/${task}`);
+      await expect(entry(page, 'Paragraaf 1.1'), task).toBeVisible();
+      await expect(panel(page), task).toHaveAttribute('open', '');
+    }
+    // Dichtgeklapt blijft ook dicht, ook na Pagina's.
+    await summary(page).click();
+    await expect(entry(page, 'Inleiding')).toBeHidden();
+    for (const task of ['edit', 'pages', 'redact']) {
+      await page.goto(`./#/${task}`);
+      await expect(summary(page), task).toBeVisible();
+      await expect(entry(page, 'Inleiding'), task).toBeHidden();
+    }
+  });
+
   test('zonder bladwijzers is er geen blok', async ({ page }) => {
     await open(page, 'pages', false);
     await expect(page.getByRole('option')).toHaveCount(6);

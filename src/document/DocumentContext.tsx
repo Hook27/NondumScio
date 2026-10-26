@@ -58,6 +58,11 @@ export type Bookmarks = { on: boolean; titles: ReadonlyMap<number, string> };
 
 const NO_BOOKMARKS: Bookmarks = { on: false, titles: new Map() };
 
+/** Hoe het blok met de bladwijzers van de geopende bestanden erbij staat: open, en welke delen uitgeklapt. */
+export type OutlineView = { open: boolean; expanded: ReadonlySet<string> };
+
+const CLOSED_OUTLINE: OutlineView = { open: false, expanded: new Set() };
+
 type DocApi = {
   doc: DocState;
   /** Opent één of meer bestanden; wat er open stond, wordt gesloten. */
@@ -111,6 +116,12 @@ type DocApi = {
   bookmarks: Bookmarks;
   setBookmarksOn: (on: boolean) => void;
   setBookmarkTitle: (id: number, title: string) => void;
+  /**
+   * Het blok met de bestaande bladwijzers (bij Pagina's, Bewerken en Redigeren): open of dicht,
+   * en welke delen uitgeklapt. Blijft zo bij het wisselen van taak; begint dicht bij nieuwe bestanden.
+   */
+  outlineView: OutlineView;
+  setOutlineView: (change: Partial<OutlineView>) => void;
   /** Na een geslaagde download: de huidige stand geldt als bewaard. */
   markSaved: () => void;
 };
@@ -142,6 +153,7 @@ export function DocumentProvider({
   const [fileErrors, setFileErrors] = useState<FileError[]>([]);
   const [adding, setAdding] = useState(false);
   const [bookmarks, setBookmarks] = useState<Bookmarks>(NO_BOOKMARKS);
+  const [outlineView, setOutlineViewState] = useState<OutlineView>(CLOSED_OUTLINE);
   const [redaction, setRedactionState] = useState<RedactionOptions>(DEFAULT_REDACTION);
   // De bewerkingen (pagina's en annotaties) horen bij wat er open staat en blijven bewaard als
   // je van taak wisselt. Alles samen één ongedaan-maken-reeks: je laatste stap, waar je die ook deed.
@@ -250,6 +262,7 @@ export function DocumentProvider({
       setHistory(startHistory(start));
       setSaved(start);
       setBookmarks(NO_BOOKMARKS);
+      setOutlineViewState(CLOSED_OUTLINE);
       setDoc({ status: 'ready', sources });
       setFileErrors(errors);
     },
@@ -291,6 +304,7 @@ export function DocumentProvider({
     lastMerge.current = null;
     setFileErrors([]);
     setBookmarks(NO_BOOKMARKS);
+    setOutlineViewState(CLOSED_OUTLINE);
     setDoc({ status: 'empty' });
   }, [release]);
 
@@ -301,6 +315,10 @@ export function DocumentProvider({
   );
   const setBookmarksOn = useCallback(
     (on: boolean) => setBookmarks((current) => ({ ...current, on })),
+    [],
+  );
+  const setOutlineView = useCallback(
+    (change: Partial<OutlineView>) => setOutlineViewState((current) => ({ ...current, ...change })),
     [],
   );
   const setBookmarkTitle = useCallback(
@@ -421,6 +439,8 @@ export function DocumentProvider({
       bookmarks,
       setBookmarksOn,
       setBookmarkTitle,
+      outlineView,
+      setOutlineView,
     };
   }, [
     doc,
@@ -446,6 +466,8 @@ export function DocumentProvider({
     bookmarks,
     setBookmarksOn,
     setBookmarkTitle,
+    outlineView,
+    setOutlineView,
   ]);
   return <DocContext.Provider value={value}>{children}</DocContext.Provider>;
 }

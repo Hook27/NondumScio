@@ -4,15 +4,27 @@ import { useI18n } from '../i18n/LanguageContext';
 import { format, plural } from '../i18n/format';
 import {
   countEntries,
+  knownOutline,
   loadOutline,
   placeOutline,
   type OutlineEntry,
   type PlacedEntry,
 } from '../outline/outline';
 
-/** De bladwijzers per geopend bestand, zodra ze gelezen zijn. */
+/**
+ * De bladwijzers per geopend bestand, zodra ze gelezen zijn. Wat al gelezen is, staat er meteen
+ * (bij het wisselen van taak verschijnt het blok dan niet even later).
+ */
 function useOutlines(sources: readonly Source[]): ReadonlyMap<number, OutlineEntry[]> {
-  const [outlines, setOutlines] = useState<ReadonlyMap<number, OutlineEntry[]>>(new Map());
+  const [outlines, setOutlines] = useState<ReadonlyMap<number, OutlineEntry[]>>(
+    () =>
+      new Map(
+        sources.flatMap((source) => {
+          const entries = knownOutline(source.pdf);
+          return entries ? [[source.id, entries] as const] : [];
+        }),
+      ),
+  );
   const key = sources.map((source) => source.id).join(',');
   useEffect(() => {
     let cancelled = false;
@@ -42,11 +54,12 @@ export function OutlinePanel({
   /** Bij het downloaden gaan de bladwijzers niet mee (bijvoorbeeld door redactievakken). */
   dropped?: boolean;
 }) {
-  const { pages, activeSources } = useDocument();
+  const { pages, activeSources, outlineView, setOutlineView } = useDocument();
   const { t } = useI18n();
   const o = t.outline;
   const outlines = useOutlines(activeSources);
-  const [expanded, setExpanded] = useState<ReadonlySet<string>>(new Set());
+  // Open of dicht en wat uitgeklapt is, blijft bij het document: zo staat het bij elke taak hetzelfde.
+  const { expanded } = outlineView;
 
   const groups = activeSources
     .map((source) => ({
@@ -64,13 +77,12 @@ export function OutlinePanel({
   // Met meer dan één bestand worden de pagina's in een nieuw document gezet, zonder de oude bladwijzers.
   const merged = activeSources.length > 1;
 
-  const toggle = (id: string) =>
-    setExpanded((current) => {
-      const next = new Set(current);
-      if (next.has(id)) next.delete(id);
-      else next.add(id);
-      return next;
-    });
+  const toggle = (id: string) => {
+    const next = new Set(expanded);
+    if (next.has(id)) next.delete(id);
+    else next.add(id);
+    setOutlineView({ expanded: next });
+  };
 
   const tree = (entries: readonly PlacedEntry[], sourceId: number, label?: string) => (
     <ul class="outline__list" aria-label={label}>
@@ -123,7 +135,14 @@ export function OutlinePanel({
   );
 
   return (
-    <details class="outline">
+    <details
+      class="outline"
+      open={outlineView.open}
+      onToggle={(event) => {
+        const open = (event.currentTarget as HTMLDetailsElement).open;
+        if (open !== outlineView.open) setOutlineView({ open });
+      }}
+    >
       <summary class="outline__summary">{format(o.title, { n: total })}</summary>
       {removed > 0 && (
         <p class="page-editor__status outline__note">

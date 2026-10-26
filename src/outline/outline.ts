@@ -70,15 +70,24 @@ export async function readOutline(pdf: OutlineSource): Promise<OutlineEntry[]> {
 }
 
 const cache = new WeakMap<object, Promise<OutlineEntry[]>>();
+const known = new WeakMap<object, OutlineEntry[]>();
 
 /** Zoals `readOutline`, maar per bestand maar één keer: wisselen tussen taken kost dan niets. */
 export function loadOutline(pdf: OutlineSource): Promise<OutlineEntry[]> {
   let outline = cache.get(pdf);
   if (!outline) {
-    outline = readOutline(pdf);
+    outline = readOutline(pdf).then((entries) => {
+      known.set(pdf, entries);
+      return entries;
+    });
     cache.set(pdf, outline);
   }
   return outline;
+}
+
+/** De bladwijzers als ze al gelezen zijn (meteen, zonder wachten), anders `undefined`. */
+export function knownOutline(pdf: OutlineSource): OutlineEntry[] | undefined {
+  return known.get(pdf);
 }
 
 /** Waar een bladwijzer in het resultaat uitkomt. */
