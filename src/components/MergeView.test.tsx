@@ -256,6 +256,8 @@ describe('Samenvoegen', () => {
     await screen.findByRole('list', { name: nl.merge.files });
     expect((screen.getByLabelText(nl.merge.bookmarks) as HTMLInputElement).checked).toBe(false);
     expect(screen.queryByLabelText('Bladwijzer voor a.pdf')).toBeNull();
+    // De bestaande bladwijzers gaan standaard wel mee (deze nep-PDF's hebben er geen).
+    expect((screen.getByLabelText(nl.merge.keepBookmarks) as HTMLInputElement).checked).toBe(true);
 
     fireEvent.click(button(nl.merge.download));
     fireEvent.click(screen.getByRole('button', { name: nl.saveDialog.download }));
@@ -263,6 +265,25 @@ describe('Samenvoegen', () => {
     expect(vi.mocked(buildPdf).mock.calls[0]![2]).toEqual({
       annotations: [],
       redaction: { dpi: 300, stripMetadata: true, ocr: false },
+      outlines: new Map([
+        [1, []],
+        [2, []],
+      ]),
+    });
+  });
+
+  it('laat met "Bestaande bladwijzers behouden" uit de bestaande bladwijzers weg', async () => {
+    setup();
+    choose([pdfFile('a.pdf', 1), pdfFile('b.pdf', 1)]);
+    await screen.findByRole('list', { name: nl.merge.files });
+    fireEvent.click(screen.getByLabelText(nl.merge.keepBookmarks));
+    fireEvent.click(button(nl.merge.download));
+    fireEvent.click(screen.getByRole('button', { name: nl.saveDialog.download }));
+    await waitFor(() => expect(downloadPdf).toHaveBeenCalledTimes(1));
+    expect(vi.mocked(buildPdf).mock.calls[0]![2]).toEqual({
+      annotations: [],
+      redaction: { dpi: 300, stripMetadata: true, ocr: false },
+      dropBookmarks: true,
     });
   });
 
@@ -289,6 +310,11 @@ describe('Samenvoegen', () => {
     expect(vi.mocked(buildPdf).mock.calls[0]![2]).toEqual({
       annotations: [],
       redaction: { dpi: 300, stripMetadata: true, ocr: false },
+      outlines: new Map([
+        [1, []],
+        [2, []],
+        [3, []],
+      ]),
       bookmarks: [
         { doc: 2, title: 'Bijlage A' },
         { doc: 1, title: 'offerte' },

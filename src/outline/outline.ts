@@ -131,6 +131,37 @@ export function placeOutline(
   return place(entries);
 }
 
+/** Een bladwijzer voor het resultaat: een titel, de plek van zijn pagina (vanaf 0) en wat eronder valt. */
+export type BookmarkNode = { title: string; pageIndex: number; children: BookmarkNode[] };
+
+/**
+ * De bladwijzers van bestand `doc` met de plek van hun pagina in het resultaat, om in een nieuw
+ * document te zetten. Een bladwijzer zonder pagina in het resultaat (weggehaald, of een link)
+ * valt weg; wat eronder stond, schuift een niveau op.
+ */
+export function remapOutline(
+  entries: readonly OutlineEntry[],
+  doc: number,
+  pages: readonly PageItem[],
+): BookmarkNode[] {
+  return placeOutline(entries, doc, pages).flatMap(function keep(entry): BookmarkNode[] {
+    const children = entry.children.flatMap(keep);
+    if (entry.target.kind !== 'page') return children;
+    return [{ title: entry.title, pageIndex: entry.target.position, children }];
+  });
+}
+
+/** De bladwijzers van de bestanden (per bestandsnummer), om bij het opslaan mee te geven. */
+export async function outlinesOf(
+  sources: readonly { id: number; pdf: OutlineSource }[],
+): Promise<Map<number, OutlineEntry[]>> {
+  return new Map(
+    await Promise.all(
+      sources.map(async (source) => [source.id, await loadOutline(source.pdf)] as const),
+    ),
+  );
+}
+
 /** Het aantal bladwijzers in een boom, ook de onderliggende; met `where` alleen die waarvoor dat geldt. */
 export function countEntries<T extends { children: T[] }>(
   entries: readonly T[],

@@ -1,6 +1,7 @@
 import type { PDFDocument as PdfLibDocument } from 'pdf-lib';
 import { annotationsOf, hasRedactions, type Annotation } from '../annotations/model';
-import type { PageItem } from '../pages/plan';
+import { remapOutline, type BookmarkNode, type OutlineEntry } from '../outline/outline';
+import { docOrder, type PageItem } from '../pages/plan';
 import { drawAnnotations, type FontCache } from './annotate';
 import { pruneUnreachable } from './prune';
 import type { RedactionReport } from './redact';
@@ -27,6 +28,18 @@ export type BuildOptions = {
    * niet (meer) in het plan staat, wordt overgeslagen; de volgorde volgt het resultaat.
    */
   bookmarks?: readonly BookmarkFor[];
+  /**
+   * De bestaande bladwijzers per bestand (sleutel: `PageItem.doc`), gelezen met pdf.js. Komen de
+   * pagina's in een nieuw document (meer bestanden), dan gaan ze mee, met de plek van hun pagina
+   * in het resultaat; met `bookmarks` komen ze onder de nieuwe bladwijzer van hun bestand. Een
+   * bladwijzer naar een pagina die niet meedoet, valt weg. Zonder opgave vervallen ze.
+   */
+  outlines?: ReadonlyMap<number, readonly OutlineEntry[]>;
+  /**
+   * Bestaande bladwijzers weglaten, ook bij één bestand (waar ze anders in het bestand zelf
+   * blijven staan). Voor de keuze "Bestaande bladwijzers behouden" als die uit staat.
+   */
+  dropBookmarks?: boolean;
   /**
    * Annotaties (tekst, markeringen, vormen), die in de pagina zelf worden getekend. Ze horen
    * bij een pagina van het plan (`PageItem.key`); die van pagina's die niet in het plan staan,
@@ -106,8 +119,9 @@ async function applyRedactions(
  *   mogelijk behouden (een bladwijzer naar een verwijderde pagina wijst daarna nergens heen).
  * - Meerdere bestanden (samenvoegen): een nieuw document waarin de pagina's worden
  *   gekopieerd. Titel en auteur komen uit het bestand van de eerste pagina; bestaande
- *   bladwijzers vervallen, want die zouden in het samengevoegde document toch niet kloppen.
- * - Met `bookmarks`: nieuwe bladwijzers (bijvoorbeeld één per samengevoegd bestand).
+ *   bladwijzers gaan alleen mee als ze in `outlines` zijn meegegeven (met de nieuwe plekken).
+ * - Met `bookmarks`: nieuwe bladwijzers (bijvoorbeeld één per samengevoegd bestand), met de
+ *   bestaande bladwijzers van dat bestand eronder als `outlines` is meegegeven.
  */
 export async function buildPdf(
   sources: SourceBytes,
@@ -127,7 +141,7 @@ export async function buildPdf(
 async function buildPlain(
   sources: SourceBytes,
   pages: readonly PageItem[],
-  { bookmarks, annotations = [] }: BuildOptions,
+  { bookmarks, outlines, dropBookmarks = false, annotations = [] }: BuildOptions,
 ): Promise<Uint8Array> {
   if (pages.length === 0) throw new PdfSaveError('failed');
   const lib = await import('pdf-lib');
@@ -147,14 +161,17 @@ async function buildPlain(
         page.setRotation(rotated(page.getRotation().angle, item.rotation));
         doc.addPage(page);
       }
-      if (bookmarks) setBookmarks(lib, doc, outlineEntries(bookmarks, pages));
+      // Zonder nieuwe bladwijzers blijven de bestaande in het bestand zelf staan, tenzij ze weg moeten.
+      if (bookmarks) setBookmarks(lib, doc, outlineEntries(bookmarks, pages, outlines), true);
+      else if (dropBookmarks) setBookmarks(lib, doc, [], false);
       // Pagina's die je hebt weggehaald, moeten ook echt uit het bestand zijn.
       pruneUnreachable(lib, doc);
       return await doc.save();
     }
 
     const out = await assemble(lib, docs, pages, annotations);
-    if (bookmarks) setBookmarks(lib, out, outlineEntries(bookmarks, pages));
+    if (bookmarks) setBookmarks(lib, out, outlineEntries(bookmarks, pages, outlines), true);
+    else if (outlines) setBookmarks(lib, out, keptOutlines(pages, outlines), false);
     return await out.save();
   } catch {
     throw new PdfSaveError('failed');
@@ -266,50 +283,89 @@ async function assemble(
   return out;
 }
 
-/** Bij elke bladwijzer de plek van de eerste pagina van dat bestand, in volgorde van het resultaat. */
-function outlineEntries(bookmarks: readonly BookmarkFor[], pages: readonly PageItem[]) {
+/**
+ * Bij elke nieuwe bladwijzer de plek van de eerste pagina van dat bestand, in volgorde van het
+ * resultaat; met `outlines` de bestaande bladwijzers van dat bestand eronder.
+ */
+function outlineEntries(
+  bookmarks: readonly BookmarkFor[],
+  pages: readonly PageItem[],
+  outlines?: ReadonlyMap<number, readonly OutlineEntry[]>,
+): BookmarkNode[] {
   return bookmarks
     .map((bookmark) => ({
       title: bookmark.title,
       pageIndex: pages.findIndex((page) => page.doc === bookmark.doc),
+      children: outlines ? remapOutline(outlines.get(bookmark.doc) ?? [], bookmark.doc, pages) : [],
     }))
     .filter((entry) => entry.pageIndex >= 0)
     .sort((a, b) => a.pageIndex - b.pageIndex);
 }
 
+/** De bestaande bladwijzers van alle bestanden achter elkaar, in de volgorde van de bestanden. */
+function keptOutlines(
+  pages: readonly PageItem[],
+  outlines: ReadonlyMap<number, readonly OutlineEntry[]>,
+): BookmarkNode[] {
+  return docOrder(pages).flatMap((doc) => remapOutline(outlines.get(doc) ?? [], doc, pages));
+}
+
 /**
  * Zet de bladwijzers (de "outline" van de PDF) en laat de PDF-lezer ze bij openen tonen.
- * pdf-lib heeft daar geen kant-en-klare functie voor; we bouwen de lijst zelf op volgens de
+ * pdf-lib heeft daar geen kant-en-klare functie voor; we bouwen de boom zelf op volgens de
  * PDF-norm: een Outlines-woordenboek met First/Last/Count en per bladwijzer Title, Parent,
- * Prev/Next en een bestemming (de pagina, passend in beeld).
+ * Prev/Next, een bestemming (de pagina, passend in beeld) en eventueel First/Last/Count voor wat
+ * eronder valt. Met `openTop` staat het bovenste niveau in de PDF-lezer opengeklapt (de
+ * bladwijzers per bestand); diepere niveaus staan altijd dicht.
  */
 function setBookmarks(
   lib: typeof import('pdf-lib'),
   doc: PdfLibDocument,
-  entries: readonly { title: string; pageIndex: number }[],
+  entries: readonly BookmarkNode[],
+  openTop: boolean,
 ) {
-  const { PDFName, PDFHexString } = lib;
+  const { PDFName, PDFNumber, PDFHexString } = lib;
   const { context, catalog } = doc;
   if (entries.length === 0) {
+    // Geen bladwijzers: dan ook de PDF-lezer niet laten openen met een (leeg) bladwijzervenster.
     catalog.delete(PDFName.of('Outlines'));
+    if (catalog.lookupMaybe(PDFName.of('PageMode'), PDFName) === PDFName.of('UseOutlines')) {
+      catalog.delete(PDFName.of('PageMode'));
+    }
     return;
   }
   const pageRefs = doc.getPages().map((page) => page.ref);
   const outlinesRef = context.nextRef();
-  const refs = entries.map(() => context.nextRef());
-  entries.forEach((entry, i) => {
-    const item = context.obj({
-      Title: PDFHexString.fromText(entry.title),
-      Parent: outlinesRef,
-      Dest: [pageRefs[entry.pageIndex]!, 'Fit'],
+
+  /** Schrijft een niveau; geeft de eerste en laatste en hoeveel er zichtbaar zijn. */
+  const write = (nodes: readonly BookmarkNode[], parent: typeof outlinesRef, open: boolean) => {
+    const refs = nodes.map(() => context.nextRef());
+    let visible = nodes.length;
+    nodes.forEach((node, i) => {
+      const item = context.obj({
+        Title: PDFHexString.fromText(node.title),
+        Parent: parent,
+        Dest: [pageRefs[node.pageIndex]!, 'Fit'],
+      });
+      if (i > 0) item.set(PDFName.of('Prev'), refs[i - 1]!);
+      if (i < refs.length - 1) item.set(PDFName.of('Next'), refs[i + 1]!);
+      if (node.children.length > 0) {
+        const sub = write(node.children, refs[i]!, false);
+        item.set(PDFName.of('First'), sub.first);
+        item.set(PDFName.of('Last'), sub.last);
+        // Positief: opengeklapt, met zoveel zichtbare eronder; negatief: dichtgeklapt.
+        item.set(PDFName.of('Count'), PDFNumber.of(open ? sub.visible : -node.children.length));
+        if (open) visible += sub.visible;
+      }
+      context.assign(refs[i]!, item);
     });
-    if (i > 0) item.set(PDFName.of('Prev'), refs[i - 1]!);
-    if (i < refs.length - 1) item.set(PDFName.of('Next'), refs[i + 1]!);
-    context.assign(refs[i]!, item);
-  });
+    return { first: refs[0]!, last: refs.at(-1)!, visible };
+  };
+
+  const top = write(entries, outlinesRef, openTop);
   context.assign(
     outlinesRef,
-    context.obj({ Type: 'Outlines', First: refs[0]!, Last: refs.at(-1)!, Count: refs.length }),
+    context.obj({ Type: 'Outlines', First: top.first, Last: top.last, Count: top.visible }),
   );
   catalog.set(PDFName.of('Outlines'), outlinesRef);
   catalog.set(PDFName.of('PageMode'), PDFName.of('UseOutlines'));

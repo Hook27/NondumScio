@@ -68,7 +68,8 @@ async function setup(mode: WorkspaceMode, content = '%PDF-1.7 6 outline\n') {
   if (content.includes('outline')) await screen.findByText(/^Bladwijzers \(\d+\)$/);
   return async (next: WorkspaceMode) => {
     view.rerender(app(next));
-    await screen.findByText(/^Bladwijzers \(\d+\)$/);
+    // Samenvoegen heeft geen blok met bladwijzers.
+    if (next !== 'merge') await screen.findByText(/^Bladwijzers \(\d+\)$/);
   };
 }
 
@@ -173,19 +174,40 @@ describe('Bladwijzers tonen', () => {
     expect(panel().open).toBe(false);
   });
 
-  it('groepeert per bestand en meldt dat ze bij meer bestanden niet meegaan', async () => {
-    await setup('pages');
+  it('meldt ook bij één bestand dat de bladwijzers niet meegaan als behouden uit staat', async () => {
+    const switchTo = await setup('pages');
+    fireEvent.click(summary());
+    expect(screen.queryByText(o.notKept)).toBeNull();
+    await switchTo('merge');
+    fireEvent.click(screen.getByLabelText(nl.merge.keepBookmarks));
+    await switchTo('pages');
+    expect(screen.getByText(o.notKept)).toBeTruthy();
+  });
+
+  it('groepeert per bestand en meldt wat er bij meer bestanden meegaat', async () => {
+    const switchTo = await setup('pages');
     fireEvent.change(document.querySelector('#add-pdf')!, {
       target: { files: [new File(['%PDF-1.7 2 outline\n'], 'tweede.pdf')] },
     });
     await act(() => new Promise((resolve) => setTimeout(resolve, 200)));
     const details = (await screen.findByText(o.title.replace('{n}', '12'))).closest('details')!;
     expect(within(details).getByRole('list', { name: 'Bladwijzers van tweede.pdf' })).toBeTruthy();
-    expect(within(details).getByText(o.merged)).toBeTruthy();
     // Het tweede bestand staat achteraan: zijn eerste bladwijzer wijst naar plek 7.
     const second = within(details).getByRole('list', { name: 'Bladwijzers van tweede.pdf' });
     expect(within(second).getByRole('button', { name: /^Inleiding/ }).textContent).toContain(
       'blz. 7',
     );
+    // Het tweede bestand heeft maar twee pagina's: drie bladwijzers wijzen nergens heen en vallen weg.
+    expect(
+      within(details).getByText(`${o.removedOther.replace('{n}', '3')} ${o.left}`),
+    ).toBeTruthy();
+    expect(within(details).queryByText(o.notKept)).toBeNull();
+
+    // Met "Bestaande bladwijzers behouden" uit (bij Samenvoegen) gaan ze helemaal niet mee.
+    await switchTo('merge');
+    fireEvent.click(screen.getByLabelText(nl.merge.keepBookmarks));
+    await switchTo('pages');
+    expect(screen.getByText(o.notKept)).toBeTruthy();
+    expect(screen.getByText(o.removedOther.replace('{n}', '3'))).toBeTruthy();
   });
 });
