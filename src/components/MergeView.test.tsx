@@ -283,6 +283,7 @@ describe('Samenvoegen', () => {
     expect(vi.mocked(buildPdf).mock.calls[0]![2]).toEqual({
       annotations: [],
       redaction: { dpi: 300, stripMetadata: true, ocr: false },
+      dropBookmarks: true,
     });
   });
 

@@ -74,10 +74,12 @@ export function OutlinePanel({
     (sum, group) => sum + countEntries(group.entries, (entry) => entry.target.kind === 'removed'),
     0,
   );
-  // Met meer dan één bestand komen de pagina's in een nieuw document: de bladwijzers gaan dan
-  // alleen mee met "Bestaande bladwijzers behouden" (bij Samenvoegen), zonder die naar weggehaalde pagina's.
+  // De bladwijzers gaan mee met "Bestaande bladwijzers behouden" (bij Samenvoegen), en niet bij
+  // redactievakken. Bij meer bestanden komen de pagina's in een nieuw document en vallen bladwijzers
+  // naar weggehaalde pagina's weg; bij één bestand blijven die staan, maar wijzen nergens heen.
   const merged = activeSources.length > 1;
-  const removedNote = dropped || (merged && !bookmarks.keep) ? '' : merged ? o.left : o.nowhere;
+  const kept = !dropped && bookmarks.keep;
+  const removedNote = !kept ? '' : merged ? o.left : o.nowhere;
 
   const toggle = (id: string) => {
     const next = new Set(expanded);
@@ -155,7 +157,7 @@ export function OutlinePanel({
       {dropped ? (
         <p class="page-editor__status outline__note">{o.redacted}</p>
       ) : (
-        merged && !bookmarks.keep && <p class="page-editor__status outline__note">{o.merged}</p>
+        !bookmarks.keep && <p class="page-editor__status outline__note">{o.notKept}</p>
       )}
       {groups.map(({ source, entries }) => (
         <div key={source.id} class="outline__group">

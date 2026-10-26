@@ -36,6 +36,11 @@ export type BuildOptions = {
    */
   outlines?: ReadonlyMap<number, readonly OutlineEntry[]>;
   /**
+   * Bestaande bladwijzers weglaten, ook bij één bestand (waar ze anders in het bestand zelf
+   * blijven staan). Voor de keuze "Bestaande bladwijzers behouden" als die uit staat.
+   */
+  dropBookmarks?: boolean;
+  /**
    * Annotaties (tekst, markeringen, vormen), die in de pagina zelf worden getekend. Ze horen
    * bij een pagina van het plan (`PageItem.key`); die van pagina's die niet in het plan staan,
    * doen niet mee.
@@ -136,7 +141,7 @@ export async function buildPdf(
 async function buildPlain(
   sources: SourceBytes,
   pages: readonly PageItem[],
-  { bookmarks, outlines, annotations = [] }: BuildOptions,
+  { bookmarks, outlines, dropBookmarks = false, annotations = [] }: BuildOptions,
 ): Promise<Uint8Array> {
   if (pages.length === 0) throw new PdfSaveError('failed');
   const lib = await import('pdf-lib');
@@ -156,8 +161,9 @@ async function buildPlain(
         page.setRotation(rotated(page.getRotation().angle, item.rotation));
         doc.addPage(page);
       }
-      // Zonder nieuwe bladwijzers blijven de bestaande in het bestand zelf staan.
+      // Zonder nieuwe bladwijzers blijven de bestaande in het bestand zelf staan, tenzij ze weg moeten.
       if (bookmarks) setBookmarks(lib, doc, outlineEntries(bookmarks, pages, outlines), true);
+      else if (dropBookmarks) setBookmarks(lib, doc, [], false);
       // Pagina's die je hebt weggehaald, moeten ook echt uit het bestand zijn.
       pruneUnreachable(lib, doc);
       return await doc.save();
@@ -321,7 +327,11 @@ function setBookmarks(
   const { PDFName, PDFNumber, PDFHexString } = lib;
   const { context, catalog } = doc;
   if (entries.length === 0) {
+    // Geen bladwijzers: dan ook de PDF-lezer niet laten openen met een (leeg) bladwijzervenster.
     catalog.delete(PDFName.of('Outlines'));
+    if (catalog.lookupMaybe(PDFName.of('PageMode'), PDFName) === PDFName.of('UseOutlines')) {
+      catalog.delete(PDFName.of('PageMode'));
+    }
     return;
   }
   const pageRefs = doc.getPages().map((page) => page.ref);

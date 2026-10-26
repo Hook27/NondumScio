@@ -174,6 +174,16 @@ describe('Bladwijzers tonen', () => {
     expect(panel().open).toBe(false);
   });
 
+  it('meldt ook bij één bestand dat de bladwijzers niet meegaan als behouden uit staat', async () => {
+    const switchTo = await setup('pages');
+    fireEvent.click(summary());
+    expect(screen.queryByText(o.notKept)).toBeNull();
+    await switchTo('merge');
+    fireEvent.click(screen.getByLabelText(nl.merge.keepBookmarks));
+    await switchTo('pages');
+    expect(screen.getByText(o.notKept)).toBeTruthy();
+  });
+
   it('groepeert per bestand en meldt wat er bij meer bestanden meegaat', async () => {
     const switchTo = await setup('pages');
     fireEvent.change(document.querySelector('#add-pdf')!, {
@@ -191,13 +201,13 @@ describe('Bladwijzers tonen', () => {
     expect(
       within(details).getByText(`${o.removedOther.replace('{n}', '3')} ${o.left}`),
     ).toBeTruthy();
-    expect(within(details).queryByText(o.merged)).toBeNull();
+    expect(within(details).queryByText(o.notKept)).toBeNull();
 
     // Met "Bestaande bladwijzers behouden" uit (bij Samenvoegen) gaan ze helemaal niet mee.
     await switchTo('merge');
     fireEvent.click(screen.getByLabelText(nl.merge.keepBookmarks));
     await switchTo('pages');
-    expect(screen.getByText(o.merged)).toBeTruthy();
+    expect(screen.getByText(o.notKept)).toBeTruthy();
     expect(screen.getByText(o.removedOther.replace('{n}', '3'))).toBeTruthy();
   });
 });

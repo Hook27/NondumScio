@@ -78,7 +78,9 @@ export function MergeView() {
       const options = {
         annotations,
         redaction,
-        ...(bookmarks.keep ? { outlines: await outlinesOf(activeSources) } : {}),
+        ...(bookmarks.keep
+          ? { outlines: await outlinesOf(activeSources) }
+          : { dropBookmarks: true }),
         ...(bookmarks.on
           ? {
               bookmarks: activeSources.map((source) => ({

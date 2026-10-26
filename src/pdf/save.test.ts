@@ -388,6 +388,22 @@ describe('buildPdf met bestaande bladwijzers', () => {
     const untouched = await readTree(await buildPdf(one, initialPages(2, 1), { outlines: mine }));
     expect(untouched.tree).toEqual([leaf('Oud', 1)]);
   });
+
+  it('laat ze met dropBookmarks weg, ook bij één bestand, en opent dan niet met het bladwijzervenster', async () => {
+    const original = await PDFDocument.load(await withOldBookmark(await samplePdf(2)));
+    original.catalog.set(PDFName.of('PageMode'), PDFName.of('UseOutlines'));
+    const one = new Map([[1, await original.save()]]);
+    const bytes = await buildPdf(one, initialPages(2, 1), { dropBookmarks: true });
+    expect((await readTree(bytes)).tree).toEqual([]);
+    const doc = await PDFDocument.load(bytes);
+    expect(doc.catalog.get(PDFName.of('Outlines'))).toBeUndefined();
+    expect(doc.catalog.get(PDFName.of('PageMode'))).toBeUndefined();
+    // De oude bladwijzer staat ook niet meer los in het bestand.
+    expect(Buffer.from(bytes).toString('latin1')).not.toContain('(Oud)');
+    // Met meer bestanden en zonder outlines: ook geen bladwijzers.
+    const two = await readTree(await buildPdf(await sources(), plan(), { dropBookmarks: true }));
+    expect(two.tree).toEqual([]);
+  });
 });
 
 describe('buildParts (splitsen)', () => {

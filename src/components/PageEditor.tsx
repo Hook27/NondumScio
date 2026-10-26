@@ -204,7 +204,9 @@ export function PageEditor() {
       const bytes = await buildPdf(await readSources(files, current.pages), current.pages, {
         annotations,
         // Bij meer bestanden komen de pagina's in een nieuw document: de bladwijzers gaan dan mee.
-        ...(bookmarks.keep ? { outlines: await outlinesOf(activeSources) } : {}),
+        ...(bookmarks.keep
+          ? { outlines: await outlinesOf(activeSources) }
+          : { dropBookmarks: true }),
         // Ook een uittreksel zonder vak hoort bij een document waarin geredigeerd is.
         redaction: { ...redaction, wholeDocument: hasRedactions(pages, annotations) },
       });
