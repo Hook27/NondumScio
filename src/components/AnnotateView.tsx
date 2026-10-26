@@ -39,6 +39,7 @@ import { DPI_CHOICES } from '../pdf/redactOptions';
 import type { RedactionReport } from '../pdf/redact';
 import { useRedactSearch } from '../search/useRedactSearch';
 import { RedactSearchPanel } from './RedactSearch';
+import { OutlinePanel } from './OutlinePanel';
 
 /**
  * De zoomstanden. Bij 25, 33 en 50% staan 4, 3 of 2 pagina's naast elkaar (een overzicht, zoals
@@ -277,6 +278,26 @@ export function AnnotateView({ mode = 'annotate' }: { mode?: 'annotate' | 'redac
     focusedCandidate: search.focus,
   };
 
+  /* Springen naar een pagina (vanuit de bladwijzers): in beeld, met de focus erop, even oplichtend */
+
+  const [flash, setFlash] = useState<number | null>(null);
+  const flashTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(
+    () => () => {
+      if (flashTimer.current) clearTimeout(flashTimer.current);
+    },
+    [],
+  );
+  const jumpTo = (position: number) => {
+    const item = container.current?.children[position] as HTMLElement | undefined;
+    if (!item) return;
+    item.scrollIntoView?.({ block: 'start' });
+    item.querySelector<HTMLElement>('.annotate-page')?.focus({ preventScroll: true });
+    setFlash(pages[position]?.key ?? null);
+    if (flashTimer.current) clearTimeout(flashTimer.current);
+    flashTimer.current = setTimeout(() => setFlash(null), 1600);
+  };
+
   /* Kleur, lettergrootte en dikte: voor het gereedschap, en voor wat geselecteerd is */
 
   const restyle = (change: Partial<Annotation>, mergeKey: string) => {
@@ -411,6 +432,7 @@ export function AnnotateView({ mode = 'annotate' }: { mode?: 'annotate' | 'redac
       tools={
         <div class="merge annotate">
           <FileList />
+          <OutlinePanel dropped={anyRedaction} onJump={jumpTo} />
           <span id="annotate-help" class="visually-hidden">
             {redactMode ? rt.pageHelp : t.edit.pageHelp}
           </span>
@@ -764,7 +786,10 @@ export function AnnotateView({ mode = 'annotate' }: { mode?: 'annotate' | 'redac
               const source = sourceOf(page);
               if (!source) return null;
               return (
-                <li key={page.key} class="annotate-pages__item">
+                <li
+                  key={page.key}
+                  class={`annotate-pages__item${flash === page.key ? ' annotate-pages__item--flash' : ''}`}
+                >
                   <p class="annotate-pages__caption">
                     {format(t.document.page, { n: index + 1 })}
                     {activeSources.length > 1 && ` · ${source.name}`}
