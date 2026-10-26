@@ -1611,6 +1611,16 @@ h1 {
   min-width: 0;
 }
 
+/* Bij springen (vanuit de bladwijzers) komt de pagina onder de vaste kop van het vak uit. */
+.annotate-pages__item {
+  scroll-margin-top: 4rem;
+}
+
+.annotate-pages__item--flash .annotate-page {
+  outline: 3px solid var(--accent);
+  outline-offset: 3px;
+}
+
 .annotate-pages__caption {
   margin: 0 0 0.3rem;
   color: var(--text-muted);
@@ -1771,6 +1781,122 @@ h1 {
 .annotate__zoom {
   min-width: 4.2rem;
   font-variant-numeric: tabular-nums;
+}
+
+/* Bladwijzers van de geopende bestanden, ingeklapt onder de bestandslijst. */
+.outline {
+  margin: 0.5rem 0 0.75rem;
+  padding: 0.4rem 0.6rem;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+}
+
+.outline__summary {
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.outline__note {
+  margin: 0.4rem 0 0;
+  font-size: 0.9rem;
+}
+
+.outline__file {
+  margin: 0.5rem 0 0;
+  color: var(--text-muted);
+  font-size: 0.85rem;
+  font-weight: 600;
+}
+
+.outline__list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.outline__group > .outline__list {
+  max-height: 20rem;
+  margin-top: 0.4rem;
+  overflow-y: auto;
+}
+
+.outline__list .outline__list {
+  padding-left: 1.2rem;
+}
+
+.outline__row {
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+}
+
+.outline__toggle {
+  flex: none;
+  width: 1.6rem;
+  height: 1.6rem;
+  padding: 0;
+  background: none;
+  border: 0;
+  border-radius: 4px;
+  color: var(--text-muted);
+  cursor: pointer;
+  font: inherit;
+}
+
+.outline__toggle--empty {
+  cursor: default;
+}
+
+.outline__entry {
+  display: flex;
+  flex: 1;
+  align-items: baseline;
+  gap: 0.5rem;
+  min-width: 0;
+  padding: 0.25rem 0.3rem;
+  background: none;
+  border: 0;
+  border-radius: 4px;
+  color: inherit;
+  font: inherit;
+  font-size: 0.9rem;
+  text-align: left;
+}
+
+button.outline__entry {
+  cursor: pointer;
+}
+
+button.outline__entry:hover,
+.outline__toggle:hover {
+  background: color-mix(in srgb, var(--accent) 12%, transparent);
+}
+
+.outline__title {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.outline__page {
+  flex: none;
+  color: var(--text-muted);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 0.8rem;
+}
+
+.outline__entry--removed .outline__title {
+  color: var(--text-muted);
+  text-decoration: line-through;
+}
+
+.outline__entry--removed .outline__page,
+.outline__entry--none .outline__page {
+  font-family: inherit;
+  font-style: italic;
 }
 
 /* Treffers van het zoeken bij Redigeren: oranje vakken op de pagina, nog geen echte vakken. */

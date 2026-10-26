@@ -329,6 +329,21 @@ export const nl = {
     },
     suffix: 'geredigeerd',
   },
+  outline: {
+    title: 'Bladwijzers ({n})',
+    list: 'Bladwijzers van {name}',
+    children: 'Onderliggende bladwijzers van {title}',
+    page: 'blz. {n}',
+    removed: 'pagina weggehaald',
+    noPage: 'geen pagina',
+    untitled: '(zonder titel)',
+    removedOne: '1 bladwijzer wijst naar een weggehaalde pagina.',
+    removedOther: '{n} bladwijzers wijzen naar een weggehaalde pagina.',
+    nowhere: 'In het gedownloade bestand wijzen die nergens meer heen.',
+    merged:
+      'Met meer dan één bestand gaan de bestaande bladwijzers niet mee in het gedownloade bestand.',
+    redacted: 'Met redactievakken gaan de bladwijzers niet mee in het gedownloade bestand.',
+  },
   saveDialog: {
     saveTitle: 'PDF opslaan',
     extractTitle: 'Gekozen pagina’s opslaan',

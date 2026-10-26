@@ -31,6 +31,7 @@ import {
 } from '../pdf/save';
 import { FileList } from './FilesParts';
 import { Icon, IconButton, TipAnchor } from './Icon';
+import { OutlinePanel } from './OutlinePanel';
 import { SaveDialog } from './SaveDialog';
 import { useDragReorder } from './useDragReorder';
 import { PaneHead, Split, useInfo } from './WorkspaceParts';
@@ -237,6 +238,15 @@ export function PageEditor() {
       tools={
         <div class="page-editor">
           <FileList />
+          <OutlinePanel
+            dropped={hasRedactions(pages, annotations)}
+            onJump={(position) => {
+              const key = pages[position]?.key;
+              if (key === undefined) return;
+              setSelection({ keys: new Set([key]), anchor: key });
+              focusOption(position);
+            }}
+          />
           <div class="toolbar toolbar--tools" role="toolbar" aria-label={t.pages.toolbar}>
             <div class="toolbar__group">
               <IconButton
