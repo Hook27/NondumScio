@@ -24,6 +24,8 @@ import { useI18n } from '../i18n/LanguageContext';
 import { format } from '../i18n/format';
 import type { PageItem } from '../pages/plan';
 import { outputScale } from '../pdf/images';
+import type { Box } from '../search/pageText';
+import type { Candidate } from '../search/run';
 
 /** Wat een pagina nodig heeft van de plek waar de annotaties beheerd worden (AnnotateView). */
 export type AnnotateController = {
@@ -48,6 +50,10 @@ export type AnnotateController = {
   edit: (id: number | null) => void;
   remove: (id: number) => void;
   nudge: (id: number, dx: number, dy: number) => void;
+  /** Zet een treffer van het zoeken aan of uit (een klik op zijn vak). */
+  toggleCandidate?: (id: number) => void;
+  /** De treffer die even oplicht. */
+  focusedCandidate?: number | null;
 };
 
 /** Zolang we de grootte van een pagina nog niet kennen, rekenen we met een A4. */
@@ -91,6 +97,7 @@ export function AnnotatePage({
   fitWidth,
   zoom,
   annotations,
+  candidates = [],
   controller,
 }: {
   pdf: PDFDocumentProxy;
@@ -102,6 +109,8 @@ export function AnnotatePage({
   zoom: number;
   /** De vastgelegde annotaties van deze pagina. */
   annotations: Annotation[];
+  /** De treffers van het zoeken op deze pagina (nog geen vakken). */
+  candidates?: Candidate[];
   controller: AnnotateController;
 }) {
   const { t } = useI18n();
@@ -117,6 +126,8 @@ export function AnnotatePage({
     handle?: string;
     moved: boolean;
   } | null>(null);
+  // De treffer waarop de aanwijzer neerkwam; een klik zonder slepen zet hem aan of uit.
+  const candidateClick = useRef<number | null>(null);
 
   const base = info?.base ?? PLACEHOLDER;
   const extra = item.rotation;
@@ -201,6 +212,17 @@ export function AnnotatePage({
     const d = toDisplay(base, extra, point);
     return { x: d.x * scale, y: d.y * scale };
   };
+  /** Een vak uit de basisstand als rechthoek op het scherm (ook bij een gedraaide pagina). */
+  const screenRect = (box: Box) => {
+    const a = toScreen({ x: box.x, y: box.y });
+    const d = toScreen({ x: box.x + box.width, y: box.y + box.height });
+    return {
+      x: Math.min(a.x, d.x),
+      y: Math.min(a.y, d.y),
+      width: Math.abs(d.x - a.x),
+      height: Math.abs(d.y - a.y),
+    };
+  };
   const pointerAt = (event: PointerEvent): Point => {
     const box = overlay.current!.getBoundingClientRect();
     return fromDisplay(base, extra, {
@@ -241,6 +263,18 @@ export function AnnotatePage({
     const tool = controller.tool;
     const at = pointerAt(event);
     overlay.current!.setPointerCapture?.(event.pointerId);
+    candidateClick.current =
+      hit || handle
+        ? null
+        : (candidates.find((candidate) =>
+            candidate.boxes.some(
+              (box) =>
+                at.x >= box.x &&
+                at.x <= box.x + box.width &&
+                at.y >= box.y &&
+                at.y <= box.y + box.height,
+            ),
+          )?.id ?? null);
 
     if (handle && selected) {
       drag.current = { mode: 'resize', start: at, original: selected, handle, moved: false };
@@ -289,6 +323,9 @@ export function AnnotatePage({
     const current = drag.current;
     drag.current = null;
     overlay.current?.releasePointerCapture?.(event.pointerId);
+    const clicked = candidateClick.current;
+    candidateClick.current = null;
+    if (clicked !== null && !current?.moved) controller.toggleCandidate?.(clicked);
     if (!current) return;
     if (current.moved) controller.commitDraft();
     else controller.setDraft(null);
@@ -408,9 +445,29 @@ export function AnnotatePage({
         onPointerUp={onPointerUp}
         onPointerCancel={() => {
           drag.current = null;
+          candidateClick.current = null;
           controller.setDraft(null);
         }}
       >
+        {candidates.map((candidate) => (
+          <g
+            key={candidate.id}
+            class={[
+              'annotate-candidate',
+              candidate.checked ? '' : 'annotate-candidate--off',
+              candidate.id === controller.focusedCandidate ? 'annotate-candidate--focus' : '',
+            ]
+              .filter(Boolean)
+              .join(' ')}
+            data-candidate={candidate.id}
+            aria-hidden="true"
+          >
+            {candidate.boxes.map((box, i) => {
+              const { x, y, width, height } = screenRect(box);
+              return <rect key={i} x={x} y={y} width={width} height={height} />;
+            })}
+          </g>
+        ))}
         {shownAnnotations.map((annotation) => {
           if (annotation.id === controller.editingId && annotation.kind === 'text') return null;
           const isSelected =
