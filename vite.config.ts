@@ -11,5 +11,9 @@ export default defineConfig({
   test: {
     environment: 'node',
     include: ['src/**/*.test.{ts,tsx}', 'scripts/**/*.test.ts'],
+    setupFiles: ['src/test-setup.ts'],
+    // Ruimer dan de standaard 5 s: op een drukke machine lopen de schermtests (die pdf-lib en
+    // pdf.js laden) daar anders tegenaan. Een geslaagde test wordt er niet trager van.
+    testTimeout: 15_000,
   },
 });

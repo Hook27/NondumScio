@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/preact';
+import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/preact';
 import type { PDFDocumentProxy } from 'pdfjs-dist';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { DocumentProvider } from '../document/DocumentContext';
@@ -48,8 +48,12 @@ async function setup(pages = 3) {
     target: { files: [new File([`%PDF-1.7 ${pages}\n`], 'rapport.pdf')] },
   });
   await screen.findByRole('list', { name: nl.edit.pages });
-  // Preact voert effecten (zoals de sneltoetsen) pas na het tekenen uit: even wachten.
-  await act(() => new Promise((resolve) => setTimeout(resolve, 150)));
+  // Preact voert effecten (zoals de sneltoetsen) pas na het tekenen uit. Een pagina staat pas op
+  // "getekend" nadat zijn effecten gelopen hebben, en dan die van het scherm (de sneltoetsen) ook.
+  // Wachten op een teken in plaats van een vaste tijd: op een drukke machine duurt het langer.
+  await waitFor(() =>
+    expect(document.querySelectorAll('.annotate-page[data-rendered="true"]')).toHaveLength(pages),
+  );
 }
 
 const button = (name: string) => screen.getByRole('button', { name }) as HTMLButtonElement;

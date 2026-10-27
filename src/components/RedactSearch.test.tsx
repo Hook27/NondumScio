@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { act, cleanup, fireEvent, render, screen } from '@testing-library/preact';
+import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/preact';
 import type { PDFDocumentProxy } from 'pdfjs-dist';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { DocumentProvider } from '../document/DocumentContext';
@@ -76,7 +76,10 @@ async function setup(pages = 3) {
     target: { files: [new File([`%PDF-1.7 ${pages}\n`], 'rapport.pdf')] },
   });
   await screen.findByRole('list', { name: nl.edit.pages });
-  await act(() => new Promise((resolve) => setTimeout(resolve, 150)));
+  // Wachten tot de effecten gelopen hebben (zie AnnotateView.test.tsx): een teken, geen vaste tijd.
+  await waitFor(() =>
+    expect(document.querySelectorAll('.annotate-page[data-rendered="true"]')).toHaveLength(pages),
+  );
 }
 
 const button = (name: string | RegExp) => screen.getByRole('button', { name }) as HTMLButtonElement;
