@@ -1,14 +1,16 @@
 import { useEffect, useRef, useState } from 'preact/hooks';
 import type { PDFDocumentProxy, RenderTask } from 'pdfjs-dist';
-import { onceInView } from '../lib/inView';
+import { watchInView } from '../lib/inView';
 import { renderScale, thumbnailSize } from '../pdf/thumbnail';
 
 /** Weergavebreedte van een miniatuur in CSS-pixels. */
 export const THUMBNAIL_WIDTH = 160;
 
 /**
- * Eén miniatuur. Wordt pas getekend als hij in beeld komt, zodat een PDF met honderden
- * pagina's niet alles tegelijk hoeft te tekenen.
+ * Eén miniatuur. Wordt pas getekend als hij (bijna) in beeld komt, zodat een PDF met honderden
+ * pagina's niet alles tegelijk hoeft te tekenen, en geeft zijn beeldpunten weer vrij als hij ver
+ * uit beeld is (het vakje houdt zijn maat). Zo blijft ook een lang document na veel scrollen
+ * binnen het geheugen van een telefoon.
  */
 export function Thumbnail({
   pdf,
@@ -36,11 +38,20 @@ export function Thumbnail({
   useEffect(() => {
     const element = figure.current;
     if (!element) return;
-    return onceInView(element, () => setVisible(true));
+    return watchInView(element, setVisible);
   }, []);
 
   useEffect(() => {
-    if (!visible) return;
+    if (!visible) {
+      // Ver uit beeld: weg met de beeldpunten. De maat staat in de stijl, dus het vakje blijft staan.
+      const target = canvas.current;
+      if (target && target.width > 0) {
+        target.width = 0;
+        target.height = 0;
+      }
+      setRendered(false);
+      return;
+    }
     let task: RenderTask | null = null;
     let cancelled = false;
     setRendered(false);
