@@ -14,10 +14,13 @@ export function thumbnailSize(page: Size, targetWidth: number): Size {
 
 /**
  * De schaal waarop pdf.js moet tekenen voor een scherpe miniatuur: de weergavebreedte
- * maal de pixeldichtheid van het scherm, gedeeld door de paginabreedte. Begrensd, zodat
- * een scherm met hoge dichtheid geen enorme afbeeldingen oplevert.
+ * maal de pixeldichtheid van het scherm, gedeeld door de paginabreedte. Begrensd op 2: een
+ * miniatuur blijft dan scherp genoeg, en op een iPhone (dichtheid 3) kost hij ruwweg de helft
+ * aan geheugen.
  */
+export const MAX_THUMBNAIL_RATIO = 2;
+
 export function renderScale(pageWidth: number, targetWidth: number, devicePixelRatio = 1): number {
-  const ratio = Math.min(Math.max(devicePixelRatio || 1, 1), 3);
+  const ratio = Math.min(Math.max(devicePixelRatio || 1, 1), MAX_THUMBNAIL_RATIO);
   return (targetWidth * ratio) / pageWidth;
 }

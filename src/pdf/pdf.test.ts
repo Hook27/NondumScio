@@ -66,9 +66,10 @@ describe('renderScale', () => {
     expect(renderScale(595, 160, 2)).toBeCloseTo(320 / 595);
   });
 
-  it('begrenst de pixeldichtheid tussen 1 en 3', () => {
+  it('begrenst de pixeldichtheid tussen 1 en 2 (ook op een iPhone, dichtheid 3)', () => {
     expect(renderScale(100, 100, 0.5)).toBe(1);
-    expect(renderScale(100, 100, 5)).toBe(3);
+    expect(renderScale(100, 100, 3)).toBe(2);
+    expect(renderScale(100, 100, 5)).toBe(2);
     expect(renderScale(100, 100, 0)).toBe(1);
   });
 });

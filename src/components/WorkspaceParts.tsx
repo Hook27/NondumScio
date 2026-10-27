@@ -30,7 +30,10 @@ export function Split({
         <FileErrors />
         {tools}
       </div>
-      <div class="workspace__view">{view}</div>
+      {/* Scrolt op een breed scherm zelf: de miniaturen houden hun marge dan rond dit vak. */}
+      <div class="workspace__view" data-scroll-root>
+        {view}
+      </div>
     </section>
   );
 }

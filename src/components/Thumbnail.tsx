@@ -1,14 +1,16 @@
 import { useEffect, useRef, useState } from 'preact/hooks';
 import type { PDFDocumentProxy, RenderTask } from 'pdfjs-dist';
-import { onceInView } from '../lib/inView';
+import { watchInView } from '../lib/inView';
 import { renderScale, thumbnailSize } from '../pdf/thumbnail';
 
 /** Weergavebreedte van een miniatuur in CSS-pixels. */
 export const THUMBNAIL_WIDTH = 160;
 
 /**
- * Eén miniatuur. Wordt pas getekend als hij in beeld komt, zodat een PDF met honderden
- * pagina's niet alles tegelijk hoeft te tekenen.
+ * Eén miniatuur. Wordt pas getekend als hij (bijna) in beeld komt, zodat een PDF met honderden
+ * pagina's niet alles tegelijk hoeft te tekenen, en geeft zijn beeldpunten weer vrij als hij ver
+ * uit beeld is (het vakje houdt zijn maat). Zo blijft ook een lang document na veel scrollen
+ * binnen het geheugen van een telefoon.
  */
 export function Thumbnail({
   pdf,
@@ -36,11 +38,20 @@ export function Thumbnail({
   useEffect(() => {
     const element = figure.current;
     if (!element) return;
-    return onceInView(element, () => setVisible(true));
+    return watchInView(element, setVisible);
   }, []);
 
   useEffect(() => {
-    if (!visible) return;
+    if (!visible) {
+      // Ver uit beeld: weg met de beeldpunten. De maat staat in de stijl, dus het vakje blijft staan.
+      const target = canvas.current;
+      if (target && target.width > 0) {
+        target.width = 0;
+        target.height = 0;
+      }
+      setRendered(false);
+      return;
+    }
     let task: RenderTask | null = null;
     let cancelled = false;
     setRendered(false);
@@ -57,20 +68,33 @@ export function Thumbnail({
         scale: renderScale(natural.width, THUMBNAIL_WIDTH, window.devicePixelRatio),
         rotation: angle,
       });
-      target.width = Math.round(viewport.width);
-      target.height = Math.round(viewport.height);
       // Alleen de breedte vast; de hoogte volgt de verhouding. Zo blijft de pagina recht
       // als het vak smaller is dan de miniatuur (max-width: 100%), bijvoorbeeld op een telefoon.
+      // Tot de pagina klaar is, staat er wit papier op die maat.
+      target.width = 0;
+      target.height = 0;
       target.style.width = `${size.width}px`;
       target.style.aspectRatio = `${size.width} / ${size.height}`;
 
-      task = page.render({ canvas: target, viewport });
+      // Eerst op een los canvas tekenen en dan overzetten: pdf.js tekent zonder doorzichtigheid,
+      // dus een canvas waarop nog getekend wordt, is zwart (bij een zware scan een tijdje).
+      const next = document.createElement('canvas');
+      next.width = Math.round(viewport.width);
+      next.height = Math.round(viewport.height);
+      task = page.render({ canvas: next, viewport });
       try {
         await task.promise;
-        if (!cancelled) setRendered(true);
+        if (!cancelled) {
+          target.width = next.width;
+          target.height = next.height;
+          target.getContext('2d')?.drawImage(next, 0, 0);
+          setRendered(true);
+        }
       } catch {
         // Afgebroken (bijvoorbeeld bij sluiten): niets aan de hand.
       } finally {
+        next.width = 0;
+        next.height = 0;
         // De miniatuur staat nu op het canvas; pdf.js mag de uitgepakte pagina
         // (lettertypen, afbeeldingen van scans) weer uit het geheugen halen.
         page.cleanup();
