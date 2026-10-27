@@ -6,8 +6,10 @@ import {
   type BoxAnnotation,
 } from '../annotations/model';
 import type { PageItem, Rotation } from '../pages/plan';
+import { attachPageRefs, detachPageRefs, strayObjects } from './links';
 import { addTextLayer, squash, wordsOutside, type OcrWord } from './ocrText';
 import type { PixelRect } from './paint';
+import { pruneUnreachable } from './prune';
 import { DEFAULT_REDACTION, DPI_CHOICES, type RedactionOptions } from './redactOptions';
 
 /**
@@ -130,6 +132,8 @@ export async function redactPdf(
   const lib = await import('pdf-lib');
   const source = await lib.PDFDocument.load(bytes, { updateMetadata: false });
   if (source.getPageCount() !== pages.length) throw new RedactionError('raster');
+  // Anders haalt het kopiëren via een koppeling de originele pagina met vak mee (zie `links.ts`).
+  detachPageRefs(lib, source);
   const out = await lib.PDFDocument.create();
   if (!options.stripMetadata) copyInfo(source, out);
 
@@ -219,6 +223,10 @@ export async function redactPdf(
     engine?.close();
   }
 
+  // Koppelingen wijzen weer naar de pagina op hun plek, nu in het nieuwe bestand; wat nergens
+  // meer aan hangt, gaat eruit.
+  attachPageRefs(lib, out);
+  pruneUnreachable(lib, out);
   const result = await out.save();
   // Eerst de eigen controle op de opbouw, dan (met pdf.js) of er echt geen tekst meer staat; op
   // pagina's met herkende tekst: of er niets anders staat dan die tekst, en niet in een zwart vak.
@@ -251,7 +259,9 @@ function copyInfo(source: PDFDocument, out: PDFDocument) {
 /**
  * Controleert in het opgeslagen bestand zelf dat de pagina's met redactie niets bevatten dan één
  * afbeelding: geen lettertypen, geen tekstopdrachten, geen aantekeningen of koppelingen, en geen
- * miniatuur of andere extra's in de pagina. Gooit een fout als er iets anders staat.
+ * miniatuur of andere extra's in de pagina. En in het hele bestand: geen pagina buiten de
+ * paginaboom en geen aantekening die op geen pagina staat (daar kan de oude pagina in zitten). Gooit
+ * een fout als er iets anders staat.
  */
 export async function assertImageOnly(
   bytes: Uint8Array,
@@ -259,9 +269,10 @@ export async function assertImageOnly(
   /** Pagina's met herkende tekst: daar mogen onzichtbare tekst en één standaardlettertype op staan. */
   textPages: ReadonlySet<number> = new Set(),
 ) {
-  const { PDFArray, PDFDict, PDFDocument, PDFName, PDFRawStream, decodePDFRawStream } =
-    await import('pdf-lib');
+  const lib = await import('pdf-lib');
+  const { PDFArray, PDFDict, PDFDocument, PDFName, PDFRawStream, decodePDFRawStream } = lib;
   const doc = await PDFDocument.load(bytes, { updateMetadata: false });
+  if (strayObjects(lib, doc) > 0) throw new RedactionError('verify');
   // pdf-lib zet in elke nieuwe pagina ook lege lijsten voor aantekeningen, lettertypen en dergelijke.
   const allowed = new Set(['Type', 'Parent', 'MediaBox', 'Resources', 'Contents', 'Annots']);
   const emptyOnly = new Set(['Font', 'ExtGState', 'ProcSet', 'Annots']);

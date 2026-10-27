@@ -3,7 +3,16 @@ import { readFileSync } from 'node:fs';
 import { expect, test, type Page } from '@playwright/test';
 import { PDFDocument, PDFName, PDFRawStream, StandardFonts, rgb } from 'pdf-lib';
 import { downloadVia, messages, openPage } from './helpers';
-import { download, drag, isBlack, leaks, pages, pixels, textOf } from './redact-helpers';
+import {
+  download,
+  drag,
+  isBlack,
+  leaks,
+  linkTargets,
+  pages,
+  pixels,
+  textOf,
+} from './redact-helpers';
 
 const nl = messages.nl;
 
@@ -12,9 +21,10 @@ const IBAN = 'NL00TEST0123456789';
 
 /**
  * Een PDF van drie pagina's. Pagina 2 bevat het geheim en een rekeningnummer (met bovenaan een
- * kop die erbuiten blijft); de titel, auteur en het onderwerp bevatten het geheim ook.
+ * kop die erbuiten blijft); de titel, auteur en het onderwerp bevatten het geheim ook. Met
+ * `contents` heeft pagina 1 een klikbare inhoudsopgave: koppelingen naar pagina 2 en 3.
  */
-async function makeSecretPdf(): Promise<Buffer> {
+async function makeSecretPdf({ contents = false } = {}): Promise<Buffer> {
   const doc = await PDFDocument.create();
   const font = await doc.embedFont(StandardFonts.Helvetica);
   doc.setTitle(`Rapport ${SECRET}`);
@@ -34,6 +44,21 @@ async function makeSecretPdf(): Promise<Buffer> {
     });
     page.drawText(`pagina ${pageIndex + 1}`, { x: 60, y: 60, size: 12, font });
   });
+  if (contents) {
+    const [first, ...rest] = doc.getPages();
+    const links = rest.map((target, i) =>
+      doc.context.register(
+        doc.context.obj({
+          Type: 'Annot',
+          Subtype: 'Link',
+          Rect: [60, 500 - i * 40, 300, 530 - i * 40],
+          Border: [0, 0, 0],
+          Dest: [target.ref, 'Fit'],
+        }),
+      ),
+    );
+    first!.node.set(PDFName.of('Annots'), doc.context.obj(links));
+  }
   return Buffer.from(await doc.save());
 }
 
@@ -100,6 +125,25 @@ test.describe('redigeren: de tekst is echt weg', () => {
     expect(Number(image.dict.get(PDFName.of('Width'))?.toString())).toBe(2479);
     // 5. De app zegt zelf dat hij het gecontroleerd heeft.
     await expect(page.getByRole('status').filter({ hasText: nl.redact.verifiedOne })).toBeVisible();
+  });
+
+  test('een inhoudsopgave met koppelingen haalt de originele pagina niet mee, en blijft werken', async ({
+    page,
+  }) => {
+    const source = await makeSecretPdf({ contents: true });
+    expect(await linkTargets(source)).toEqual([2, 3]);
+
+    await openRedact(page, 'light', source);
+    await boxOverSecret(page);
+    const result = await download(page);
+
+    // Nergens in het bestand, ook niet als verstopte kopie van de oude pagina 2.
+    expect(await leaks(result, SECRET)).toBe(false);
+    expect(await leaks(result, IBAN)).toBe(false);
+    expect(await leaks(result, 'wachtwoord')).toBe(false);
+    // De koppelingen wijzen naar de pagina's van het nieuwe bestand: 2 (nu een afbeelding) en 3.
+    expect(await linkTargets(result)).toEqual([2, 3]);
+    expect((await textOf(result))[2]).toContain('OPENBAAR drie');
   });
 
   test('het gebied is echt zwart, en alleen dat gebied', async ({ page }) => {

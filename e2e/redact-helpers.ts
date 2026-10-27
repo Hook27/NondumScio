@@ -68,6 +68,24 @@ export async function textOf(bytes: Buffer): Promise<string[]> {
   return result;
 }
 
+/** Naar welke pagina's (vanaf 1) de koppelingen op pagina 1 wijzen, zoals een PDF-lezer ze volgt. */
+export async function linkTargets(bytes: Buffer): Promise<(number | null)[]> {
+  const pdf = await pdfjs.getDocument({ data: new Uint8Array(bytes), verbosity: 0 }).promise;
+  const annotations = (await (await pdf.getPage(1)).getAnnotations()) as {
+    subtype: string;
+    dest?: unknown;
+  }[];
+  const targets = await Promise.all(
+    annotations
+      .filter((annotation) => annotation.subtype === 'Link')
+      .map(async ({ dest }) =>
+        Array.isArray(dest) && dest[0] ? (await pdf.getPageIndex(dest[0] as never)) + 1 : null,
+      ),
+  );
+  await pdf.loadingTask.destroy();
+  return targets;
+}
+
 /** Alles wat een bestand verraadt: ruwe bytes, uitgepakte stromen en de tekst van elk object. */
 async function everything(bytes: Buffer): Promise<string> {
   const doc = await PDFDocument.load(bytes, { updateMetadata: false });
