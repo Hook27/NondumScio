@@ -150,8 +150,13 @@ async function buildPlain(
 
   try {
     if (docs.size === 1) {
-      const doc = docs.values().next().value!;
+      const [id, doc] = docs.entries().next().value!;
       const sourcePages = doc.getPages();
+      // Koppelingen, bladwijzers en velden houden anders een weggehaalde pagina in het bestand
+      // vast (zie `links.ts`); verplaatste pagina's houden zo ook hun koppelingen.
+      const links = await import('./links');
+      links.cutLoose(lib, doc, new Set(pages.map((item) => item.source)));
+      links.detachPageRefs(lib, doc, { source: id, whole: true });
       // Alle pagina's uit de paginaboom halen en in de nieuwe volgorde terugzetten.
       for (let i = sourcePages.length - 1; i >= 0; i -= 1) doc.removePage(i);
       const fonts: FontCache = {};
@@ -161,6 +166,7 @@ async function buildPlain(
         page.setRotation(rotated(page.getRotation().angle, item.rotation));
         doc.addPage(page);
       }
+      links.attachPageRefs(lib, doc, { whole: true, target: links.positionsIn(pages) });
       // Zonder nieuwe bladwijzers blijven de bestaande in het bestand zelf staan, tenzij ze weg moeten.
       if (bookmarks) setBookmarks(lib, doc, outlineEntries(bookmarks, pages, outlines), true);
       else if (dropBookmarks) setBookmarks(lib, doc, [], false);
@@ -207,8 +213,9 @@ export async function buildParts(
       onProgress?.(result.length, parts.length);
       await new Promise((resolve) => setTimeout(resolve, 0));
     }
-  } catch {
-    throw new PdfSaveError('failed');
+  } catch (error) {
+    // Een mislukte redactie houdt zijn eigen melding.
+    throw error instanceof PdfSaveError ? error : new PdfSaveError('failed');
   }
   return result;
 }
@@ -257,6 +264,13 @@ async function assemble(
   annotations: readonly Annotation[] = [],
 ) {
   const rotated = rotation(lib);
+  // Anders haalt het kopiëren via koppelingen pagina's mee die niet meedoen (zie `links.ts`).
+  const links = await import('./links');
+  for (const [id, doc] of docs) {
+    if (detached.has(doc)) continue;
+    links.detachPageRefs(lib, doc, { source: id });
+    detached.add(doc);
+  }
   const out = await lib.PDFDocument.create();
   const first = docs.get(pages[0]!.doc)!;
   const title = first.getTitle();
@@ -280,8 +294,13 @@ async function assemble(
     page.setRotation(rotated(page.getRotation().angle, item.rotation));
     out.addPage(page);
   }
+  links.attachPageRefs(lib, out, { target: links.positionsIn(pages) });
+  pruneUnreachable(lib, out);
   return out;
 }
+
+/** De ingelezen bestanden waarvan de verwijzingen al zijn losgemaakt (splitsen gebruikt ze per deel opnieuw). */
+const detached = new WeakSet<PdfLibDocument>();
 
 /**
  * Bij elke nieuwe bladwijzer de plek van de eerste pagina van dat bestand, in volgorde van het

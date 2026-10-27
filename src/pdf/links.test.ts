@@ -1,16 +1,5 @@
 import * as lib from 'pdf-lib';
-import {
-  PDFArray,
-  PDFDict,
-  PDFDocument,
-  PDFName,
-  PDFRawStream,
-  PDFRef,
-  PDFString,
-  StandardFonts,
-  decodePDFRawStream,
-  type PDFPage,
-} from 'pdf-lib';
+import { PDFArray, PDFDict, PDFDocument, PDFName, PDFString } from 'pdf-lib';
 import { describe, expect, it } from 'vitest';
 import type { BoxAnnotation } from '../annotations/model';
 import { initialPages } from '../pages/plan';
@@ -23,59 +12,8 @@ import {
   type RasterSession,
 } from './redact';
 import { buildPdf } from './save';
+import { SECRET, annotate, annotationsOn, leaks, link, makeSource, pageIndexOf } from './testLinks';
 import { makePng } from './testPng';
-
-const SECRET = 'GEHEIM-4711';
-
-const hex = (text: string) =>
-  [...text].map((char) => char.charCodeAt(0).toString(16).toUpperCase().padStart(2, '0')).join('');
-
-/** Of het geheim ergens in het bestand staat: in de ruwe bytes, een object of een uitgepakte stroom. */
-async function leaks(bytes: Uint8Array): Promise<boolean> {
-  const doc = await PDFDocument.load(bytes, { updateMetadata: false });
-  const parts = [Buffer.from(bytes).toString('latin1')];
-  for (const [, object] of doc.context.enumerateIndirectObjects()) {
-    parts.push(String(object));
-    if (object instanceof PDFRawStream) {
-      try {
-        parts.push(Buffer.from(decodePDFRawStream(object).decode()).toString('latin1'));
-      } catch {
-        // Een afbeelding: de ruwe bytes zijn al meegenomen.
-      }
-    }
-  }
-  const all = parts.join('\n');
-  return all.includes(SECRET) || all.includes(hex(SECRET));
-}
-
-/**
- * Drie pagina's; pagina 2 heeft het geheim. `extra` zet er aantekeningen bij (koppelingen,
- * opmerkingen, formuliervelden) die naar andere pagina's verwijzen.
- */
-async function makeSource(extra: (doc: PDFDocument, pages: PDFPage[]) => void) {
-  const doc = await PDFDocument.create();
-  const font = await doc.embedFont(StandardFonts.Helvetica);
-  const pages = ['Inhoud', SECRET, 'Bijlage'].map((text) => {
-    const page = doc.addPage([600, 800]);
-    page.drawText(text, { x: 50, y: 700, size: 20, font });
-    return page;
-  });
-  extra(doc, pages);
-  return new Uint8Array(await doc.save());
-}
-
-/** Zet aantekeningen (als losse objecten) op een pagina. */
-function annotate(doc: PDFDocument, page: PDFPage, ...items: Record<string, unknown>[]) {
-  const refs = items.map((item) =>
-    doc.context.register(
-      doc.context.obj({ Type: 'Annot', Rect: [50, 690, 200, 720], ...item } as never),
-    ),
-  );
-  page.node.set(PDFName.of('Annots'), doc.context.obj(refs));
-  return refs;
-}
-
-const link = (target: PDFPage) => ({ Subtype: 'Link', Dest: [target.ref, 'Fit'] });
 
 /** Een redactievak op pagina 2 (sleutel 1). */
 const box: BoxAnnotation = {
@@ -113,18 +51,6 @@ async function redact(source: Uint8Array) {
   });
   return bytes;
 }
-
-/** De aantekeningen van een pagina in het resultaat. */
-async function annotationsOn(bytes: Uint8Array, pageIndex: number) {
-  const doc = await PDFDocument.load(bytes, { updateMetadata: false });
-  const annots = doc.getPage(pageIndex).node.lookupMaybe(PDFName.of('Annots'), PDFArray);
-  const items = (annots?.asArray() ?? []).map((ref) => doc.context.lookup(ref) as PDFDict);
-  return { doc, items };
-}
-
-/** Naar welke pagina (plek vanaf 0) een verwijzing in het resultaat wijst. */
-const pageIndexOf = (doc: PDFDocument, ref: unknown) =>
-  doc.getPages().findIndex((page) => ref instanceof PDFRef && page.ref.tag === ref.tag);
 
 describe('redigeren met verwijzingen naar andere pagina’s', () => {
   it('controle: zonder verwijzingen staat het geheim niet in het resultaat', async () => {

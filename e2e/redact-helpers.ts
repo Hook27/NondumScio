@@ -68,10 +68,10 @@ export async function textOf(bytes: Buffer): Promise<string[]> {
   return result;
 }
 
-/** Naar welke pagina's (vanaf 1) de koppelingen op pagina 1 wijzen, zoals een PDF-lezer ze volgt. */
-export async function linkTargets(bytes: Buffer): Promise<(number | null)[]> {
+/** Naar welke pagina's (vanaf 1) de koppelingen op een pagina wijzen, zoals een PDF-lezer ze volgt. */
+export async function linkTargets(bytes: Buffer, pageNumber = 1): Promise<(number | null)[]> {
   const pdf = await pdfjs.getDocument({ data: new Uint8Array(bytes), verbosity: 0 }).promise;
-  const annotations = (await (await pdf.getPage(1)).getAnnotations()) as {
+  const annotations = (await (await pdf.getPage(pageNumber)).getAnnotations()) as {
     subtype: string;
     dest?: unknown;
   }[];
