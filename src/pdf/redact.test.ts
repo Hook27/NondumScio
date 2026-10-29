@@ -21,6 +21,7 @@ import {
 } from './redact';
 import { buildPdf } from './save';
 import { makePng } from './testPng';
+import { imagesIn, makeSharedResourcesPdf } from './testShared';
 
 const SECRET = 'GEHEIM-4711';
 
@@ -530,5 +531,26 @@ describe('assertImageOnly met herkende tekst', () => {
   it('weigert zichtbare tekst, ook op een pagina waar tekst mag', async () => {
     const source = await makeSource(['gewone tekst']);
     await expect(assertImageOnly(source, [0], new Set([0]))).rejects.toBeInstanceOf(RedactionError);
+  });
+});
+
+describe('redactPdf: scans met gedeelde hulpbronnen', () => {
+  it('de originele scan van de pagina met vak gaat niet mee met de andere pagina’s', async () => {
+    const source = await makeSharedResourcesPdf(3);
+    const pages = initialPages(3);
+    const built = await buildPdf(new Map([[0, source]]), pages);
+    const { bytes } = await redactPdf(
+      built,
+      pages,
+      [box(pages[1]!.key)],
+      DEFAULT_REDACTION,
+      undefined,
+      {
+        openRaster: fakeRaster().openRaster,
+        verify: noVerify,
+      },
+    );
+    // Pagina 2 is een nieuwe afbeelding geworden; zijn originele scan (2) mag nergens meer staan.
+    expect(await imagesIn(bytes)).toEqual([0, 1, 3]);
   });
 });
