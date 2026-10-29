@@ -6,6 +6,7 @@ import {
   boxFrom,
   canDraw,
   drawableText,
+  groupByPage,
   keptOnPage,
   moved,
   tooSmall,
@@ -143,6 +144,16 @@ describe('annotaties', () => {
     expect(annotationsOf(all, 7).map((a) => a.id)).toEqual([1, 2]);
     expect(annotationsOf(all, 8).map((a) => a.id)).toEqual([3]);
     expect(annotationsOf(all, 9)).toEqual([]);
+  });
+
+  it('groepeert alles per pagina in één keer, in dezelfde volgorde als annotationsOf', () => {
+    const all: Annotation[] = [text, rect, line];
+    const groups = groupByPage(all);
+    expect([...groups.keys()]).toEqual([7, 8]);
+    for (const page of [7, 8, 9]) {
+      expect(groups.get(page) ?? []).toEqual(annotationsOf(all, page));
+    }
+    expect(groupByPage([]).size).toBe(0);
   });
 
   it('verplaatst elk soort annotatie', () => {

@@ -1,8 +1,9 @@
-import { useEffect, useRef, useState } from 'preact/hooks';
+import { useEffect, useMemo, useRef, useState } from 'preact/hooks';
 import { useDocument } from '../document/DocumentContext';
 import { typingIn, useUndoShortcuts } from '../document/useUndoShortcuts';
 import { useI18n } from '../i18n/LanguageContext';
 import { format, plural } from '../i18n/format';
+import { useStable } from '../lib/useStable';
 import {
   COLORS,
   DEFAULT_COLOR,
@@ -11,10 +12,8 @@ import {
   LINE_HEIGHT,
   STROKE_WIDTHS,
   TEXT_SIZES,
-  annotationsOf,
   boxFrom,
-  hasRedactions,
-  redactionsOf,
+  groupByPage,
   moved,
   tooSmall,
   unsupportedChars,
@@ -61,6 +60,8 @@ const ZOOMS = [
 const FIT = 4;
 /** De ruimte tussen pagina's (in beeldpunten), ook in de stijl. */
 const PAGE_GAP = 20;
+/** Voor pagina's zonder annotaties: steeds dezelfde lege lijst, zodat de pagina niet opnieuw tekent. */
+const NO_ANNOTATIONS: Annotation[] = [];
 
 type SaveState =
   | { status: 'idle' }
@@ -82,6 +83,20 @@ const REDACT_TOOLS = [
   { id: 'select', icon: 'cursor', key: 'v' },
   { id: 'redact', icon: 'redactTool', key: 'r' },
 ] as const;
+
+/** De onderdelen van de bediening die uit functies bestaan (zie `useStable`). */
+type StableKey =
+  | 'interactive'
+  | 'newId'
+  | 'create'
+  | 'setDraft'
+  | 'commitDraft'
+  | 'add'
+  | 'select'
+  | 'edit'
+  | 'remove'
+  | 'nudge'
+  | 'toggleCandidate';
 
 type DrawingTool = Exclude<Tool, 'select'>;
 type ToolEntry = { id: Tool; icon: IconName; key: string };
@@ -167,6 +182,9 @@ export function AnnotateView({ mode = 'annotate' }: { mode?: 'annotate' | 'redac
     newAnnotationId,
     color: colors.redact,
   });
+  // Per pagina één keer gegroepeerd, en alleen opnieuw als de annotaties of treffers veranderen.
+  const annotationsByPage = useMemo(() => groupByPage(annotations), [annotations]);
+  const candidatesByPage = useMemo(() => groupByPage(search.candidates), [search.candidates]);
   useEffect(() => {
     if (search.focus === null) return;
     const shape = document.querySelector(`[data-candidate="${search.focus}"]`);
@@ -195,12 +213,9 @@ export function AnnotateView({ mode = 'annotate' }: { mode?: 'annotate' | 'redac
 
   /* Wat de pagina's mogen doen */
 
-  const controller: AnnotateController = {
-    tool,
-    selectedId,
-    editingId,
-    draft,
-    preview: redactMode && preview,
+  // De functies blijven dezelfde en het geheel verandert niet bij elke muisbeweging (dan verandert
+  // alleen het concept): zo hoeven pagina's waar niets aan veranderde niet opnieuw te tekenen.
+  const actions = useStable<Required<Pick<AnnotateController, StableKey>>>({
     // Bij Redigeren pak je alleen redactievakken aan; de rest van de annotaties staat er alleen.
     interactive: (kind) => !redactMode || kind === 'redact',
     newId: newAnnotationId,
@@ -276,9 +291,19 @@ export function AnnotateView({ mode = 'annotate' }: { mode?: 'annotate' | 'redac
     },
     nudge: (id, dx, dy) =>
       annotate((items) => items.map((a) => (a.id === id ? moved(a, dx, dy) : a)), `nudge-${id}`),
-    toggleCandidate: search.toggle,
-    focusedCandidate: search.focus,
-  };
+    toggleCandidate: (id) => search.toggle(id),
+  });
+  const controller: AnnotateController = useMemo(
+    () => ({
+      ...actions,
+      tool,
+      selectedId,
+      editingId,
+      preview: redactMode && preview,
+      focusedCandidate: search.focus,
+    }),
+    [actions, tool, selectedId, editingId, redactMode, preview, search.focus],
+  );
 
   /* Springen naar een pagina (vanuit de bladwijzers): in beeld, met de focus erop, even oplichtend */
 
@@ -412,18 +437,26 @@ export function AnnotateView({ mode = 'annotate' }: { mode?: 'annotate' | 'redac
     }
   };
 
-  // Bij Bewerken tellen de annotaties, bij Redigeren de redactievakken.
-  const used = annotations.filter(
-    (a) => (a.kind === 'redact') === redactMode && pages.some((page) => page.key === a.page),
-  );
-  const redactedPages = redactMode
-    ? pages.filter((page) => redactionsOf(annotationsOf(annotations, page.key)).length > 0).length
-    : 0;
+  // Bij Bewerken tellen de annotaties, bij Redigeren de redactievakken. Dit loopt over alle pagina's
+  // en annotaties, dus niet bij elke muisbeweging opnieuw: het concept staat hier buiten.
+  const counts = useMemo(() => {
+    const onPlan = new Set(pages.map((page) => page.key));
+    const used = annotations.filter(
+      (a) => (a.kind === 'redact') === redactMode && onPlan.has(a.page),
+    );
+    const redacted = new Set(
+      annotations.filter((a) => a.kind === 'redact' && onPlan.has(a.page)).map((a) => a.page),
+    );
+    return {
+      used: used.length,
+      text: used.map((a) => (a.kind === 'text' ? a.text : '')).join(''),
+      redactedPages: redacted.size,
+    };
+  }, [annotations, pages, redactMode]);
+  const { redactedPages } = counts;
   const unsupported = redactMode
     ? []
-    : unsupportedChars(
-        [...used, ...(draft ? [draft] : [])].map((a) => (a.kind === 'text' ? a.text : '')).join(''),
-      );
+    : unsupportedChars(counts.text + (draft?.kind === 'text' ? draft.text : ''));
   const stop = ZOOMS[zoomIndex]!;
   const percent = stop.percent;
   const columns = 'columns' in stop ? stop.columns : 1;
@@ -431,7 +464,7 @@ export function AnnotateView({ mode = 'annotate' }: { mode?: 'annotate' | 'redac
   const pageWidth = columns > 1 ? (fitWidth - (columns - 1) * PAGE_GAP) / columns : fitWidth;
   const zoom = 'columns' in stop ? 1 : stop.percent / 100;
   const busy = save.status === 'saving';
-  const anyRedaction = hasRedactions(pages, annotations);
+  const anyRedaction = redactedPages > 0;
 
   return (
     <Split
@@ -669,16 +702,16 @@ export function AnnotateView({ mode = 'annotate' }: { mode?: 'annotate' | 'redac
                 : progress
                   ? format(rt.progress, progress)
                   : [
-                      used.length === 0
+                      counts.used === 0
                         ? redactMode
                           ? rt.none
                           : t.edit.none
                         : redactMode
-                          ? plural(used.length, rt.countOne, format(rt.count, { n: used.length }))
+                          ? plural(counts.used, rt.countOne, format(rt.count, { n: counts.used }))
                           : plural(
-                              used.length,
+                              counts.used,
                               t.edit.countOne,
-                              format(t.edit.count, { n: used.length }),
+                              format(t.edit.count, { n: counts.used }),
                             ),
                       unsaved && t.pages.unsaved,
                     ]
@@ -717,15 +750,9 @@ export function AnnotateView({ mode = 'annotate' }: { mode?: 'annotate' | 'redac
           {!redactMode && anyRedaction && (
             <p class="page-editor__status">
               {plural(
-                pages.filter(
-                  (page) => redactionsOf(annotationsOf(annotations, page.key)).length > 0,
-                ).length,
+                redactedPages,
                 rt.affectedOne,
-                format(rt.affectedOther, {
-                  n: pages.filter(
-                    (page) => redactionsOf(annotationsOf(annotations, page.key)).length > 0,
-                  ).length,
-                }),
+                format(rt.affectedOther, { n: redactedPages }),
               )}
             </p>
           )}
@@ -806,10 +833,9 @@ export function AnnotateView({ mode = 'annotate' }: { mode?: 'annotate' | 'redac
                     position={index + 1}
                     fitWidth={pageWidth}
                     zoom={zoom}
-                    annotations={annotationsOf(annotations, page.key)}
-                    candidates={
-                      redactMode ? search.candidates.filter((c) => c.page === page.key) : undefined
-                    }
+                    annotations={annotationsByPage.get(page.key) ?? NO_ANNOTATIONS}
+                    candidates={redactMode ? candidatesByPage.get(page.key) : undefined}
+                    draft={draft?.page === page.key ? draft : null}
                     controller={controller}
                   />
                 </li>

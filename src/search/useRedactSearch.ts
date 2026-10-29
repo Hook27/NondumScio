@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'preact/hooks';
+import { useEffect, useMemo, useRef, useState } from 'preact/hooks';
 import type { Annotation, BoxAnnotation } from '../annotations/model';
 import type { Source } from '../document/DocumentContext';
 import type { PageItem } from '../pages/plan';
@@ -94,8 +94,11 @@ export function useRedactSearch({
     [],
   );
 
-  const keys = new Set(pages.map((page) => page.key));
-  const candidates = all.filter((candidate) => keys.has(candidate.page));
+  // Alleen opnieuw als de treffers of de pagina's veranderen: de lijst gaat als gegeven naar elke pagina.
+  const candidates = useMemo(() => {
+    const keys = new Set(pages.map((page) => page.key));
+    return all.filter((candidate) => keys.has(candidate.page));
+  }, [all, pages]);
   const spec = {
     terms: parseTerms(form.terms),
     patterns: form.patterns,

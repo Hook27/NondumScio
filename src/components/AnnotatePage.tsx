@@ -22,18 +22,23 @@ import {
 } from '../annotations/model';
 import { useI18n } from '../i18n/LanguageContext';
 import { format } from '../i18n/format';
+import { watchInView } from '../lib/inView';
+import { memo } from '../lib/memo';
 import type { PageItem } from '../pages/plan';
 import { outputScale } from '../pdf/images';
 import type { Box } from '../search/pageText';
 import type { Candidate } from '../search/run';
 
-/** Wat een pagina nodig heeft van de plek waar de annotaties beheerd worden (AnnotateView). */
+/**
+ * Wat een pagina nodig heeft van de plek waar de annotaties beheerd worden (AnnotateView). De
+ * functies blijven dezelfde en het geheel verandert alleen als een van de waarden verandert (niet
+ * bij elke muisbeweging): zo kan een pagina die niets te doen heeft overgeslagen worden.
+ * Het concept (wat je nu tekent) gaat daarom apart, alleen naar zijn eigen pagina.
+ */
 export type AnnotateController = {
   tool: Tool;
   selectedId: number | null;
   editingId: number | null;
-  /** Wat er nu getekend, verplaatst of getypt wordt, nog niet vastgelegd. */
-  draft: Annotation | null;
   newId: () => number;
   /** Een nieuwe annotatie met de gekozen kleur, lettergrootte en dikte, op een plek. */
   create: (tool: Exclude<Tool, 'select'>, page: number, from: Point, to?: Point) => Annotation;
@@ -81,23 +86,27 @@ async function pageInfo(pdf: PDFDocumentProxy, pageNumber: number): Promise<Page
 const NUDGE = 1;
 const NUDGE_BIG = 10;
 
-/** Hoeveel scherm (in paginahoogtes) boven en onder het zichtbare deel al getekend wordt. */
-const RENDER_MARGIN = '120% 0px';
+/** Voor pagina's zonder treffers: steeds dezelfde lege lijst, zodat de pagina niet opnieuw tekent. */
+const NO_CANDIDATES: Candidate[] = [];
 
 /**
  * Eén pagina op leesbare grootte, met de annotaties erbovenop. Wordt pas getekend als de pagina
  * (bijna) in beeld komt en geeft het geheugen weer vrij als je er ver vandaan scrolt, zodat ook
  * een lang document werkt. De annotaties staan in de basisstand van de pagina; hier worden ze
  * omgerekend naar wat je ziet, met de extra draaiing uit het pagina-plan.
+ *
+ * Een pagina tekent alleen opnieuw als zijn eigen gegevens veranderen (zie `memo`), dus bij het
+ * slepen van een vak tekent alleen de pagina met dat vak mee.
  */
-export function AnnotatePage({
+export const AnnotatePage = memo(function AnnotatePage({
   pdf,
   item,
   position,
   fitWidth,
   zoom,
   annotations,
-  candidates = [],
+  candidates = NO_CANDIDATES,
+  draft,
   controller,
 }: {
   pdf: PDFDocumentProxy;
@@ -111,6 +120,8 @@ export function AnnotatePage({
   annotations: Annotation[];
   /** De treffers van het zoeken op deze pagina (nog geen vakken). */
   candidates?: Candidate[];
+  /** Wat er nu getekend, verplaatst of getypt wordt, nog niet vastgelegd: alleen als het hier hoort. */
+  draft: Annotation | null;
   controller: AnnotateController;
 }) {
   const { t } = useI18n();
@@ -148,18 +159,11 @@ export function AnnotatePage({
   }, [pdf, item.source]);
 
   // Tekenen als de pagina (bijna) in beeld is; anders het geheugen vrijgeven.
+  // Via het scrollvak van het werkvak, zodat de marge ook op een breed scherm meetelt (zie inView).
   useEffect(() => {
     const element = frame.current;
-    if (!element || typeof IntersectionObserver === 'undefined') {
-      setActive(true);
-      return;
-    }
-    const observer = new IntersectionObserver(
-      (entries) => setActive(entries.some((entry) => entry.isIntersecting)),
-      { rootMargin: RENDER_MARGIN },
-    );
-    observer.observe(element);
-    return () => observer.disconnect();
+    if (!element) return;
+    return watchInView(element, setActive);
   }, []);
 
   useEffect(() => {
@@ -232,7 +236,6 @@ export function AnnotatePage({
   };
 
   /** Wat er op deze pagina staat: de vastgelegde annotaties, met het concept op zijn plek. */
-  const draft = controller.draft?.page === item.key ? controller.draft : null;
   const shownAnnotations = draft
     ? annotations.some((a) => a.id === draft.id)
       ? annotations.map((a) => (a.id === draft.id ? draft : a))
@@ -530,7 +533,7 @@ export function AnnotatePage({
       )}
     </div>
   );
-}
+});
 
 /** De vier hoeken van een vak in de basisstand: linksboven, rechtsboven, linksonder, rechtsonder. */
 function boxCorners(box: BoxAnnotation): Point[] {

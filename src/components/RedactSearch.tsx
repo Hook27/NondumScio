@@ -1,8 +1,10 @@
 import { useI18n } from '../i18n/LanguageContext';
 import { format, plural } from '../i18n/format';
+import { memo } from '../lib/memo';
+import { useStable } from '../lib/useStable';
 import type { PageItem } from '../pages/plan';
 import { PATTERN_IDS } from '../search/patterns';
-import { MAX_CANDIDATES } from '../search/run';
+import { MAX_CANDIDATES, type Candidate } from '../search/run';
 import type { RedactSearch } from '../search/useRedactSearch';
 
 /**
@@ -23,7 +25,11 @@ export function RedactSearchPanel({
   const running = phase.status === 'running';
   const chosen = candidates.filter((candidate) => candidate.checked).length;
   const pageCount = new Set(candidates.map((candidate) => candidate.page)).size;
-  const positionOf = (key: number) => pages.findIndex((page) => page.key === key) + 1;
+  // De lijst tekent niet opnieuw als er alleen iets op de pagina's gebeurt (bijvoorbeeld slepen).
+  const { toggle, focusOn } = useStable({
+    toggle: (id: number) => search.toggle(id),
+    focusOn: (id: number) => search.focusOn(id),
+  });
 
   const togglePattern = (id: (typeof PATTERN_IDS)[number], on: boolean) =>
     search.setForm({
@@ -169,38 +175,7 @@ export function RedactSearchPanel({
               {s.checkNone}
             </button>
           </div>
-          <ul class="search__hits" aria-label={s.list}>
-            {candidates.map((candidate, index) => {
-              const position = positionOf(candidate.page);
-              return (
-                <li key={candidate.id} class="search__hit">
-                  <input
-                    type="checkbox"
-                    checked={candidate.checked}
-                    aria-label={format(s.hitLabel, {
-                      n: index + 1,
-                      page: position,
-                      text: candidate.text,
-                    })}
-                    onChange={() => search.toggle(candidate.id)}
-                  />
-                  <button
-                    type="button"
-                    class="search__go"
-                    onClick={() => search.focusOn(candidate.id)}
-                  >
-                    <span class="search__page">{format(s.pageShort, { n: position })}</span>
-                    <span class="search__context">
-                      {candidate.before}
-                      <mark>{candidate.text}</mark>
-                      {candidate.after}
-                    </span>
-                    {candidate.viaOcr && <span class="search__tag">{s.viaOcr}</span>}
-                  </button>
-                </li>
-              );
-            })}
-          </ul>
+          <HitList candidates={candidates} pages={pages} toggle={toggle} focusOn={focusOn} />
           <div class="annotate__row">
             <button type="button" class="button" disabled={chosen === 0} onClick={search.apply}>
               {format(s.apply, { n: chosen })}
@@ -214,3 +189,50 @@ export function RedactSearchPanel({
     </fieldset>
   );
 }
+
+/** De lijst met treffers; tekent alleen opnieuw als de treffers of de pagina's veranderen. */
+const HitList = memo(function HitList({
+  candidates,
+  pages,
+  toggle,
+  focusOn,
+}: {
+  candidates: Candidate[];
+  pages: readonly PageItem[];
+  toggle: (id: number) => void;
+  focusOn: (id: number) => void;
+}) {
+  const { t } = useI18n();
+  const s = t.redact.search;
+  const positions = new Map(pages.map((page, index) => [page.key, index + 1]));
+  return (
+    <ul class="search__hits" aria-label={s.list}>
+      {candidates.map((candidate, index) => {
+        const position = positions.get(candidate.page) ?? 0;
+        return (
+          <li key={candidate.id} class="search__hit">
+            <input
+              type="checkbox"
+              checked={candidate.checked}
+              aria-label={format(s.hitLabel, {
+                n: index + 1,
+                page: position,
+                text: candidate.text,
+              })}
+              onChange={() => toggle(candidate.id)}
+            />
+            <button type="button" class="search__go" onClick={() => focusOn(candidate.id)}>
+              <span class="search__page">{format(s.pageShort, { n: position })}</span>
+              <span class="search__context">
+                {candidate.before}
+                <mark>{candidate.text}</mark>
+                {candidate.after}
+              </span>
+              {candidate.viaOcr && <span class="search__tag">{s.viaOcr}</span>}
+            </button>
+          </li>
+        );
+      })}
+    </ul>
+  );
+});
