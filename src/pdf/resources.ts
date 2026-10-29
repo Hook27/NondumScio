@@ -19,8 +19,15 @@ const NAMED = ['XObject', 'Font', 'ExtGState', 'ColorSpace', 'Pattern', 'Shading
  * is: inhoud die niet te lezen is (een onbekende codering), of een getekend onderdeel zonder eigen
  * hulpbronnen (een formulier-XObject of een weergave van een aantekening), dat dan die van de
  * pagina zou gebruiken.
+ *
+ * Geeft de pagina's terug die daardoor nog een gedeelde lijst gebruiken (Redigeren zet die zo nodig
+ * om in een afbeelding, zie `redact.ts`).
  */
-export function trimSharedResources(lib: PdfLib, doc: PDFDocument, indices: readonly number[]) {
+export function trimSharedResources(
+  lib: PdfLib,
+  doc: PDFDocument,
+  indices: readonly number[],
+): number[] {
   const pages = doc.getPages();
   const users = new Map<PDFDict, number>();
   for (const page of pages) {
@@ -28,13 +35,16 @@ export function trimSharedResources(lib: PdfLib, doc: PDFDocument, indices: read
     if (resources) users.set(resources, (users.get(resources) ?? 0) + 1);
   }
   for (const [resources, count] of users) if (count > 1) shared.add(resources);
+  const doubtful: number[] = [];
   for (const index of new Set(indices)) {
     const node = pages[index]?.node;
     const resources = node?.Resources();
     if (!node || !resources || !shared.has(resources)) continue;
     const own = trimmed(lib, doc, node, resources);
     if (own) node.set(lib.PDFName.of('Resources'), own);
+    else doubtful.push(index);
   }
+  return doubtful;
 }
 
 /**
@@ -154,4 +164,47 @@ export function dropUnusedInheritedResources(lib: PdfLib, doc: PDFDocument) {
     return allOwn;
   };
   visit(doc.catalog.Pages());
+}
+
+/**
+ * De afbeeldingen die pagina `index` kan tonen: via haar hulpbronnen (ook binnen formulieren en
+ * patronen) en via haar aantekeningen, per verwijzing met hun (gecodeerde) inhoud. Andere pagina's
+ * worden niet betreden, ook niet via een koppeling.
+ */
+export function imagesReachable(
+  lib: PdfLib,
+  doc: PDFDocument,
+  index: number,
+): Map<string, Uint8Array> {
+  const { PDFArray, PDFDict, PDFName, PDFPageLeaf, PDFRawStream, PDFRef } = lib;
+  const node = doc.getPages()[index]!.node;
+  const images = new Map<string, Uint8Array>();
+  const seen = new Set<string>();
+  const queue: unknown[] = [node, node.Resources()];
+  while (queue.length > 0) {
+    let value = queue.pop();
+    let key: string | null = null;
+    if (value instanceof PDFRef) {
+      key = value.toString();
+      if (seen.has(key)) continue;
+      seen.add(key);
+      value = doc.context.lookup(value);
+    }
+    if (value instanceof PDFPageLeaf && value !== node) continue;
+    if (value instanceof PDFRawStream) {
+      if (value.dict.get(PDFName.of('Subtype')) === PDFName.of('Image')) {
+        if (key) images.set(key, value.contents);
+        continue;
+      }
+      value = value.dict;
+    }
+    if (value instanceof PDFDict) {
+      for (const [name, entry] of value.entries()) {
+        if (name !== PDFName.of('Parent')) queue.push(entry);
+      }
+    } else if (value instanceof PDFArray) {
+      queue.push(...value.asArray());
+    }
+  }
+  return images;
 }

@@ -265,6 +265,10 @@ export const en: Messages = {
     progress: 'Redacting: {done} of {total} pages…',
     verifiedOne: 'Verified: 1 page has no text left.',
     verifiedOther: 'Verified: {n} pages have no text left.',
+    extraOne:
+      '1 page without a box also became an image: it shared parts with a page with a box that could not be separated safely.',
+    extraOther:
+      '{n} pages without a box also became an image: they shared parts with a page with a box that could not be separated safely.',
     ocr: 'Recognize text (OCR) on pages with a box',
     ocrHelp:
       'After blacking out, the text on the image is recognized (Dutch and English) and added invisibly, so the page stays searchable. Black stays black: whatever was under a box does not end up in it. This takes longer; the first time, the recognition is loaded. Recognized text can contain mistakes. It also applies when you download from Pages, Merge, Split or Convert.',

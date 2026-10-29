@@ -14,6 +14,8 @@ import {
   DEFAULT_REDACTION,
   RedactionError,
   assertImageOnly,
+  assertNoHiddenImages,
+  fingerprintsOf,
   redactPdf,
   type OcrEngine,
   type OcrWord,
@@ -534,7 +536,41 @@ describe('assertImageOnly met herkende tekst', () => {
   });
 });
 
+/** Redigeert pagina 2 van een scan met gedeelde hulpbronnen (vier pagina's). */
+async function redactSharedScan(options: Parameters<typeof makeSharedResourcesPdf>[1] = {}) {
+  const pages = initialPages(4);
+  const built = await buildPdf(new Map([[0, await makeSharedResourcesPdf(4, options)]]), pages);
+  const raster = fakeRaster();
+  const result = await redactPdf(built, pages, [box(pages[1]!.key)], DEFAULT_REDACTION, undefined, {
+    openRaster: raster.openRaster,
+    verify: noVerify,
+  });
+  return { ...result, raster };
+}
+
 describe('redactPdf: scans met gedeelde hulpbronnen', () => {
+  it.each([
+    ['onleesbare inhoud', 'unreadable'],
+    ['een formulier-XObject zonder eigen hulpbronnen', 'formWithoutResources'],
+    ['een aantekening zonder eigen hulpbronnen', 'appearanceWithoutResources'],
+  ])(
+    'een pagina zonder vak die niet uit te dunnen is (%s), wordt ook een afbeelding',
+    async (_, option) => {
+      const { bytes, report } = await redactSharedScan({ [option]: true });
+      // Pagina 1 kon de gedeelde lijst niet kwijt: ook een afbeelding, zodat scan 2 niet meekomt.
+      expect(await imagesIn(bytes)).toEqual([0, 3, 4]);
+      expect(report.pages).toEqual([0, 1]);
+      expect(report.extra).toEqual([0]);
+    },
+  );
+
+  it('een pagina die wel uit te dunnen is, blijft gewoon staan', async () => {
+    const { bytes, report } = await redactSharedScan();
+    expect(await imagesIn(bytes)).toEqual([0, 1, 3, 4]);
+    expect(report.pages).toEqual([1]);
+    expect(report.extra).toEqual([]);
+  });
+
   it('de originele scan van de pagina met vak gaat niet mee met de andere pagina’s', async () => {
     const source = await makeSharedResourcesPdf(3);
     const pages = initialPages(3);
@@ -552,5 +588,30 @@ describe('redactPdf: scans met gedeelde hulpbronnen', () => {
     );
     // Pagina 2 is een nieuwe afbeelding geworden; zijn originele scan (2) mag nergens meer staan.
     expect(await imagesIn(bytes)).toEqual([0, 1, 3]);
+  });
+});
+
+describe('assertNoHiddenImages: het vangnet', () => {
+  it('weigert een resultaat waarin een afbeelding van een pagina met vak nog staat', async () => {
+    const doc = await PDFDocument.create();
+    const page = doc.addPage([100, 100]);
+    const secret = doc.context.register(
+      doc.context.stream(new Uint8Array(16).fill(7), {
+        Type: 'XObject',
+        Subtype: 'Image',
+        Width: 4,
+        Height: 4,
+        ColorSpace: 'DeviceGray',
+        BitsPerComponent: 8,
+      }),
+    );
+    // Nergens getekend, maar wel in het bestand: precies wat het vangnet moet vinden.
+    page.node.set(PDFName.of('Verborgen'), secret);
+    const bytes = await doc.save();
+    const forbidden = await fingerprintsOf([new Uint8Array(16).fill(7)]);
+    await expect(assertNoHiddenImages(bytes, forbidden)).rejects.toMatchObject({ code: 'verify' });
+    await expect(
+      assertNoHiddenImages(bytes, await fingerprintsOf([new Uint8Array(16).fill(8)])),
+    ).resolves.toBeUndefined();
   });
 });
