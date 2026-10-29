@@ -271,6 +271,10 @@ export const nl = {
     progress: 'Bezig met redigeren: {done} van {total} pagina’s…',
     verifiedOne: 'Gecontroleerd: op 1 pagina staat geen tekst meer.',
     verifiedOther: 'Gecontroleerd: op {n} pagina’s staat geen tekst meer.',
+    extraOne:
+      '1 pagina zonder vak is ook een afbeelding geworden: ze deelde onderdelen met een pagina met vak, die niet veilig los te halen waren.',
+    extraOther:
+      '{n} pagina’s zonder vak zijn ook een afbeelding geworden: ze deelden onderdelen met een pagina met vak, die niet veilig los te halen waren.',
     ocr: 'Tekst herkennen (OCR) op pagina’s met een vak',
     ocrHelp:
       'Na het zwartmaken wordt de tekst op de afbeelding herkend (Nederlands en Engels) en onzichtbaar toegevoegd, zodat de pagina doorzoekbaar blijft. Het zwart blijft zwart: wat onder een vak stond, komt er niet in. Dit duurt langer; de eerste keer wordt de herkenning geladen. Herkende tekst kan fouten bevatten. Het geldt ook als je bij Pagina’s, Samenvoegen, Splitsen of Omzetten downloadt.',

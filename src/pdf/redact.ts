@@ -11,7 +11,7 @@ import { addTextLayer, squash, wordsOutside, type OcrWord } from './ocrText';
 import type { PixelRect } from './paint';
 import { pruneUnreachable } from './prune';
 import { DEFAULT_REDACTION, DPI_CHOICES, type RedactionOptions } from './redactOptions';
-import { trimSharedResources } from './resources';
+import { imagesReachable, trimSharedResources } from './resources';
 
 /**
  * Redigeren: echt weglakken. Een zwart vak over tekst laat de tekst gewoon in het bestand
@@ -92,6 +92,11 @@ export type RedactionReport = {
   /** Daarvan de pagina's waar herkende tekst onzichtbaar op is gezet. */
   recognized: number[];
   reduced: boolean;
+  /**
+   * Daarvan de pagina's zonder vak die toch afbeelding zijn geworden: ze deelden onderdelen met
+   * een pagina met vak die niet veilig los te halen waren (zie `redactPdf`).
+   */
+  extra: number[];
 };
 
 /** Wacht op `promise`, maar geeft op tijd op als er gestopt wordt. */
@@ -127,7 +132,7 @@ export async function redactPdf(
   const affected = boxesPerPage.flatMap((boxes, index) => (boxes.length > 0 ? [index] : []));
   const stripOnly = affected.length === 0 && copyAll && options.stripMetadata;
   if (affected.length === 0 && !stripOnly) {
-    return { bytes, report: { pages: [], recognized: [], reduced: false } };
+    return { bytes, report: { pages: [], recognized: [], reduced: false, extra: [] } };
   }
 
   const lib = await import('pdf-lib');
@@ -136,9 +141,43 @@ export async function redactPdf(
   // Anders haalt het kopiëren via een koppeling de originele pagina met vak mee (zie `links.ts`).
   detachPageRefs(lib, source);
   // Anders neemt een gekopieerde pagina via een gedeelde lijst met hulpbronnen (zoals bij veel
-  // scans) ook de originele afbeelding van een pagina met vak mee (zie `resources.ts`).
-  const untouched = boxesPerPage.flatMap((boxes, index) => (boxes.length === 0 ? [index] : []));
-  trimSharedResources(lib, source, untouched);
+  // scans) ook de originele afbeelding van een pagina met vak mee (zie `resources.ts`). Ook de
+  // pagina's met vak worden uitgedund: dan weten we welke afbeeldingen die echt gebruiken.
+  const doubtful = new Set(
+    trimSharedResources(
+      lib,
+      source,
+      pages.map((_, index) => index),
+    ),
+  );
+  const hidden = new Map(affected.flatMap((index) => [...imagesReachable(lib, source, index)]));
+  // Een pagina zonder vak die niet uit te dunnen was en zo'n afbeelding kan bereiken, wordt ook
+  // een afbeelding: dan gaat de gedeelde lijst niet mee.
+  const extra = boxesPerPage.flatMap((boxes, index) =>
+    boxes.length === 0 &&
+    doubtful.has(index) &&
+    [...imagesReachable(lib, source, index).keys()].some((key) => hidden.has(key))
+      ? [index]
+      : [],
+  );
+  const rasterized = boxesPerPage.flatMap((boxes, index) =>
+    boxes.length > 0 || extra.includes(index) ? [index] : [],
+  );
+  const untouched = boxesPerPage.flatMap((_, index) => (rasterized.includes(index) ? [] : [index]));
+  // Wat een uitgedunde gekopieerde pagina laat zien, mag blijven (bijvoorbeeld een logo op elke
+  // pagina); de rest van de afbeeldingen van de pagina's met vak mag nergens meer in het resultaat
+  // staan. Een pagina die niet uit te dunnen was, telt hier niet mee: van haar weten we niet wat
+  // ze laat zien, alleen wat ze kan bereiken.
+  const shown = new Map(
+    untouched
+      .filter((index) => !doubtful.has(index))
+      .flatMap((index) => [...imagesReachable(lib, source, index)]),
+  );
+  const allowed = await fingerprintsOf([...shown.values()]);
+  const forbidden = await fingerprintsOf(
+    [...hidden].filter(([key]) => !shown.has(key)).map(([, contents]) => contents),
+  );
+  for (const fingerprint of allowed) forbidden.delete(fingerprint);
   const out = await lib.PDFDocument.create();
   if (!options.stripMetadata) copyInfo(source, out);
 
@@ -173,7 +212,7 @@ export async function redactPdf(
     for (let index = 0; index < pages.length; index += 1) {
       if (deps.signal?.aborted) throw new RedactionError('cancelled');
       const boxes = boxesPerPage[index]!;
-      if (boxes.length === 0) {
+      if (!rasterized.includes(index)) {
         run.push(index);
         continue;
       }
@@ -239,8 +278,10 @@ export async function redactPdf(
   // Eerst de eigen controle op de opbouw, dan (met pdf.js) of er echt geen tekst meer staat; op
   // pagina's met herkende tekst: of er niets anders staat dan die tekst, en niet in een zwart vak.
   const recognized = checks.map((check) => check.pageIndex);
-  await assertImageOnly(result, affected, new Set(recognized));
-  const plain = affected.filter((index) => !recognized.includes(index));
+  await assertImageOnly(result, rasterized, new Set(recognized));
+  // Het vangnet: geen afbeelding van een pagina met vak meer in het bestand, waar dan ook.
+  await assertNoHiddenImages(result, forbidden);
+  const plain = rasterized.filter((index) => !recognized.includes(index));
   if (plain.length > 0) {
     if (deps.verify) await deps.verify(result, plain);
     else await (await import('./rasterize')).verifyNoText(result, plain);
@@ -249,7 +290,42 @@ export async function redactPdf(
     if (deps.verifyText) await deps.verifyText(result, checks);
     else await (await import('./rasterize')).verifyText(result, checks);
   }
-  return { bytes: result, report: { pages: affected, recognized, reduced } };
+  return { bytes: result, report: { pages: rasterized, recognized, reduced, extra } };
+}
+
+/** Vingerafdrukken (SHA-256) van de inhoud van afbeeldingen, om ze in een ander bestand terug te vinden. */
+export async function fingerprintsOf(contents: readonly Uint8Array[]): Promise<Set<string>> {
+  const prints = await Promise.all(
+    contents.map(async (bytes) => {
+      const digest = await crypto.subtle.digest('SHA-256', bytes as BufferSource);
+      return [...new Uint8Array(digest)].map((b) => b.toString(16).padStart(2, '0')).join('');
+    }),
+  );
+  return new Set(prints);
+}
+
+/**
+ * Controleert dat geen enkele afbeelding in het bestand een van de `forbidden` vingerafdrukken heeft
+ * (de afbeeldingen van pagina's met vak die op geen andere pagina te zien zijn). Bekeken wordt elk
+ * object in het bestand, niet alleen wat de pagina's tonen: ook wat nergens getekend wordt, kan
+ * iemand eruit halen. Gooit een `RedactionError('verify')` als er toch zo'n afbeelding staat.
+ */
+export async function assertNoHiddenImages(bytes: Uint8Array, forbidden: ReadonlySet<string>) {
+  if (forbidden.size === 0) return;
+  const { PDFDocument, PDFName, PDFRawStream } = await import('pdf-lib');
+  const doc = await PDFDocument.load(bytes, { updateMetadata: false });
+  const images: Uint8Array[] = [];
+  for (const [, object] of doc.context.enumerateIndirectObjects()) {
+    if (
+      object instanceof PDFRawStream &&
+      object.dict.get(PDFName.of('Subtype')) === PDFName.of('Image')
+    ) {
+      images.push(object.contents);
+    }
+  }
+  for (const fingerprint of await fingerprintsOf(images)) {
+    if (forbidden.has(fingerprint)) throw new RedactionError('verify');
+  }
 }
 
 /** Titel, auteur en dergelijke overnemen als de gebruiker daarvoor kiest. */

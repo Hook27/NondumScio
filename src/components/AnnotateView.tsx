@@ -788,6 +788,16 @@ export function AnnotateView({ mode = 'annotate' }: { mode?: 'annotate' | 'redac
                       )}
                     </>
                   )}
+                  {report.extra.length > 0 && (
+                    <>
+                      {' '}
+                      {plural(
+                        report.extra.length,
+                        rt.extraOne,
+                        format(rt.extraOther, { n: report.extra.length }),
+                      )}
+                    </>
+                  )}
                   {report.reduced && ` ${t.convert.reduced}`}
                 </>
               )}

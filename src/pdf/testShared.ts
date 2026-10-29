@@ -12,7 +12,7 @@ export const IMAGE_AREA = { x: 100, y: 142, size: 400 };
 type Options = {
   /** Pagina 1 heeft inhoud in een codering die we niet kunnen lezen. */
   unreadable?: boolean;
-  /** Pagina 1 tekent een formulier-XObject zonder eigen hulpbronnen, dat `/Im2` aanroept. */
+  /** Pagina 1 tekent een formulier-XObject zonder eigen hulpbronnen, dat het logo aanroept. */
   formWithoutResources?: boolean;
   /** Pagina 1 heeft een aantekening waarvan de weergave geen eigen hulpbronnen heeft. */
   appearanceWithoutResources?: boolean;
@@ -48,7 +48,7 @@ export async function makeSharedResourcesPdf(
   for (let n = 1; n <= count; n += 1) xobjects[`Im${n}`] = image(n);
   if (options.formWithoutResources) {
     xobjects.Fm1 = context.register(
-      context.stream('q 10 0 0 10 0 0 cm /Im2 Do Q', {
+      context.stream('q 10 0 0 10 0 0 cm /Logo Do Q', {
         Type: 'XObject',
         Subtype: 'Form',
         BBox: [0, 0, 10, 10],
@@ -80,7 +80,7 @@ export async function makeSharedResourcesPdf(
     page.node.set(PDFName.of('Resources'), shared);
     if (n === 1 && options.appearanceWithoutResources) {
       const appearance = context.register(
-        context.stream('q 10 0 0 10 0 0 cm /Im2 Do Q', {
+        context.stream('q 10 0 0 10 0 0 cm /Logo Do Q', {
           Type: 'XObject',
           Subtype: 'Form',
           BBox: [0, 0, 10, 10],

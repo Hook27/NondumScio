@@ -37,11 +37,11 @@ function fakeLoad(bytes: Uint8Array): Promise<LoadedPdf> {
   return Promise.resolve({ pdf, pageCount });
 }
 
-async function setup(pages = 3) {
+async function setup(pages = 3, mode: 'edit' | 'redact' = 'edit') {
   render(
     <LanguageProvider initial="nl">
       <DocumentProvider load={fakeLoad} unload={() => {}}>
-        <Workspace mode="edit" />
+        <Workspace mode={mode} />
       </DocumentProvider>
     </LanguageProvider>,
   );
@@ -429,5 +429,21 @@ describe('Bewerken: veel pagina’s', () => {
     } finally {
       renders.stop();
     }
+  });
+});
+
+describe('Redigeren: het verslag na het downloaden', () => {
+  it('meldt pagina’s zonder vak die voor de veiligheid ook een afbeelding zijn geworden', async () => {
+    vi.mocked(buildPdf).mockImplementationOnce(async (_sources, _pages, options) => {
+      options?.redaction?.onDone?.({ pages: [0, 1], recognized: [], reduced: false, extra: [0] });
+      return new Uint8Array([37, 80, 68, 70]);
+    });
+    await setup(2, 'redact');
+    press('r');
+    fireEvent.keyDown(pageNr(2), { key: 'Enter' });
+    fireEvent.click(button(nl.pages.save));
+    fireEvent.click(screen.getByRole('button', { name: nl.saveDialog.download }));
+    const status = await screen.findByText(/Opgeslagen als/);
+    expect(status.textContent).toContain(nl.redact.extraOne);
   });
 });
