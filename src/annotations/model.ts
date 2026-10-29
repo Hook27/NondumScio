@@ -114,6 +114,20 @@ export function hasRedactions(
   );
 }
 
+/**
+ * Alles per pagina gegroepeerd, in dezelfde volgorde als `annotationsOf` (voor veel pagina's
+ * tegelijk: één keer door de lijst in plaats van één keer per pagina).
+ */
+export function groupByPage<T extends { page: number }>(items: readonly T[]): Map<number, T[]> {
+  const groups = new Map<number, T[]>();
+  for (const item of items) {
+    const group = groups.get(item.page);
+    if (group) group.push(item);
+    else groups.set(item.page, [item]);
+  }
+  return groups;
+}
+
 /** Annotaties van één pagina, in de volgorde waarin ze zijn gemaakt (onderaan = eerst). */
 export function annotationsOf(annotations: readonly Annotation[], page: number): Annotation[] {
   return annotations.filter((annotation) => annotation.page === page);

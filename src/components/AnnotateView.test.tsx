@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/preact';
 import type { PDFDocumentProxy } from 'pdfjs-dist';
+import { options, type VNode } from 'preact';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { DocumentProvider } from '../document/DocumentContext';
 import { messages } from '../i18n';
@@ -370,5 +371,63 @@ describe('Bewerken: annoteren', () => {
     await screen.findByRole('list', { name: nl.edit.pages });
     expect(shapes()).toHaveLength(0);
     expect(button(nl.pages.undo).disabled).toBe(true);
+  });
+});
+
+describe('Bewerken: veel pagina’s', () => {
+  /** Telt hoe vaak een onderdeel echt tekent, via de haak van Preact vóór het tekenen. */
+  function countRenders(name: string) {
+    const internal = options as unknown as { __r?: (vnode: VNode) => void };
+    const before = internal.__r;
+    let count = 0;
+    internal.__r = (vnode) => {
+      before?.(vnode);
+      if (typeof vnode.type === 'function' && vnode.type.name === name) count += 1;
+    };
+    return {
+      get count() {
+        return count;
+      },
+      reset: () => {
+        count = 0;
+      },
+      stop: () => {
+        internal.__r = before;
+      },
+    };
+  }
+
+  it('tekent bij het slepen van een vak alleen de pagina met dat vak opnieuw', async () => {
+    const PAGES = 40;
+    const MOVES = 10;
+    const renders = countRenders('AnnotatePage');
+    try {
+      await setup(PAGES);
+      // Zonder dit teken is de telling waardeloos: elke pagina heeft minstens één keer getekend.
+      expect(renders.count).toBeGreaterThanOrEqual(PAGES);
+
+      // Een paar vakken op andere pagina's, zodat er ook iets te filteren valt.
+      press('r');
+      for (const n of [5, 10, 15]) fireEvent.keyDown(pageNr(n), { key: 'Enter' });
+      expect(shapes()).toHaveLength(3);
+
+      const overlay = pageNr(1).querySelector('svg')!;
+      fireEvent.pointerDown(overlay, { button: 0, pointerId: 1, clientX: 100, clientY: 100 });
+      renders.reset();
+      for (let i = 1; i <= MOVES; i += 1) {
+        fireEvent.pointerMove(overlay, {
+          pointerId: 1,
+          clientX: 100 + i * 5,
+          clientY: 100 + i * 3,
+        });
+      }
+      // Het vak groeit op pagina 1 mee (er wordt dus echt getekend), maar de andere 39 blijven staan.
+      expect(renders.count).toBeGreaterThan(0);
+      expect(renders.count).toBeLessThanOrEqual(MOVES);
+      fireEvent.pointerUp(overlay, { pointerId: 1 });
+      expect(shapes()).toHaveLength(4);
+    } finally {
+      renders.stop();
+    }
   });
 });
