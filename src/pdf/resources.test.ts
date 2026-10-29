@@ -1,7 +1,7 @@
 import * as lib from 'pdf-lib';
 import { describe, expect, it } from 'vitest';
 import { initialPages } from '../pages/plan';
-import { trimSharedResources } from './resources';
+import { dropUnusedInheritedResources, trimSharedResources } from './resources';
 import { buildParts, buildPdf } from './save';
 import { imagesIn, makeSharedResourcesPdf } from './testShared';
 
@@ -67,6 +67,19 @@ describe('gedeelde hulpbronnen (zoals bij veel scans)', () => {
     const before = doc.getPages().map((page) => page.node.get(PDFName.of('Resources')));
     trimSharedResources(lib, doc, [0, 1, 2]);
     expect(doc.getPages().map((page) => page.node.get(PDFName.of('Resources')))).toEqual(before);
+  });
+
+  it('de lijst aan de paginaboom gaat alleen weg als geen pagina hem nog erft', async () => {
+    const doc = await PDFDocument.load(await makeSharedResourcesPdf(3));
+    const tree = doc.catalog.Pages();
+    // Pagina 2 erft de lijst: dan moet hij blijven staan.
+    doc.getPages()[1]!.node.delete(PDFName.of('Resources'));
+    dropUnusedInheritedResources(lib, doc);
+    expect(tree.has(PDFName.of('Resources'))).toBe(true);
+    // Heeft elke pagina een eigen lijst, dan gaat hij weg.
+    doc.getPages()[1]!.node.set(PDFName.of('Resources'), tree.get(PDFName.of('Resources'))!);
+    dropUnusedInheritedResources(lib, doc);
+    expect(tree.has(PDFName.of('Resources'))).toBe(false);
   });
 
   it('is te herhalen: een tweede keer verandert niets meer', async () => {

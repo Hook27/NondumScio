@@ -160,9 +160,8 @@ async function buildPlain(
       // Blijft er een deel van de pagina's over, dan geen afbeeldingen van de rest via een gedeelde
       // lijst met hulpbronnen (zie `resources.ts`).
       const kept = [...new Set(pages.map((item) => item.source))];
-      if (kept.length < sourcePages.length) {
-        (await import('./resources')).trimSharedResources(lib, doc, kept);
-      }
+      const resources = kept.length < sourcePages.length ? await import('./resources') : null;
+      resources?.trimSharedResources(lib, doc, kept);
       // Alle pagina's uit de paginaboom halen en in de nieuwe volgorde terugzetten.
       for (let i = sourcePages.length - 1; i >= 0; i -= 1) doc.removePage(i);
       const fonts: FontCache = {};
@@ -172,6 +171,8 @@ async function buildPlain(
         page.setRotation(rotated(page.getRotation().angle, item.rotation));
         doc.addPage(page);
       }
+      // Ook de lijst die aan de paginaboom zelf hangt, houdt anders alle afbeeldingen vast.
+      resources?.dropUnusedInheritedResources(lib, doc);
       links.attachPageRefs(lib, doc, { whole: true, target: links.positionsIn(pages) });
       // Zonder nieuwe bladwijzers blijven de bestaande in het bestand zelf staan, tenzij ze weg moeten.
       if (bookmarks) setBookmarks(lib, doc, outlineEntries(bookmarks, pages, outlines), true);

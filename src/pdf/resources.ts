@@ -1,4 +1,4 @@
-import type { PDFDict, PDFDocument, PDFPageLeaf } from 'pdf-lib';
+import type { PDFDict, PDFDocument, PDFPageLeaf, PDFPageTree } from 'pdf-lib';
 
 type PdfLib = typeof import('pdf-lib');
 
@@ -131,4 +131,27 @@ function appearancesHaveResources(lib: PdfLib, node: PDFPageLeaf): boolean {
   return streams.every(
     (stream) => !(stream instanceof PDFRawStream) || stream.dict.has(PDFName.of('Resources')),
   );
+}
+
+/**
+ * Haalt een lijst met hulpbronnen weg van de paginaboom (waar pagina's hem kunnen erven) als
+ * geen enkele pagina eronder hem nog erft. Na `trimSharedResources` hebben de pagina's een eigen
+ * lijst; de geërfde lijst hield anders alle afbeeldingen in het bestand vast.
+ */
+export function dropUnusedInheritedResources(lib: PdfLib, doc: PDFDocument) {
+  const { PDFName, PDFPageTree, PDFPageLeaf } = lib;
+  const resources = PDFName.of('Resources');
+  /** Of alle pagina's onder `node` een eigen lijst hebben (en de geërfde dus niet gebruiken). */
+  const visit = (node: PDFPageTree): boolean => {
+    const kids = node.Kids();
+    let allOwn = true;
+    for (let i = 0; i < kids.size(); i += 1) {
+      const kid = kids.lookup(i);
+      if (kid instanceof PDFPageTree) allOwn = visit(kid) && allOwn;
+      else if (kid instanceof PDFPageLeaf) allOwn = kid.has(resources) && allOwn;
+    }
+    if (allOwn) node.delete(resources);
+    return allOwn;
+  };
+  visit(doc.catalog.Pages());
 }

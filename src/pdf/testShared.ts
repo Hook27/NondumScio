@@ -23,6 +23,7 @@ type Options = {
  * daarin de afbeeldingen van álle pagina's. Pagina n tekent alleen zijn eigen afbeelding (`/Im<n>`,
  * effen grijs: `grayOf(n)`), het gedeelde logo (`/Logo`) en een regel tekst (`/F1`). Elke afbeelding
  * draagt `/NondumScioImage <n>` (het logo: 0), zodat een test kan zien welke er in een resultaat staan.
+ * Dezelfde lijst hangt ook aan de paginaboom, zoals bij Jörgs scan (die pagina's kunnen hem erven).
  */
 export async function makeSharedResourcesPdf(
   count: number,
@@ -61,6 +62,8 @@ export async function makeSharedResourcesPdf(
       XObject: xobjects,
     }),
   );
+  // Zoals in echte scans hangt de lijst ook aan de paginaboom (pagina's kunnen hem erven).
+  doc.catalog.Pages().set(PDFName.of('Resources'), shared);
   const { x, y, size } = IMAGE_AREA;
   for (let n = 1; n <= count; n += 1) {
     const page = doc.addPage([595, 842]);
