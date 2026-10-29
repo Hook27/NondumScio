@@ -157,6 +157,12 @@ async function buildPlain(
       const links = await import('./links');
       links.cutLoose(lib, doc, new Set(pages.map((item) => item.source)));
       links.detachPageRefs(lib, doc, { source: id, whole: true });
+      // Blijft er een deel van de pagina's over, dan geen afbeeldingen van de rest via een gedeelde
+      // lijst met hulpbronnen (zie `resources.ts`).
+      const kept = [...new Set(pages.map((item) => item.source))];
+      if (kept.length < sourcePages.length) {
+        (await import('./resources')).trimSharedResources(lib, doc, kept);
+      }
       // Alle pagina's uit de paginaboom halen en in de nieuwe volgorde terugzetten.
       for (let i = sourcePages.length - 1; i >= 0; i -= 1) doc.removePage(i);
       const fonts: FontCache = {};
@@ -272,6 +278,7 @@ async function assemble(
   const rotated = rotation(lib);
   // Anders haalt het kopiëren via koppelingen pagina's mee die niet meedoen (zie `links.ts`).
   const links = await import('./links');
+  const { trimSharedResources } = await import('./resources');
   for (const [id, doc] of docs) {
     if (detached.has(doc)) continue;
     links.detachPageRefs(lib, doc, { source: id });
@@ -290,6 +297,8 @@ async function assemble(
   for (const [id, doc] of docs) {
     const indices = [...new Set(pages.filter((p) => p.doc === id).map((p) => p.source))];
     if (indices.length === 0) continue;
+    // Anders neemt elke pagina met een gedeelde lijst hulpbronnen alle afbeeldingen mee.
+    trimSharedResources(lib, doc, indices);
     const copied = await out.copyPages(doc, indices);
     indices.forEach((index, i) => copies.set(`${id}:${index}`, copied[i]!));
   }

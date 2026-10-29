@@ -11,6 +11,7 @@ import { addTextLayer, squash, wordsOutside, type OcrWord } from './ocrText';
 import type { PixelRect } from './paint';
 import { pruneUnreachable } from './prune';
 import { DEFAULT_REDACTION, DPI_CHOICES, type RedactionOptions } from './redactOptions';
+import { trimSharedResources } from './resources';
 
 /**
  * Redigeren: echt weglakken. Een zwart vak over tekst laat de tekst gewoon in het bestand
@@ -134,6 +135,10 @@ export async function redactPdf(
   if (source.getPageCount() !== pages.length) throw new RedactionError('raster');
   // Anders haalt het kopiëren via een koppeling de originele pagina met vak mee (zie `links.ts`).
   detachPageRefs(lib, source);
+  // Anders neemt een gekopieerde pagina via een gedeelde lijst met hulpbronnen (zoals bij veel
+  // scans) ook de originele afbeelding van een pagina met vak mee (zie `resources.ts`).
+  const untouched = boxesPerPage.flatMap((boxes, index) => (boxes.length === 0 ? [index] : []));
+  trimSharedResources(lib, source, untouched);
   const out = await lib.PDFDocument.create();
   if (!options.stripMetadata) copyInfo(source, out);
 
@@ -152,12 +157,15 @@ export async function redactPdf(
   let font: Awaited<ReturnType<PDFDocument['embedFont']>> | undefined;
   const checks: TextCheck[] = [];
   try {
-    // Pagina's zonder vak in één keer kopiëren (gedeelde lettertypen en afbeeldingen blijven
-    // dan gedeeld); een pagina met vak wordt een afbeelding.
+    // Alle pagina's zonder vak in één keer kopiëren, zodat gedeelde lettertypen en afbeeldingen
+    // er maar één keer in komen; ze worden op hun plek gezet tussen de pagina's met vak, die
+    // afbeeldingen worden.
+    const copied = await out.copyPages(source, untouched);
+    const copies = new Map(untouched.map((index, i) => [index, copied[i]!]));
     let run: number[] = [];
     const flush = async () => {
       if (run.length === 0) return;
-      for (const page of await out.copyPages(source, run)) out.addPage(page);
+      for (const index of run) out.addPage(copies.get(index)!);
       done += run.length;
       onProgress?.(done, pages.length);
       run = [];
