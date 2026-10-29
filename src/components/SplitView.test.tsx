@@ -13,12 +13,38 @@ import { Workspace } from './Workspace';
 vi.mock('../pdf/save', async (importOriginal) => ({
   ...(await importOriginal<typeof import('../pdf/save')>()),
   // Per deel een nep-PDF met de paginanummers erin, zodat je ze in de ZIP terugziet.
-  buildParts: vi.fn(async (_sources: unknown, parts: { source: number }[][]) =>
-    parts.map((part) => new TextEncoder().encode(part.map((p) => p.source + 1).join(','))),
+  // Met `onPart` (de ZIP) gaat elk deel daarheen, zoals bij de echte buildParts.
+  buildParts: vi.fn(
+    async (
+      _sources: unknown,
+      parts: { source: number }[][],
+      _progress?: unknown,
+      _annotations?: unknown,
+      _redaction?: unknown,
+      onPart?: (bytes: Uint8Array, index: number) => void,
+    ) => {
+      const pdfs = parts.map((part) =>
+        new TextEncoder().encode(part.map((p) => p.source + 1).join(',')),
+      );
+      if (!onPart) return pdfs;
+      pdfs.forEach((pdf, i) => onPart(pdf, i));
+      return [];
+    },
   ),
   downloadPdf: vi.fn(),
   downloadFile: vi.fn(),
 }));
+
+// Met `zip.tiny` krijgt de ZIP een grens van één byte, zoals een ZIP die over de 4 GB zou gaan.
+const zip = vi.hoisted(() => ({ tiny: false }));
+vi.mock('../lib/zip', async (importOriginal) => {
+  const original = await importOriginal<typeof import('../lib/zip')>();
+  return {
+    ...original,
+    zipWriter: (limits?: typeof original.ZIP_LIMITS) =>
+      original.zipWriter(zip.tiny ? { bytes: 1, files: 1 } : limits),
+  };
+});
 
 const nl = messages.nl;
 
@@ -166,6 +192,19 @@ describe('Splitsen', () => {
     expect(vi.mocked(downloadPdf).mock.calls[0]![1]).toBe("rapport (pagina's 3-4).pdf");
   });
 
+  it('meldt een ZIP die te groot wordt, en downloadt dan niets', async () => {
+    zip.tiny = true;
+    try {
+      await setup(3);
+      fireEvent.click(screen.getByRole('button', { name: 'Alle 3 delen downloaden (ZIP)' }));
+      fireEvent.click(screen.getByRole('button', { name: nl.saveDialog.download }));
+      expect((await screen.findByRole('alert')).textContent).toBe(nl.pages.errors.tooLarge);
+      expect(downloadFile).not.toHaveBeenCalled();
+    } finally {
+      zip.tiny = false;
+    }
+  });
+
   it('downloadt alle delen als één ZIP', async () => {
     await setup(3);
     fireEvent.click(screen.getByRole('button', { name: 'Alle 3 delen downloaden (ZIP)' }));
@@ -178,7 +217,7 @@ describe('Splitsen', () => {
     const [zip, fileName, type] = vi.mocked(downloadFile).mock.calls[0]!;
     expect(fileName).toBe('rapport (gesplitst).zip');
     expect(type).toBe('application/zip');
-    const files = unzipSync(zip);
+    const files = unzipSync(new Uint8Array(await (zip as Blob).arrayBuffer()));
     expect(Object.keys(files)).toEqual([
       'rapport (pagina 1).pdf',
       'rapport (pagina 2).pdf',

@@ -14,7 +14,7 @@ import {
   editedFileName,
   readSources,
 } from '../pdf/save';
-import { makeZip } from '../lib/zip';
+import { ZipTooLargeError, zipWriter } from '../lib/zip';
 import { FileList, FilesToolbar } from './FilesParts';
 import { Icon, IconButton } from './Icon';
 import { SaveDialog } from './SaveDialog';
@@ -83,8 +83,11 @@ export function SplitView() {
     });
   };
 
-  /** Maakt de PDF's van de gevraagde delen (bytes van de bronbestanden één keer gelezen). */
-  const build = async (wanted: number[][]) => {
+  /**
+   * Maakt de PDF's van de gevraagde delen (bytes van de bronbestanden één keer gelezen). Met
+   * `onPart` gaat elk deel meteen daarheen in plaats van in de teruggegeven lijst.
+   */
+  const build = async (wanted: number[][], onPart?: (bytes: Uint8Array, index: number) => void) => {
     const files = new Map(
       (doc.status === 'ready' ? doc.sources : []).map((source) => [source.id, source.file]),
     );
@@ -97,6 +100,7 @@ export function SplitView() {
       annotations,
       // Ook een los deel zonder vak hoort bij een document waarin geredigeerd is.
       { ...redaction, wholeDocument: hasRedactions(pages, annotations) },
+      onPart,
     );
   };
 
@@ -105,14 +109,20 @@ export function SplitView() {
     const wanted = current.kind === 'zip' ? parts : [parts[current.index]!];
     setSave({ status: 'saving', done: 0, total: wanted.length });
     try {
-      const pdfs = await build(wanted);
       if (current.kind === 'zip') {
-        const zip = await makeZip(
-          wanted.map((part, i) => ({ name: partName(part), data: pdfs[i]! })),
-        );
-        downloadFile(zip, fileName, 'application/zip');
+        // Elk deel gaat meteen de ZIP in, zodat niet alle delen tegelijk in het geheugen staan.
+        const zip = await zipWriter();
+        await build(wanted, (bytes, i) => {
+          try {
+            zip.add(partName(wanted[i]!), bytes);
+          } catch (error) {
+            throw error instanceof ZipTooLargeError ? new PdfSaveError('tooLarge') : error;
+          }
+        });
+        downloadFile(zip.finish(), fileName, 'application/zip');
       } else {
-        downloadPdf(pdfs[0]!, fileName);
+        const [pdf] = await build(wanted);
+        downloadPdf(pdf!, fileName);
       }
       setSave({ status: 'saved', fileName });
     } catch (error) {

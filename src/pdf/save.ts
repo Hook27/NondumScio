@@ -7,7 +7,7 @@ import { pruneUnreachable } from './prune';
 import type { RedactionReport } from './redact';
 import { DEFAULT_REDACTION, type RedactionOptions } from './redactOptions';
 
-export type SaveErrorCode = 'encrypted' | 'failed' | 'redaction' | 'cancelled';
+export type SaveErrorCode = 'encrypted' | 'failed' | 'redaction' | 'cancelled' | 'tooLarge';
 
 export class PdfSaveError extends Error {
   constructor(readonly code: SaveErrorCode) {
@@ -189,6 +189,9 @@ async function buildPlain(
  * ook bij honderden delen. Titel en auteur komen uit het bestand van de eerste pagina van
  * elk deel; bestaande bladwijzers vervallen. `onProgress` meldt na elk deel hoe ver het is;
  * tussen de delen krijgt de browser even lucht, zodat de pagina blijft reageren.
+ *
+ * Met `onPart` gaat elk deel meteen daarheen (bijvoorbeeld een ZIP) en wordt het niet bewaard:
+ * dan staan niet alle delen tegelijk in het geheugen, en is de teruggegeven lijst leeg.
  */
 export async function buildParts(
   sources: SourceBytes,
@@ -196,6 +199,7 @@ export async function buildParts(
   onProgress?: (done: number, total: number) => void,
   annotations: readonly Annotation[] = [],
   redaction?: RedactionRun,
+  onPart?: (bytes: Uint8Array, index: number) => void,
 ): Promise<Uint8Array[]> {
   if (parts.length === 0 || parts.some((part) => part.length === 0)) {
     throw new PdfSaveError('failed');
@@ -207,10 +211,12 @@ export async function buildParts(
   // mee (die kunnen hetzelfde bevatten).
   const redacting = redaction?.wholeDocument ?? hasRedactions(parts.flat(), annotations);
   try {
-    for (const part of parts) {
+    for (const [index, part] of parts.entries()) {
       const bytes = await (await assemble(lib, docs, part, annotations)).save();
-      result.push(await applyRedactions(bytes, part, annotations, redaction, redacting));
-      onProgress?.(result.length, parts.length);
+      const done = await applyRedactions(bytes, part, annotations, redaction, redacting);
+      if (onPart) onPart(done, index);
+      else result.push(done);
+      onProgress?.(index + 1, parts.length);
       await new Promise((resolve) => setTimeout(resolve, 0));
     }
   } catch (error) {
@@ -423,9 +429,12 @@ export function downloadPdf(bytes: Uint8Array, fileName: string): void {
   downloadFile(bytes, fileName, 'application/pdf');
 }
 
-/** Biedt bytes aan als download (bijvoorbeeld een ZIP), zonder iets te versturen. */
-export function downloadFile(bytes: Uint8Array, fileName: string, type: string): void {
-  const blob = new Blob([bytes as BlobPart], { type });
+/**
+ * Biedt bytes of een kant-en-klare Blob (bijvoorbeeld een ZIP) aan als download, zonder iets te
+ * versturen. Een Blob wordt daarbij niet gekopieerd.
+ */
+export function downloadFile(data: Uint8Array | Blob, fileName: string, type: string): void {
+  const blob = new Blob([data as BlobPart], { type });
   const url = URL.createObjectURL(blob);
   const link = document.createElement('a');
   link.href = url;

@@ -71,6 +71,8 @@ export const en: Messages = {
       redaction:
         'Redacting failed or could not be verified. Nothing was downloaded; try again or choose a lower resolution.',
       cancelled: 'Stopped. Nothing was downloaded.',
+      tooLarge:
+        'The ZIP would be larger than 4 GB or hold more than 65,535 files, which a ZIP cannot handle. Nothing was downloaded; do it in smaller batches, for example fewer pages at a time.',
     },
   },
   merge: {

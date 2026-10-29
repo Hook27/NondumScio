@@ -6,7 +6,7 @@ import { useI18n } from '../i18n/LanguageContext';
 import { format, plural } from '../i18n/format';
 import { withoutPdfExtension } from '../lib/fileName';
 import { annotationsOf, hasRedactions, redactionsOf } from '../annotations/model';
-import { makeZip } from '../lib/zip';
+import { ZipTooLargeError, zipWriter } from '../lib/zip';
 import { renderPageImage, type ImageFormat } from '../pdf/images';
 import { downloadFile } from '../pdf/save';
 import { RadioGroup } from './ConvertParts';
@@ -25,7 +25,7 @@ type SaveState =
   | { status: 'idle' }
   | { status: 'saving'; done: number; total: number }
   | { status: 'saved'; fileName: string; reduced: boolean }
-  | { status: 'error' };
+  | { status: 'error'; tooLarge: boolean };
 
 /**
  * PDF naar afbeeldingen: elke pagina van wat er openstaat (één of meer PDF's, in de volgorde
@@ -85,7 +85,10 @@ export function PdfToImages({ head }: { head: ComponentChildren }) {
     setAsking(false);
     setSave({ status: 'saving', done: 0, total: pages.length });
     try {
-      const files: { name: string; data: Uint8Array }[] = [];
+      // Bij meer pagina's gaat elke afbeelding meteen de ZIP in, zodat ze niet allemaal tegelijk
+      // in het geheugen staan.
+      const zip = pages.length > 1 ? await zipWriter() : null;
+      let single: Uint8Array | null = null;
       let reduced = false;
       for (const [index, page] of pages.entries()) {
         const source = sourceOf(page);
@@ -98,16 +101,18 @@ export function PdfToImages({ head }: { head: ComponentChildren }) {
           redactions: redactionsOf(annotationsOf(annotations, page.key)),
         });
         reduced ||= result.reduced;
-        files.push({ name: imageName(index + 1, true), data: result.bytes });
-        setSave({ status: 'saving', done: files.length, total: pages.length });
+        if (zip) zip.add(imageName(index + 1, true), result.bytes);
+        else single = result.bytes;
+        setSave({ status: 'saving', done: index + 1, total: pages.length });
         // Tussen de pagina's krijgt de browser even lucht, zodat de pagina blijft reageren.
         await new Promise((resolve) => setTimeout(resolve, 0));
       }
-      if (files.length === 1) downloadFile(files[0]!.data, fileName, mime);
-      else downloadFile(await makeZip(files), fileName, 'application/zip');
+      if (zip) downloadFile(zip.finish(), fileName, 'application/zip');
+      else if (single) downloadFile(single, fileName, mime);
+      else throw new Error('Geen pagina om om te zetten');
       setSave({ status: 'saved', fileName, reduced });
-    } catch {
-      setSave({ status: 'error' });
+    } catch (error) {
+      setSave({ status: 'error', tooLarge: error instanceof ZipTooLargeError });
     }
   };
 
@@ -194,7 +199,7 @@ export function PdfToImages({ head }: { head: ComponentChildren }) {
           )}
           {save.status === 'error' && (
             <p class="page-editor__error" role="alert">
-              {t.convert.imagesFailed}
+              {save.tooLarge ? t.pages.errors.tooLarge : t.convert.imagesFailed}
             </p>
           )}
           {asking && (

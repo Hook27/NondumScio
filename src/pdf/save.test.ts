@@ -426,6 +426,47 @@ describe('buildParts (splitsen)', () => {
     expect(progress).toEqual(['1/3', '2/3', '3/3']);
   });
 
+  it('geeft met onPart elk deel meteen door, op volgorde, en bewaart ze dan niet', async () => {
+    const plan = initialPages(3, 1);
+    const handed: Uint8Array[] = [];
+    const progress: string[] = [];
+    const kept = await buildParts(
+      new Map([[1, await samplePdf(3)]]),
+      [plan.slice(0, 1), plan.slice(1)],
+      (done, total) => progress.push(`${done}/${total}`),
+      [],
+      undefined,
+      (bytes, index) => {
+        progress.push(`deel ${index}`);
+        handed.push(bytes);
+      },
+    );
+    expect(kept).toEqual([]);
+    // Een deel is al doorgegeven voordat de voortgang het meldt.
+    expect(progress).toEqual(['deel 0', '1/2', 'deel 1', '2/2']);
+    const results = await Promise.all(handed.map(describePdf));
+    expect(results.map((r) => r.widths)).toEqual([[300], [400, 500]]);
+  });
+
+  it('stopt als onPart een melding geeft, en houdt die melding', async () => {
+    const plan = initialPages(3, 1);
+    let handed = 0;
+    await expect(
+      buildParts(
+        new Map([[1, await samplePdf(3)]]),
+        [plan.slice(0, 1), plan.slice(1, 2), plan.slice(2)],
+        undefined,
+        [],
+        undefined,
+        () => {
+          handed += 1;
+          if (handed === 2) throw new PdfSaveError('tooLarge');
+        },
+      ),
+    ).rejects.toMatchObject({ code: 'tooLarge' });
+    expect(handed).toBe(2);
+  });
+
   it('staat dezelfde pagina in meer delen toe', async () => {
     const plan = initialPages(3, 1);
     const parts = await buildParts(new Map([[1, await samplePdf(3)]]), [plan, plan.slice(1, 2)]);
