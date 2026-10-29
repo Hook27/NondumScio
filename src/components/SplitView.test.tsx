@@ -35,6 +35,17 @@ vi.mock('../pdf/save', async (importOriginal) => ({
   downloadFile: vi.fn(),
 }));
 
+// Met `zip.tiny` krijgt de ZIP een grens van één byte, zoals een ZIP die over de 4 GB zou gaan.
+const zip = vi.hoisted(() => ({ tiny: false }));
+vi.mock('../lib/zip', async (importOriginal) => {
+  const original = await importOriginal<typeof import('../lib/zip')>();
+  return {
+    ...original,
+    zipWriter: (limits?: typeof original.ZIP_LIMITS) =>
+      original.zipWriter(zip.tiny ? { bytes: 1, files: 1 } : limits),
+  };
+});
+
 const nl = messages.nl;
 
 /** Een nep-PDF; het aantal pagina's staat in de inhoud van het nepbestand ("%PDF-1.7 3"). */
@@ -179,6 +190,19 @@ describe('Splitsen', () => {
     const plans = vi.mocked(buildParts).mock.calls[0]![1];
     expect(plans.map((part) => part.map((page) => page.source + 1))).toEqual([[3, 4]]);
     expect(vi.mocked(downloadPdf).mock.calls[0]![1]).toBe("rapport (pagina's 3-4).pdf");
+  });
+
+  it('meldt een ZIP die te groot wordt, en downloadt dan niets', async () => {
+    zip.tiny = true;
+    try {
+      await setup(3);
+      fireEvent.click(screen.getByRole('button', { name: 'Alle 3 delen downloaden (ZIP)' }));
+      fireEvent.click(screen.getByRole('button', { name: nl.saveDialog.download }));
+      expect((await screen.findByRole('alert')).textContent).toBe(nl.pages.errors.tooLarge);
+      expect(downloadFile).not.toHaveBeenCalled();
+    } finally {
+      zip.tiny = false;
+    }
   });
 
   it('downloadt alle delen als één ZIP', async () => {

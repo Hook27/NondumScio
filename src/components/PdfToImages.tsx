@@ -6,7 +6,7 @@ import { useI18n } from '../i18n/LanguageContext';
 import { format, plural } from '../i18n/format';
 import { withoutPdfExtension } from '../lib/fileName';
 import { annotationsOf, hasRedactions, redactionsOf } from '../annotations/model';
-import { zipWriter } from '../lib/zip';
+import { ZipTooLargeError, zipWriter } from '../lib/zip';
 import { renderPageImage, type ImageFormat } from '../pdf/images';
 import { downloadFile } from '../pdf/save';
 import { RadioGroup } from './ConvertParts';
@@ -25,7 +25,7 @@ type SaveState =
   | { status: 'idle' }
   | { status: 'saving'; done: number; total: number }
   | { status: 'saved'; fileName: string; reduced: boolean }
-  | { status: 'error' };
+  | { status: 'error'; tooLarge: boolean };
 
 /**
  * PDF naar afbeeldingen: elke pagina van wat er openstaat (één of meer PDF's, in de volgorde
@@ -111,8 +111,8 @@ export function PdfToImages({ head }: { head: ComponentChildren }) {
       else if (single) downloadFile(single, fileName, mime);
       else throw new Error('Geen pagina om om te zetten');
       setSave({ status: 'saved', fileName, reduced });
-    } catch {
-      setSave({ status: 'error' });
+    } catch (error) {
+      setSave({ status: 'error', tooLarge: error instanceof ZipTooLargeError });
     }
   };
 
@@ -199,7 +199,7 @@ export function PdfToImages({ head }: { head: ComponentChildren }) {
           )}
           {save.status === 'error' && (
             <p class="page-editor__error" role="alert">
-              {t.convert.imagesFailed}
+              {save.tooLarge ? t.pages.errors.tooLarge : t.convert.imagesFailed}
             </p>
           )}
           {asking && (

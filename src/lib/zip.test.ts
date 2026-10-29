@@ -1,6 +1,6 @@
 import { strFromU8, unzipSync } from 'fflate';
 import { describe, expect, it } from 'vitest';
-import { zipWriter } from './zip';
+import { ZIP_LIMITS, ZipTooLargeError, zipWriter } from './zip';
 
 const text = (value: string) => new TextEncoder().encode(value);
 const unzip = async (blob: Blob) => unzipSync(new Uint8Array(await blob.arrayBuffer()));
@@ -43,6 +43,35 @@ describe('zipWriter', () => {
     const files = await unzip(zip.finish());
     expect(strFromU8(files['een.txt']!)).toBe('eerste bestand');
     expect(strFromU8(files['twee.txt']!)).toBe('tweede bestand');
+  });
+
+  it('stopt vóór de grens van een gewone ZIP, en de schatting klopt op de byte', async () => {
+    const files: [string, Uint8Array][] = [
+      ['een.pdf', text('x'.repeat(100))],
+      ['twee.pdf', text('y'.repeat(50))],
+    ];
+    const free = await zipWriter();
+    for (const [name, data] of files) free.add(name, data);
+    const size = free.finish().size;
+
+    // Precies groot genoeg: dat mag.
+    const exact = await zipWriter({ bytes: size, files: 2 });
+    for (const [name, data] of files) exact.add(name, data);
+    expect(exact.finish().size).toBe(size);
+
+    // Eén byte te weinig: het tweede bestand wordt geweigerd, vóórdat het ingepakt is.
+    const short = await zipWriter({ bytes: size - 1, files: 2 });
+    short.add(...files[0]!);
+    expect(() => short.add(...files[1]!)).toThrow(ZipTooLargeError);
+
+    // Te veel bestanden.
+    const few = await zipWriter({ bytes: size, files: 1 });
+    few.add(...files[0]!);
+    expect(() => few.add(...files[1]!)).toThrow(ZipTooLargeError);
+  });
+
+  it('heeft de grenzen van een gewone ZIP: 4 GB en 65.535 bestanden', () => {
+    expect(ZIP_LIMITS).toEqual({ bytes: 2 ** 32 - 1, files: 65_535 });
   });
 
   it('maakt ook een lege ZIP', async () => {

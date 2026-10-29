@@ -7,7 +7,7 @@ import { pruneUnreachable } from './prune';
 import type { RedactionReport } from './redact';
 import { DEFAULT_REDACTION, type RedactionOptions } from './redactOptions';
 
-export type SaveErrorCode = 'encrypted' | 'failed' | 'redaction' | 'cancelled';
+export type SaveErrorCode = 'encrypted' | 'failed' | 'redaction' | 'cancelled' | 'tooLarge';
 
 export class PdfSaveError extends Error {
   constructor(readonly code: SaveErrorCode) {

@@ -14,7 +14,7 @@ import {
   editedFileName,
   readSources,
 } from '../pdf/save';
-import { zipWriter } from '../lib/zip';
+import { ZipTooLargeError, zipWriter } from '../lib/zip';
 import { FileList, FilesToolbar } from './FilesParts';
 import { Icon, IconButton } from './Icon';
 import { SaveDialog } from './SaveDialog';
@@ -112,7 +112,13 @@ export function SplitView() {
       if (current.kind === 'zip') {
         // Elk deel gaat meteen de ZIP in, zodat niet alle delen tegelijk in het geheugen staan.
         const zip = await zipWriter();
-        await build(wanted, (bytes, i) => zip.add(partName(wanted[i]!), bytes));
+        await build(wanted, (bytes, i) => {
+          try {
+            zip.add(partName(wanted[i]!), bytes);
+          } catch (error) {
+            throw error instanceof ZipTooLargeError ? new PdfSaveError('tooLarge') : error;
+          }
+        });
         downloadFile(zip.finish(), fileName, 'application/zip');
       } else {
         const [pdf] = await build(wanted);

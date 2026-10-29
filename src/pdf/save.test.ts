@@ -448,6 +448,25 @@ describe('buildParts (splitsen)', () => {
     expect(results.map((r) => r.widths)).toEqual([[300], [400, 500]]);
   });
 
+  it('stopt als onPart een melding geeft, en houdt die melding', async () => {
+    const plan = initialPages(3, 1);
+    let handed = 0;
+    await expect(
+      buildParts(
+        new Map([[1, await samplePdf(3)]]),
+        [plan.slice(0, 1), plan.slice(1, 2), plan.slice(2)],
+        undefined,
+        [],
+        undefined,
+        () => {
+          handed += 1;
+          if (handed === 2) throw new PdfSaveError('tooLarge');
+        },
+      ),
+    ).rejects.toMatchObject({ code: 'tooLarge' });
+    expect(handed).toBe(2);
+  });
+
   it('staat dezelfde pagina in meer delen toe', async () => {
     const plan = initialPages(3, 1);
     const parts = await buildParts(new Map([[1, await samplePdf(3)]]), [plan, plan.slice(1, 2)]);

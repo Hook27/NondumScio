@@ -75,6 +75,8 @@ export const nl = {
       redaction:
         'Redigeren is mislukt of kon niet worden gecontroleerd. Er is niets gedownload; probeer het opnieuw of kies een lagere resolutie.',
       cancelled: 'Gestopt. Er is niets gedownload.',
+      tooLarge:
+        'De ZIP zou groter worden dan 4 GB of meer dan 65.535 bestanden bevatten; dat kan een ZIP niet aan. Er is niets gedownload. Doe het in kleinere stukken, bijvoorbeeld met minder pagina’s tegelijk.',
     },
   },
   merge: {

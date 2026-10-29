@@ -28,6 +28,17 @@ vi.mock('../pdf/save', async (importOriginal) => ({
   downloadFile: vi.fn(),
 }));
 
+// Met `zip.tiny` krijgt de ZIP een grens van één byte, zoals een ZIP die over de 4 GB zou gaan.
+const zip = vi.hoisted(() => ({ tiny: false }));
+vi.mock('../lib/zip', async (importOriginal) => {
+  const original = await importOriginal<typeof import('../lib/zip')>();
+  return {
+    ...original,
+    zipWriter: (limits?: typeof original.ZIP_LIMITS) =>
+      original.zipWriter(zip.tiny ? { bytes: 1, files: 1 } : limits),
+  };
+});
+
 const nl = messages.nl;
 
 /** De bestanden in de ZIP die als Blob gedownload werd. */
@@ -305,6 +316,20 @@ describe('Omzetten: PDF naar afbeeldingen', () => {
       quality: 0.85,
       redactions: [],
     });
+  });
+
+  it('meldt een ZIP die te groot wordt, en downloadt dan niets', async () => {
+    zip.tiny = true;
+    try {
+      setup();
+      await openPdfs(pdfFile('rapport.pdf', 3));
+      fireEvent.click(button('3 afbeeldingen downloaden (ZIP)'));
+      confirm();
+      expect((await screen.findByRole('alert')).textContent).toBe(nl.pages.errors.tooLarge);
+      expect(downloadFile).not.toHaveBeenCalled();
+    } finally {
+      zip.tiny = false;
+    }
   });
 
   it('zet de paginanummers in de ZIP aan met nullen, zodat ze goed sorteren', async () => {
