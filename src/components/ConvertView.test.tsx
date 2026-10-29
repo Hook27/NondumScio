@@ -30,6 +30,10 @@ vi.mock('../pdf/save', async (importOriginal) => ({
 
 const nl = messages.nl;
 
+/** De bestanden in de ZIP die als Blob gedownload werd. */
+const unzipBlob = async (data: Uint8Array | Blob) =>
+  unzipSync(new Uint8Array(await (data as Blob).arrayBuffer()));
+
 /** Een nep-PDF; het aantal pagina's staat in de inhoud van het nepbestand ("%PDF-1.7 3"). */
 function fakeLoad(bytes: Uint8Array): Promise<LoadedPdf> {
   const pageCount = Number(/%PDF-1\.7 (\d+)/.exec(new TextDecoder().decode(bytes))?.[1] ?? 1);
@@ -287,7 +291,7 @@ describe('Omzetten: PDF naar afbeeldingen', () => {
     await waitFor(() => expect(downloadFile).toHaveBeenCalledTimes(1));
     const [zip, fileName, type] = vi.mocked(downloadFile).mock.calls[0]!;
     expect([fileName, type]).toEqual(['rapport (afbeeldingen).zip', 'application/zip']);
-    const files = unzipSync(zip);
+    const files = await unzipBlob(zip);
     expect(Object.keys(files)).toEqual([
       'rapport (pagina 1).png',
       'rapport (pagina 2).png',
@@ -309,7 +313,7 @@ describe('Omzetten: PDF naar afbeeldingen', () => {
     fireEvent.click(button('12 afbeeldingen downloaden (ZIP)'));
     confirm();
     await waitFor(() => expect(downloadFile).toHaveBeenCalledTimes(1));
-    const zipped = Object.keys(unzipSync(vi.mocked(downloadFile).mock.calls[0]![0]));
+    const zipped = Object.keys(await unzipBlob(vi.mocked(downloadFile).mock.calls[0]![0]));
     expect(zipped[0]).toBe('rapport (pagina 01).png');
     expect(zipped[11]).toBe('rapport (pagina 12).png');
   });
@@ -331,7 +335,7 @@ describe('Omzetten: PDF naar afbeeldingen', () => {
     await waitFor(() => expect(downloadFile).toHaveBeenCalledTimes(1));
     const [bytes, fileName, type] = vi.mocked(downloadFile).mock.calls[0]!;
     expect([fileName, type]).toEqual(['rapport (pagina 4).png', 'image/png']);
-    expect(new TextDecoder().decode(bytes)).toBe('pagina 4');
+    expect(new TextDecoder().decode(bytes as Uint8Array)).toBe('pagina 4');
     expect(vi.mocked(renderPageImage).mock.calls).toHaveLength(1);
 
     // Ongedaan maken brengt de andere pagina's terug.
@@ -351,7 +355,7 @@ describe('Omzetten: PDF naar afbeeldingen', () => {
     confirm();
 
     await waitFor(() => expect(downloadFile).toHaveBeenCalledTimes(1));
-    const zipped = Object.keys(unzipSync(vi.mocked(downloadFile).mock.calls[0]![0]));
+    const zipped = Object.keys(await unzipBlob(vi.mocked(downloadFile).mock.calls[0]![0]));
     expect(zipped).toHaveLength(13);
     expect(zipped[0]).toBe('01 - tweede (pagina 1).png');
     expect(zipped[2]).toBe('03 - tweede (pagina 3).png');

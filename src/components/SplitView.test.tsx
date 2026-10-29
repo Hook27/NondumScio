@@ -13,8 +13,23 @@ import { Workspace } from './Workspace';
 vi.mock('../pdf/save', async (importOriginal) => ({
   ...(await importOriginal<typeof import('../pdf/save')>()),
   // Per deel een nep-PDF met de paginanummers erin, zodat je ze in de ZIP terugziet.
-  buildParts: vi.fn(async (_sources: unknown, parts: { source: number }[][]) =>
-    parts.map((part) => new TextEncoder().encode(part.map((p) => p.source + 1).join(','))),
+  // Met `onPart` (de ZIP) gaat elk deel daarheen, zoals bij de echte buildParts.
+  buildParts: vi.fn(
+    async (
+      _sources: unknown,
+      parts: { source: number }[][],
+      _progress?: unknown,
+      _annotations?: unknown,
+      _redaction?: unknown,
+      onPart?: (bytes: Uint8Array, index: number) => void,
+    ) => {
+      const pdfs = parts.map((part) =>
+        new TextEncoder().encode(part.map((p) => p.source + 1).join(',')),
+      );
+      if (!onPart) return pdfs;
+      pdfs.forEach((pdf, i) => onPart(pdf, i));
+      return [];
+    },
   ),
   downloadPdf: vi.fn(),
   downloadFile: vi.fn(),
@@ -178,7 +193,7 @@ describe('Splitsen', () => {
     const [zip, fileName, type] = vi.mocked(downloadFile).mock.calls[0]!;
     expect(fileName).toBe('rapport (gesplitst).zip');
     expect(type).toBe('application/zip');
-    const files = unzipSync(zip);
+    const files = unzipSync(new Uint8Array(await (zip as Blob).arrayBuffer()));
     expect(Object.keys(files)).toEqual([
       'rapport (pagina 1).pdf',
       'rapport (pagina 2).pdf',
