@@ -1,4 +1,5 @@
 import { useEffect, useRef } from 'preact/hooks';
+import { AdvancedHome, AdvancedToolPage } from './components/Advanced';
 import { Footer } from './components/Footer';
 import { Header } from './components/Header';
 import { Home } from './components/Home';
@@ -18,6 +19,10 @@ function pageTitle(route: Route, t: Messages): string {
       return `${t.appName} · ${t.tagline}`;
     case 'task':
       return `${t.tasks[route.id].title} · ${t.appName}`;
+    case 'advanced':
+      return `${t.advanced.title} · ${t.appName}`;
+    case 'advancedTool':
+      return `${t.advanced.tools[route.id].title} · ${t.appName}`;
     case 'notFound':
       return `${t.notFound.title} · ${t.appName}`;
   }
@@ -67,6 +72,8 @@ function AppContent() {
       <main id="main" class="site-main" tabIndex={-1}>
         {route.name === 'home' && <Home />}
         {route.name === 'task' && <TaskPage id={route.id} />}
+        {route.name === 'advanced' && <AdvancedHome />}
+        {route.name === 'advancedTool' && <AdvancedToolPage id={route.id} />}
         {route.name === 'notFound' && <NotFound />}
       </main>
       <Footer />

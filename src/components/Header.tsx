@@ -38,6 +38,17 @@ export function Header({ route }: { route: Route }) {
                 </li>
               );
             })}
+            {/* Geavanceerd staat alleen op een breed scherm in het menu. */}
+            <li class="desktop-only">
+              <a
+                href={hrefFor({ name: 'advanced' })}
+                aria-current={
+                  route.name === 'advanced' || route.name === 'advancedTool' ? 'page' : undefined
+                }
+              >
+                {t.advanced.title}
+              </a>
+            </li>
           </ul>
         </nav>
         <div class="header-controls">

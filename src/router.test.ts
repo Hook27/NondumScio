@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { TASK_IDS, hrefFor, parseHash, sameRoute } from './router';
+import { ADVANCED_IDS, TASK_IDS, hrefFor, parseHash, sameRoute } from './router';
 
 describe('parseHash', () => {
   it('geeft de startpagina bij een leeg adres', () => {
@@ -51,5 +51,31 @@ describe('sameRoute', () => {
     expect(sameRoute({ name: 'task', id: 'merge' }, { name: 'task', id: 'merge' })).toBe(true);
     expect(sameRoute({ name: 'task', id: 'merge' }, { name: 'task', id: 'split' })).toBe(false);
     expect(sameRoute({ name: 'home' }, { name: 'task', id: 'merge' })).toBe(false);
+  });
+});
+
+describe('Geavanceerd', () => {
+  it('heeft een overzicht en een adres per onderdeel', () => {
+    expect(parseHash('#/advanced')).toEqual({ name: 'advanced' });
+    expect(parseHash('#/advanced/')).toEqual({ name: 'advanced' });
+    for (const id of ADVANCED_IDS) {
+      const route = { name: 'advancedTool', id } as const;
+      expect(parseHash(`#/advanced/${id}`)).toEqual(route);
+      expect(parseHash(hrefFor(route))).toEqual(route);
+    }
+    expect(hrefFor({ name: 'advanced' })).toBe('#/advanced');
+    expect(hrefFor({ name: 'advancedTool', id: 'rename' })).toBe('#/advanced/rename');
+  });
+
+  it('geeft "niet gevonden" bij een onbekend onderdeel', () => {
+    expect(parseHash('#/advanced/bestaat-niet')).toEqual({ name: 'notFound' });
+    expect(parseHash('#/advanced/rename/extra')).toEqual({ name: 'notFound' });
+  });
+
+  it('vergelijkt ook de onderdelen', () => {
+    const rename = { name: 'advancedTool', id: 'rename' } as const;
+    expect(sameRoute(rename, rename)).toBe(true);
+    expect(sameRoute({ name: 'advanced' }, { name: 'advanced' })).toBe(true);
+    expect(sameRoute({ name: 'advanced' }, rename)).toBe(false);
   });
 });

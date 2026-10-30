@@ -362,6 +362,23 @@ export const en: Messages = {
     title: 'Page not found',
     detail: 'This address does not exist. Go back to the overview to pick a task.',
   },
+  advanced: {
+    title: 'Advanced',
+    description: 'Tools for the computer, such as renaming PDFs smartly based on their content.',
+    intro:
+      'These tools work separately from the other tasks: you open your PDFs here on their own, and what you do here does not end up in the other tasks. They are only available on a computer.',
+    desktopOnly:
+      'This tool is only available on a computer. Open the site on a wider screen to use it.',
+    back: '← All advanced tools',
+    soon: 'Coming soon.',
+    tools: {
+      rename: {
+        title: 'Smart rename',
+        description:
+          'Suggest a name for scanned letters based on date, sender and subject, and download renamed copies.',
+      },
+    },
+  },
   tasks: {
     merge: {
       title: 'Merge',

@@ -1,4 +1,4 @@
-import type { TaskId } from '../router';
+import type { AdvancedId, TaskId } from '../router';
 
 /**
  * De Nederlandse teksten van de interface. Dit bestand bepaalt de vorm: het
@@ -370,6 +370,24 @@ export const nl = {
     title: 'Pagina niet gevonden',
     detail: 'Dit adres bestaat niet. Ga terug naar het overzicht om een taak te kiezen.',
   },
+  advanced: {
+    title: 'Geavanceerd',
+    description:
+      'Gereedschap voor op de computer, zoals PDF’s slim hernoemen op basis van hun inhoud.',
+    intro:
+      'Deze onderdelen werken los van de andere taken: je opent je PDF’s hier apart, en wat je hier doet, komt niet bij de andere taken terecht. Ze zijn alleen beschikbaar op een computer.',
+    desktopOnly:
+      'Dit onderdeel is alleen beschikbaar op een computer. Open de site op een breder scherm om het te gebruiken.',
+    back: '← Alle geavanceerde onderdelen',
+    soon: 'Binnenkort beschikbaar.',
+    tools: {
+      rename: {
+        title: 'Slim hernoemen',
+        description:
+          'Stel voor gescande brieven een naam voor op basis van datum, afzender en onderwerp, en download hernoemde kopieën.',
+      },
+    },
+  },
   tasks: {
     merge: {
       title: 'Samenvoegen',
@@ -398,6 +416,9 @@ export const nl = {
   },
 } satisfies Record<string, unknown> & {
   tasks: Record<TaskId, { title: string; description: string }>;
+  advanced: Record<string, unknown> & {
+    tools: Record<AdvancedId, { title: string; description: string }>;
+  };
 };
 
 /** De vorm van een volledige set teksten, voor elke taal. */
