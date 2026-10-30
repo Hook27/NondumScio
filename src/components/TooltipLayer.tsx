@@ -18,19 +18,23 @@ export function TooltipLayer() {
   const [position, setPosition] = useState<{ left: number; top: number } | null>(null);
 
   useEffect(() => {
+    // Het doel onthouden: opruimen kan na het einde van een test vallen, als `document` en
+    // `window` al weg zijn.
+    const doc = document;
+    const win = window;
     let timer: number | undefined;
     let current: Element | null = null;
 
     const show = (element: Element, delay: number) => {
-      window.clearTimeout(timer);
+      win.clearTimeout(timer);
       current = element;
-      timer = window.setTimeout(() => {
+      timer = win.setTimeout(() => {
         const text = element.getAttribute('data-tip');
         if (text && element.isConnected) setTip({ text, anchor: element.getBoundingClientRect() });
       }, delay);
     };
     const hide = () => {
-      window.clearTimeout(timer);
+      win.clearTimeout(timer);
       current = null;
       setTip(null);
     };
@@ -54,21 +58,21 @@ export function TooltipLayer() {
       if (event.key === 'Escape') hide();
     };
 
-    document.addEventListener('pointerover', onPointerOver);
-    document.addEventListener('focusin', onFocusIn);
-    document.addEventListener('focusout', hide);
-    document.addEventListener('pointerdown', hide);
-    document.addEventListener('keydown', onKey);
+    doc.addEventListener('pointerover', onPointerOver);
+    doc.addEventListener('focusin', onFocusIn);
+    doc.addEventListener('focusout', hide);
+    doc.addEventListener('pointerdown', hide);
+    doc.addEventListener('keydown', onKey);
     // Scrollen (ook in een vak) verschuift de knop: de tekst zou dan los komen te staan.
-    document.addEventListener('scroll', hide, true);
+    doc.addEventListener('scroll', hide, true);
     return () => {
-      window.clearTimeout(timer);
-      document.removeEventListener('pointerover', onPointerOver);
-      document.removeEventListener('focusin', onFocusIn);
-      document.removeEventListener('focusout', hide);
-      document.removeEventListener('pointerdown', hide);
-      document.removeEventListener('keydown', onKey);
-      document.removeEventListener('scroll', hide, true);
+      win.clearTimeout(timer);
+      doc.removeEventListener('pointerover', onPointerOver);
+      doc.removeEventListener('focusin', onFocusIn);
+      doc.removeEventListener('focusout', hide);
+      doc.removeEventListener('pointerdown', hide);
+      doc.removeEventListener('keydown', onKey);
+      doc.removeEventListener('scroll', hide, true);
     };
   }, []);
 

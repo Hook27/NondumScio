@@ -107,8 +107,10 @@ export function useDragReorder<T>({ list, itemSelector, direction, onStart, onDr
       suppressClick.current = true;
       endDrag();
     };
-    document.addEventListener('keydown', onKey);
-    return () => document.removeEventListener('keydown', onKey);
+    // Het doel onthouden: opruimen kan na het einde van een test vallen, als `document` al weg is.
+    const doc = document;
+    doc.addEventListener('keydown', onKey);
+    return () => doc.removeEventListener('keydown', onKey);
   }, [dragging]);
 
   const onPointerDown = (event: PointerEvent, item: T) => {

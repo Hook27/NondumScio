@@ -377,8 +377,10 @@ export function AnnotateView({ mode = 'annotate' }: { mode?: 'annotate' | 'redac
         event.preventDefault();
       }
     };
-    document.addEventListener('keydown', onKey);
-    return () => document.removeEventListener('keydown', onKey);
+    // Het doel onthouden: opruimen kan na het einde van een test vallen, als `document` al weg is.
+    const doc = document;
+    doc.addEventListener('keydown', onKey);
+    return () => doc.removeEventListener('keydown', onKey);
   });
 
   // Bij een ander gereedschap hoort geen halve bewerking meer.

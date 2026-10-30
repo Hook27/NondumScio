@@ -7,8 +7,10 @@ export function useRoute(): Route {
 
   useEffect(() => {
     const onChange = () => setRoute(parseHash(window.location.hash));
-    window.addEventListener('hashchange', onChange);
-    return () => window.removeEventListener('hashchange', onChange);
+    // Het doel onthouden: opruimen kan na het einde van een test vallen, als `window` al weg is.
+    const win = window;
+    win.addEventListener('hashchange', onChange);
+    return () => win.removeEventListener('hashchange', onChange);
   }, []);
 
   return route;
