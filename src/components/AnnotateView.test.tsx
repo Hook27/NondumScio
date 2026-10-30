@@ -363,7 +363,9 @@ describe('Bewerken: annoteren', () => {
     press('r');
     fireEvent.keyDown(pageNr(1), { key: 'Enter' });
     expect(shapes()).toHaveLength(1);
+    // Het vak is nog niet gedownload: eerst bevestigen.
     fireEvent.click(screen.getByRole('button', { name: nl.document.close }));
+    fireEvent.click(screen.getByRole('button', { name: nl.closeDialog.confirm }));
     // Terug bij het keuzevak; een nieuw document begint zonder annotaties.
     fireEvent.change(document.querySelector('input[type="file"]')!, {
       target: { files: [new File([`%PDF-1.7 2\n`], 'nieuw.pdf')] },

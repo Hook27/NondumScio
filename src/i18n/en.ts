@@ -344,6 +344,12 @@ export const en: Messages = {
       '“Keep existing bookmarks” (in Merge) is off: the bookmarks are not kept in the downloaded file.',
     redacted: 'With redaction boxes, the bookmarks are not kept in the downloaded file.',
   },
+  closeDialog: {
+    title: 'Close without downloading?',
+    text: 'Your changes have not been downloaded yet. After closing, they are gone; this cannot be undone.',
+    cancel: 'Cancel',
+    confirm: 'Close without downloading',
+  },
   saveDialog: {
     saveTitle: 'Save PDF',
     extractTitle: 'Save selected pages',
