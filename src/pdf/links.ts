@@ -97,6 +97,84 @@ function removeFrom(lib: PdfLib, list: PDFArray | undefined, ref: PDFRef) {
 }
 
 /**
+ * Een benoemde bestemming ("ga naar Hoofdstuk 3") opgezocht in de lijsten met namen van het
+ * bestand: de oude lijst `/Dests` (bij een naam) en de boom `/Names /Dests` (bij een tekst). Geeft
+ * de bestemming zelf terug (een lijst die met de pagina begint), of `undefined` als de naam er niet
+ * in staat.
+ */
+function namedDestination(lib: PdfLib, doc: PDFDocument, name: PDFObject | undefined) {
+  const { PDFArray, PDFDict, PDFHexString, PDFName, PDFRef, PDFString } = lib;
+  const resolve = (value: PDFObject | undefined) =>
+    value instanceof PDFRef ? doc.context.lookup(value) : value;
+  const key =
+    name instanceof PDFName
+      ? name.decodeText()
+      : name instanceof PDFString || name instanceof PDFHexString
+        ? name.decodeText()
+        : undefined;
+  if (key === undefined) return undefined;
+
+  const seen = new Set<PDFObject>();
+  const inTree = (node: PDFObject | undefined): PDFObject | undefined => {
+    if (!(node instanceof PDFDict) || seen.has(node)) return undefined;
+    seen.add(node);
+    const names = resolve(node.get(PDFName.of('Names')));
+    if (names instanceof PDFArray) {
+      for (let i = 0; i + 1 < names.size(); i += 2) {
+        const entry = resolve(names.get(i));
+        const text =
+          entry instanceof PDFString || entry instanceof PDFHexString ? entry.decodeText() : null;
+        if (text === key) return names.get(i + 1);
+      }
+    }
+    const kids = resolve(node.get(PDFName.of('Kids')));
+    if (kids instanceof PDFArray) {
+      for (let i = 0; i < kids.size(); i += 1) {
+        const found = inTree(resolve(kids.get(i)));
+        if (found) return found;
+      }
+    }
+    return undefined;
+  };
+  const names = resolve(doc.catalog.get(PDFName.of('Names')));
+  const tree = names instanceof PDFDict ? resolve(names.get(PDFName.of('Dests'))) : undefined;
+  const old = resolve(doc.catalog.get(PDFName.of('Dests')));
+  const found = resolve(
+    (old instanceof PDFDict ? old.get(PDFName.of(key)) : undefined) ?? inTree(tree),
+  );
+  // Een bestemming kan ook een woordenboek zijn met de lijst onder /D.
+  const dest = found instanceof PDFDict ? resolve(found.get(PDFName.of('D'))) : found;
+  return dest instanceof PDFArray ? dest : undefined;
+}
+
+/**
+ * Vervangt in de koppelingen van de pagina's een benoemde bestemming door de bestemming zelf (een
+ * eigen kopie). Dan volgt zo'n koppeling daarna haar pagina, net als een gewone koppeling: ze
+ * wijst naar de nieuwe plek, of gaat eraf als de pagina niet meedoet. Ook in een nieuw document
+ * (splitsen, samenvoegen), waar de lijsten met namen niet meegaan.
+ */
+function resolveNamedLinks(lib: PdfLib, doc: PDFDocument) {
+  const { PDFDict, PDFName, PDFRef } = lib;
+  for (const page of doc.getPages()) {
+    for (const { dict } of annotationsOf(lib, doc, page.node)) {
+      if (dict.get(PDFName.of('Subtype')) !== PDFName.of('Link')) continue;
+      const direct = namedDestination(lib, doc, dict.get(PDFName.of('Dest')));
+      if (direct) {
+        dict.set(PDFName.of('Dest'), direct.clone(doc.context));
+        continue;
+      }
+      const value = dict.get(PDFName.of('A'));
+      const action = value instanceof PDFRef ? doc.context.lookup(value) : value;
+      if (!(action instanceof PDFDict) || action.get(PDFName.of('S')) !== PDFName.of('GoTo')) {
+        continue;
+      }
+      const viaAction = namedDestination(lib, doc, action.get(PDFName.of('D')));
+      if (viaAction) action.set(PDFName.of('D'), viaAction.clone(doc.context));
+    }
+  }
+}
+
+/**
  * Maakt in `doc` elke verwijzing naar een pagina los: een pagina uit de paginaboom wordt een
  * merkteken (met `source`, het bestand, en zijn plek), een losse pagina valt weg.
  *
@@ -114,6 +192,8 @@ export function detachPageRefs(
   { source = 0, whole = false }: { source?: number; whole?: boolean } = {},
 ): void {
   const { PDFName, PDFNull, PDFRef } = lib;
+  // Eerst de koppelingen via een naam omzetten, zodat ze hierna gewoon hun pagina volgen.
+  resolveNamedLinks(lib, doc);
   const pages = doc.getPages();
   const index = new Map(pages.map((page, i) => [page.ref.tag, i]));
   if (!whole) {
@@ -188,8 +268,8 @@ export function cutLoose(lib: PdfLib, doc: PDFDocument, keep: ReadonlySet<number
 }
 
 /**
- * Of een koppeling nergens meer heen gaat: zijn pagina doet niet meer mee. (Een koppeling naar een
- * benoemde bestemming laten we staan: die naam wijst dan zelf nergens meer heen.)
+ * Of een koppeling nergens meer heen gaat: zijn pagina doet niet meer mee. (Een koppeling via een
+ * naam is in `detachPageRefs` al omgezet naar de bestemming zelf.)
  */
 function isDeadLink(lib: PdfLib, doc: PDFDocument, annotation: PDFDict) {
   const { PDFArray, PDFDict, PDFName, PDFNull, PDFRef } = lib;
