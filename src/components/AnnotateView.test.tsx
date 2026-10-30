@@ -449,3 +449,20 @@ describe('Redigeren: het verslag na het downloaden', () => {
     expect(status.textContent).toContain(nl.redact.extraOne);
   });
 });
+
+describe('Bewerken: tekst typen direct na het klikken', () => {
+  it('het tekstvak heeft de focus zodra het er staat, zodat de eerste letter niet wegvalt', async () => {
+    await setup(1);
+    press('t');
+    const overlay = pageNr(1).querySelector('svg')!;
+    // Zonder act: zoals in de browser, waar effecten na het tekenen pas later kunnen lopen.
+    overlay.dispatchEvent(
+      new MouseEvent('pointerdown', { bubbles: true, button: 0, clientX: 100, clientY: 100 }),
+    );
+    // Preact tekent in een microtaak; daarna moet het tekstvak meteen de focus hebben.
+    await new Promise((resolve) => queueMicrotask(() => resolve(null)));
+    await new Promise((resolve) => queueMicrotask(() => resolve(null)));
+    const field = screen.getByRole('textbox', { name: nl.edit.textLabel });
+    expect(document.activeElement).toBe(field);
+  });
+});
