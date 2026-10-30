@@ -791,6 +791,11 @@ h1 {
   gap: 0.5rem;
 }
 
+/* Venster dat om bevestiging vraagt (zelfde stijl als "Opslaan als") */
+.confirm-dialog__text {
+  margin: 0 0 1.25rem;
+}
+
 /* Samenvoegen */
 .merge-list {
   display: grid;

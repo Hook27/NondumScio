@@ -352,6 +352,12 @@ export const nl = {
       '“Bestaande bladwijzers behouden” (bij Samenvoegen) staat uit: de bladwijzers gaan niet mee in het gedownloade bestand.',
     redacted: 'Met redactievakken gaan de bladwijzers niet mee in het gedownloade bestand.',
   },
+  closeDialog: {
+    title: 'Sluiten zonder te downloaden?',
+    text: 'Je wijzigingen zijn nog niet gedownload. Na het sluiten zijn ze weg; dat is niet ongedaan te maken.',
+    cancel: 'Annuleren',
+    confirm: 'Sluiten zonder downloaden',
+  },
   saveDialog: {
     saveTitle: 'PDF opslaan',
     extractTitle: 'Gekozen pagina’s opslaan',

@@ -386,3 +386,49 @@ describe('PageEditor', () => {
     expect(vi.mocked(downloadPdf).mock.calls[0]![1]).toBe('eigen naam.pdf');
   });
 });
+
+describe('sluiten met wijzigingen die nog niet gedownload zijn', () => {
+  const dialog = () => screen.queryByRole('dialog', { name: nl.closeDialog.title });
+  const closeButton = () => button(nl.document.close);
+  const changed = async () => {
+    await openEditor();
+    fireEvent.click(options()[1]!);
+    fireEvent.click(button(nl.pages.rotateRight));
+    expect(status()).toContain(nl.pages.unsaved);
+  };
+
+  it('vraagt eerst; Annuleren laat het document staan', async () => {
+    await changed();
+    fireEvent.click(closeButton());
+    expect(dialog()).toBeTruthy();
+    expect(dialog()!.textContent).toContain(nl.closeDialog.text);
+    // De veilige keuze heeft de focus.
+    expect(document.activeElement?.textContent).toBe(nl.closeDialog.cancel);
+    fireEvent.click(button(nl.closeDialog.cancel));
+    expect(dialog()).toBeNull();
+    expect(options()[1]!.getAttribute('aria-label')).toBe('Pagina 2, 90° gedraaid');
+  });
+
+  it('Escape breekt af', async () => {
+    await changed();
+    fireEvent.click(closeButton());
+    fireEvent(dialog()!, new Event('cancel', { cancelable: true }));
+    expect(dialog()).toBeNull();
+    expect(screen.getByRole('listbox')).toBeTruthy();
+  });
+
+  it('"Sluiten zonder downloaden" sluit het document', async () => {
+    await changed();
+    fireEvent.click(closeButton());
+    fireEvent.click(button(nl.closeDialog.confirm));
+    expect(dialog()).toBeNull();
+    expect(screen.getByRole('heading', { level: 2, name: nl.document.openTitle })).toBeTruthy();
+  });
+
+  it('zonder wijzigingen sluit de knop meteen', async () => {
+    await openEditor();
+    fireEvent.click(closeButton());
+    expect(dialog()).toBeNull();
+    expect(screen.getByRole('heading', { level: 2, name: nl.document.openTitle })).toBeTruthy();
+  });
+});

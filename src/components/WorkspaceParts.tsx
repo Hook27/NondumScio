@@ -4,6 +4,7 @@ import { useDocument, type FileError } from '../document/DocumentContext';
 import { useI18n } from '../i18n/LanguageContext';
 import { format, plural } from '../i18n/format';
 import { formatFileSize } from '../lib/format';
+import { ConfirmDialog } from './ConfirmDialog';
 import { IconButton } from './Icon';
 import { Thumbnail } from './Thumbnail';
 
@@ -68,8 +69,10 @@ export function PaneHead({
 
 /** Naam, aantal pagina's en grootte van wat er open staat, met Sluiten. */
 function DocumentBar() {
-  const { close, pages, activeSources } = useDocument();
+  const { close, pages, activeSources, unsaved } = useDocument();
   const { t, language } = useI18n();
+  // Met wijzigingen die nog niet gedownload zijn, eerst vragen: na het sluiten zijn ze weg.
+  const [asking, setAsking] = useState(false);
   const title =
     activeSources.length > 1
       ? format(t.document.files, { n: activeSources.length })
@@ -86,7 +89,24 @@ function DocumentBar() {
           {formatFileSize(size, language)}
         </p>
       </div>
-      <IconButton icon="close" label={t.document.close} onClick={close} />
+      <IconButton
+        icon="close"
+        label={t.document.close}
+        onClick={() => (unsaved ? setAsking(true) : close())}
+      />
+      {asking && (
+        <ConfirmDialog
+          title={t.closeDialog.title}
+          text={t.closeDialog.text}
+          cancel={t.closeDialog.cancel}
+          confirm={t.closeDialog.confirm}
+          onCancel={() => setAsking(false)}
+          onConfirm={() => {
+            setAsking(false);
+            close();
+          }}
+        />
+      )}
     </div>
   );
 }
