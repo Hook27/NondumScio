@@ -7,6 +7,7 @@ import { useI18n } from '../i18n/LanguageContext';
 import { format, plural } from '../i18n/format';
 import { zipWriter } from '../lib/zip';
 import { downloadFile } from '../pdf/save';
+import { PreviewDialog } from './PreviewDialog';
 import { readLines } from './readText';
 import {
   findDates,
@@ -37,6 +38,8 @@ export function RenameTool() {
   const r = t.rename;
   const { docs, reading, showAll, saved, changed } = useRenameState();
   const [asking, setAsking] = useState<'save' | 'clear' | null>(null);
+  // De brief die nu in het voorbeeldvenster staat.
+  const [viewing, setViewing] = useState<number | null>(null);
 
   const names = proposeNames(docs);
   const included = docs.filter((doc) => doc.include);
@@ -264,6 +267,16 @@ export function RenameTool() {
                     {!doc.error && doc.lines.length === 0 && (
                       <span class="rename-table__problem">{r.noText}</span>
                     )}
+                    {!doc.error && (
+                      <button
+                        type="button"
+                        class="link-button"
+                        aria-label={format(r.viewLabel, { name: file })}
+                        onClick={() => setViewing(doc.id)}
+                      >
+                        {r.view}
+                      </button>
+                    )}
                     {text && (
                       <>
                         <button
@@ -370,6 +383,18 @@ export function RenameTool() {
           onCancel={() => setAsking(null)}
         />
       )}
+      {viewing !== null &&
+        (() => {
+          const index = docs.findIndex((doc) => doc.id === viewing);
+          const doc = docs[index];
+          return doc ? (
+            <PreviewDialog
+              file={doc.file}
+              title={`${names[index]!} · ${doc.file.name}`}
+              onClose={() => setViewing(null)}
+            />
+          ) : null;
+        })()}
       {asking === 'clear' && (
         <ConfirmDialog
           title={r.clearTitle}

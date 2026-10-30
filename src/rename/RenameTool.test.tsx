@@ -212,3 +212,18 @@ describe('Slim hernoemen: de stand blijft', () => {
     await waitFor(() => expect(leave()).toBe(false));
   });
 });
+
+describe('Slim hernoemen: bekijken', () => {
+  it('opent per brief het voorbeeldvenster, met de nieuwe naam bovenaan', async () => {
+    setup();
+    await open('gemeente.pdf', 'kapot.pdf');
+    // Een bestand dat niet te lezen was, is ook niet te bekijken.
+    expect(screen.queryByRole('button', { name: 'kapot.pdf bekijken' })).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: 'gemeente.pdf bekijken' }));
+    const dialog = screen.getByRole('dialog', {
+      name: '260312 gemeente utrecht aan.pdf · gemeente.pdf',
+    });
+    fireEvent.click(within(dialog).getByRole('button', { name: r.preview.close }));
+    expect(screen.queryByRole('dialog')).toBeNull();
+  });
+});

@@ -116,4 +116,49 @@ test.describe('Slim hernoemen', () => {
     await expect(nameOf(page, 'brief_2.pdf')).toHaveValue('260312 gemeente utrecht eig.pdf');
     await expect(page.locator('.rename-table tbody tr')).toHaveCount(2);
   });
+
+  test('bekijken: de PDF in een venster, pagina voor pagina', async ({ page }) => {
+    const doc = await PDFDocument.create();
+    const font = await doc.embedFont(StandardFonts.Helvetica);
+    for (const text of ['Gemeente Utrecht', 'Bijlage op pagina twee']) {
+      doc.addPage([595, 842]).drawText(text, { x: 60, y: 780, size: 28, font });
+    }
+    await openPage(page, '/#/advanced/rename', { lang: 'nl' });
+    await page.locator('#rename-files').setInputFiles({
+      name: 'scan_009.pdf',
+      mimeType: 'application/pdf',
+      buffer: Buffer.from(await doc.save()),
+    });
+    const view = page.getByRole('button', { name: 'scan_009.pdf bekijken' });
+    await view.click();
+    const dialog = page.getByRole('dialog', { name: /scan_009\.pdf/ });
+    await expect(dialog).toBeVisible();
+    await expect(dialog.getByText('Pagina 1 van 2')).toBeVisible();
+    // De pagina is echt getekend: het canvas heeft beeldpunten, en er staat iets donkers op.
+    const canvas = dialog.locator('canvas');
+    await expect
+      .poll(() =>
+        canvas.evaluate((element: HTMLCanvasElement) => {
+          if (element.width === 0) return false;
+          const data = element
+            .getContext('2d')!
+            .getImageData(0, 0, element.width, element.height).data;
+          for (let i = 0; i < data.length; i += 4) if (data[i]! < 100) return true;
+          return false;
+        }),
+      )
+      .toBe(true);
+
+    const result = await new AxeBuilder({ page })
+      .include('dialog')
+      .withTags(['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa'])
+      .analyze();
+    expect(result.violations).toEqual([]);
+
+    await page.keyboard.press('ArrowRight');
+    await expect(dialog.getByText('Pagina 2 van 2')).toBeVisible();
+    await page.keyboard.press('Escape');
+    await expect(dialog).toBeHidden();
+    await expect(view).toBeFocused();
+  });
 });
