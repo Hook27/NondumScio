@@ -237,3 +237,50 @@ describe('meer bestanden en splitsen: geen verstopte pagina’s', () => {
     );
   });
 });
+
+describe('koppelingen via een naam (benoemde bestemmingen)', () => {
+  /** Pagina 1 heeft drie koppelingen via een naam: naar 2 (lijst met namen), 2 (actie) en 3 (oude lijst). */
+  const named = () =>
+    makeSource((doc, [a, b, c]) => {
+      const tree = doc.context.obj({ Names: [PDFString.of('geheim'), [b!.ref, 'Fit']] });
+      doc.catalog.set(PDFName.of('Names'), doc.context.obj({ Dests: tree }));
+      doc.catalog.set(PDFName.of('Dests'), doc.context.obj({ Bijlage: [c!.ref, 'Fit'] }));
+      annotate(
+        doc,
+        a!,
+        { Subtype: 'Link', Dest: PDFString.of('geheim') },
+        { Subtype: 'Link', A: { S: 'GoTo', D: PDFString.of('geheim') } },
+        { Subtype: 'Link', Dest: 'Bijlage' },
+      );
+    });
+
+  /** Waar de koppelingen van een pagina heen gaan (plek in het resultaat), in volgorde. */
+  async function targets(bytes: Uint8Array, pageIndex: number) {
+    const { doc, items } = await annotationsOn(bytes, pageIndex);
+    return items.map((item) => {
+      const action = item.lookupMaybe(PDFName.of('A'), PDFDict);
+      const dest = item.get(PDFName.of('Dest')) ?? action?.get(PDFName.of('D'));
+      return dest instanceof PDFArray ? pageIndexOf(doc, dest.get(0)) : String(dest);
+    });
+  }
+
+  it('één bestand: een koppeling via een naam naar een weggehaalde pagina gaat eraf', async () => {
+    const { bytes, doc } = await save(await named(), withoutSecret);
+    expect(await leaks(bytes)).toBe(false);
+    expect(strayObjects(lib, doc)).toBe(0);
+    // Alleen de koppeling naar de bijlage blijft, en die wijst naar de nieuwe plek (2).
+    expect(await targets(bytes, 0)).toEqual([1]);
+  });
+
+  it('één bestand: blijft de pagina staan, dan blijft de koppeling en volgt ze de pagina', async () => {
+    const { bytes } = await save(await named(), [p2!, p1!, p3!]);
+    expect(await targets(bytes, 1)).toEqual([0, 0, 2]);
+  });
+
+  it('splitsen: binnen een deel werkt een koppeling via een naam; naar een ander deel gaat ze eraf', async () => {
+    const [first, second] = await buildParts(new Map([[0, await named()]]), [[p1!, p3!], [p2!]]);
+    expect(await targets(first!, 0)).toEqual([1]);
+    expect(await leaks(first!)).toBe(false);
+    expect(await targets(second!, 0)).toEqual([]);
+  });
+});
