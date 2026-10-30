@@ -434,11 +434,11 @@ export const nl = {
     recognized: 'Opnieuw herkend met de database.',
     known: 'Herkend uit de database.',
     knownHint:
-      'Een groene rand: herkend uit de database. Wat je bij afzender en onderwerp invult, wordt onthouden; herkenwoorden voeg je toe onder Database.',
+      'Een groene rand: herkend uit de database. Wat je bij afzender en onderwerp invult, wordt onthouden, en bij het downloaden ook wat de tool zelf vond. Herkenwoorden voeg je toe onder Database.',
     db: {
       title: 'Database',
       intro:
-        'Afzenders en onderwerpen worden vanzelf onthouden zodra je ze bij Hernoemen invult of aanpast. Zo gebruik je steeds dezelfde naam. Met herkenwoorden (gescheiden door komma’s) vult de tool een naam zelf in als zo’n woord in de brief staat; bij meer treffers wint het langste.',
+        'Afzenders en onderwerpen worden vanzelf onthouden: zodra je ze bij Hernoemen invult of aanpast, en bij het downloaden van de hernoemde kopieën. Zo gebruik je steeds dezelfde naam. Met herkenwoorden (gescheiden door komma’s) vult de tool een naam zelf in als zo’n woord in de brief staat; bij meer treffers wint het langste.',
       stored:
         'De database blijft in deze browser bewaard. Een export is een reservekopie, en werkt ook in de losse pdf-hernoemer.',
       export: 'Exporteren (.json)',

@@ -426,11 +426,11 @@ export const en: Messages = {
     recognized: 'Recognised again with the database.',
     known: 'Recognised from the database.',
     knownHint:
-      'A green border: recognised from the database. What you enter as sender and subject is remembered; add recognition words under Database.',
+      'A green border: recognised from the database. What you enter as sender and subject is remembered, and when you download, so is what the tool found itself. Add recognition words under Database.',
     db: {
       title: 'Database',
       intro:
-        'Senders and subjects are remembered as soon as you enter or change them under Rename, so you always use the same name. With recognition words (separated by commas) the tool fills in a name itself when such a word is in the letter; with several matches the longest wins.',
+        'Senders and subjects are remembered automatically: as soon as you enter or change them under Rename, and when you download the renamed copies. So you always use the same name. With recognition words (separated by commas) the tool fills in a name itself when such a word is in the letter; with several matches the longest wins.',
       stored:
         'The database is kept in this browser. An export is a backup, and also works in the separate pdf-hernoemer.',
       export: 'Export (.json)',

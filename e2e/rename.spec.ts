@@ -80,6 +80,16 @@ test.describe('Slim hernoemen', () => {
     ]);
     // Kopieën: precies het originele bestand, alleen met een andere naam.
     expect(Buffer.from(files['260203 ing bank n jaaroverz.pdf']!).equals(bank)).toBe(true);
+
+    // Onthouden: het eigen onderwerp zodra het veld verlaten werd, en bij het downloaden ook wat
+    // de tool zelf vond.
+    await page.getByRole('button', { name: r.views.database }).click();
+    await expect(page.getByLabel('Naam van afzender 1')).toHaveValue('Gemeente Utrecht');
+    await expect(page.getByLabel('Naam van afzender 2')).toHaveValue('ING Bank N');
+    await expect(page.getByLabel('Naam van onderwerp 1')).toHaveValue('Jaaroverzicht');
+    await expect(page.getByLabel('Naam van onderwerp 2')).toHaveValue(
+      'Aanslag gemeentelijke belastingen',
+    );
   });
 
   test('met zichtbare tekst blijven alle brieven bereikbaar; het linkervak is smal', async ({

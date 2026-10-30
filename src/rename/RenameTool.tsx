@@ -47,6 +47,20 @@ function fromDb(lines: readonly string[], db: RenameDb): Partial<RenameDoc> {
 /** Onthoudt een ingevulde afzender of onderwerp in de database. */
 const remember = (kind: DbKind, value: string) => setRenameDb(learn(getRenameDb(), kind, value));
 
+/**
+ * Bij het downloaden: afzender en onderwerp van elke meegenomen brief komen in de database, ook
+ * wat de tool zelf vond (met het downloaden keur je ze goed). Dit wijkt bewust af van de HTML-tool,
+ * die alleen onthoudt wat je zelf aanpast.
+ */
+function rememberAll(docs: readonly RenameDoc[]) {
+  let db = getRenameDb();
+  for (const doc of docs) {
+    db = learn(db, 'afzenders', doc.sender);
+    db = learn(db, 'onderwerpen', doc.subject);
+  }
+  setRenameDb(db);
+}
+
 /** Datum-tijdstempel JJJJMMDD_UUMM, voor de naam van de ZIP. */
 function stamp(now = new Date()) {
   const p = (n: number) => String(n).padStart(2, '0');
@@ -216,6 +230,7 @@ function RenameList({ head }: { head: ComponentChildren }) {
       downloadFile(zip.finish(), zipName!, 'application/zip');
       setRenameState(() => ({ saved: format(r.saved, { n: chosen.length, name: zipName! }) }));
     }
+    rememberAll(chosen.map((entry) => entry.doc));
     setRenameState(() => ({ changed: false }));
   };
 

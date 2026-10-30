@@ -293,6 +293,32 @@ describe('Slim hernoemen: de database', () => {
     expect(stored().afzenders).toHaveLength(1);
   });
 
+  it('bij downloaden: ook wat de tool zelf vond, van de meegenomen brieven', async () => {
+    store({
+      afzenders: [],
+      onderwerpen: [{ naam: 'aanslag gemeentelijke belastingen', triggers: ['x'] }],
+    });
+    setup();
+    await open('gemeente.pdf', 'bank1.pdf', 'scan.pdf');
+    fireEvent.click(screen.getByLabelText('bank1.pdf meenemen'));
+    // Nog niets aangepast: nog niets onthouden.
+    expect(stored().afzenders).toEqual([]);
+    fireEvent.click(screen.getByRole('button', { name: r.download }));
+    fireEvent.click(
+      within(screen.getByRole('dialog')).getByRole('button', {
+        name: messages.nl.saveDialog.download,
+      }),
+    );
+    await waitFor(() => expect(downloadFile).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect(stored().afzenders).toHaveLength(1));
+    // Niet de uitgevinkte bankbrief, geen lege velden (de scan zonder tekst), en een bekende naam
+    // (op hoofdletters na) niet nog eens.
+    expect(stored()).toEqual({
+      afzenders: [{ naam: 'Gemeente Utrecht', triggers: [] }],
+      onderwerpen: [{ naam: 'aanslag gemeentelijke belastingen', triggers: ['x'] }],
+    });
+  });
+
   it('nieuwe herkenwoorden onder Database; Herken opnieuw past ze toe op de geladen brieven', async () => {
     setup();
     await open('gemeente.pdf');
