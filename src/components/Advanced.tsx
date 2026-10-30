@@ -1,3 +1,5 @@
+import type { FunctionComponent } from 'preact';
+import { useEffect, useState } from 'preact/hooks';
 import { useI18n } from '../i18n/LanguageContext';
 import { ADVANCED_IDS, hrefFor, type AdvancedId } from '../router';
 
@@ -53,8 +55,27 @@ export function AdvancedToolPage({ id }: { id: AdvancedId }) {
       </div>
       <p class="lead mobile-only">{a.desktopOnly}</p>
       <div class="desktop-only">
-        <p class="lead">{a.soon}</p>
+        <Tool id={id} />
       </div>
     </>
   );
+}
+
+/** Laadt een onderdeel pas als het geopend wordt, zodat de rest van de app er niet zwaarder van wordt. */
+const tools: Record<AdvancedId, () => Promise<FunctionComponent>> = {
+  rename: async () => (await import('../rename/RenameTool')).RenameTool,
+};
+
+function Tool({ id }: { id: AdvancedId }) {
+  const [Component, setComponent] = useState<FunctionComponent | null>(null);
+  useEffect(() => {
+    let cancelled = false;
+    void tools[id]().then((loaded) => {
+      if (!cancelled) setComponent(() => loaded);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [id]);
+  return Component ? <Component /> : null;
 }

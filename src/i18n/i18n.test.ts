@@ -37,8 +37,15 @@ describe('vertalingen', () => {
 
   it('zijn niet gewoon een kopie van het Nederlands', () => {
     const same = Object.keys(nl).filter((key) => nl[key] === en[key]);
-    // Alleen de naam van de app, de papierformaten en de resolutie zijn in beide talen gelijk.
-    expect(same).toEqual(['appName', 'convert.a4', 'convert.letter', 'redact.dpi200']);
+    // Alleen de naam van de app, de papierformaten, de resolutie en "ISO" (een soort datum bij
+    // Slim hernoemen) zijn in beide talen gelijk.
+    expect(same).toEqual([
+      'appName',
+      'convert.a4',
+      'convert.letter',
+      'redact.dpi200',
+      'rename.sources.iso',
+    ]);
   });
 });
 
