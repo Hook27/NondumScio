@@ -895,6 +895,69 @@ h1 {
   cursor: pointer;
 }
 
+/* Slim hernoemen: een PDF bekijken in een venster */
+.preview-dialog {
+  width: min(64rem, calc(100vw - 2rem));
+  height: calc(100vh - 2rem);
+  max-height: none;
+  padding: 0;
+  background: var(--surface);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: 0 10px 30px rgb(0 0 0 / 25%);
+}
+
+.preview-dialog::backdrop {
+  background: rgb(0 0 0 / 55%);
+}
+
+.preview-dialog__inner {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+}
+
+.preview-dialog__bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.75rem 1rem;
+  border-bottom: 1px solid var(--border);
+}
+
+.preview-dialog__title {
+  flex: 1;
+  min-width: 0;
+  margin: 0;
+  font-size: 1rem;
+  overflow-wrap: anywhere;
+}
+
+.preview-dialog__pages {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.preview-dialog__page {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  padding: 1rem;
+  background: var(--bg);
+  text-align: center;
+}
+
+.preview-dialog__canvas {
+  max-width: 100%;
+  height: auto;
+  background: var(--paper);
+  box-shadow: var(--shadow);
+}
+
 /* Venster dat om bevestiging vraagt (zelfde stijl als "Opslaan als") */
 .confirm-dialog__text {
   margin: 0 0 1.25rem;

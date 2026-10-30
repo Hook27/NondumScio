@@ -420,6 +420,15 @@ export const nl = {
     zipName: 'pdfs-hernoemd',
     savedOne: 'Gedownload als {name}.',
     saved: '{n} bestanden gedownload in {name}.',
+    view: 'Bekijken',
+    viewLabel: '{name} bekijken',
+    preview: {
+      previous: 'Vorige pagina',
+      next: 'Volgende pagina',
+      page: 'Pagina {n} van {total}',
+      close: 'Sluiten',
+      error: 'Deze PDF kon niet worden getoond.',
+    },
   },
   advanced: {
     title: 'Geavanceerd',

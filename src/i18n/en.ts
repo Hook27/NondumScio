@@ -412,6 +412,15 @@ export const en: Messages = {
     zipName: 'pdfs-renamed',
     savedOne: 'Downloaded as {name}.',
     saved: '{n} files downloaded in {name}.',
+    view: 'View',
+    viewLabel: 'View {name}',
+    preview: {
+      previous: 'Previous page',
+      next: 'Next page',
+      page: 'Page {n} of {total}',
+      close: 'Close',
+      error: 'This PDF could not be shown.',
+    },
   },
   advanced: {
     title: 'Advanced',
