@@ -34,8 +34,11 @@ describe('App', () => {
   it('toont op de startpagina een kaart per taak', () => {
     renderApp();
     expect(screen.getByRole('heading', { level: 1, name: nl.home.title })).toBeTruthy();
+    // Een kaart per taak, en één voor Geavanceerd (die alleen op een breed scherm te zien is).
     const cards = document.querySelectorAll('.card');
-    expect(cards.length).toBe(TASK_IDS.length);
+    expect(cards.length).toBe(TASK_IDS.length + 1);
+    const advanced = screen.getByRole('heading', { level: 2, name: nl.advanced.title });
+    expect(advanced.closest('li')!.classList.contains('desktop-only')).toBe(true);
     for (const id of TASK_IDS) {
       expect(screen.getByRole('heading', { level: 2, name: nl.tasks[id].title })).toBeTruthy();
     }
@@ -78,7 +81,37 @@ describe('App', () => {
     const nav = screen.getByRole('navigation', { name: nl.mainMenu });
     const current = within(nav).getByRole('link', { current: 'page' });
     expect(current.textContent).toBe(nl.tasks.redact.title);
-    expect(within(nav).getAllByRole('link').length).toBe(TASK_IDS.length);
+    // Plus Geavanceerd, dat alleen op een breed scherm in het menu staat.
+    expect(within(nav).getAllByRole('link').length).toBe(TASK_IDS.length + 1);
+    const advanced = within(nav).getByRole('link', { name: nl.advanced.title });
+    expect(advanced.closest('li')!.classList.contains('desktop-only')).toBe(true);
+  });
+
+  it('Geavanceerd: een overzicht met een kaart per onderdeel, en de melding voor een telefoon', () => {
+    goTo('#/advanced');
+    renderApp();
+    expect(screen.getByRole('heading', { level: 1, name: nl.advanced.title })).toBeTruthy();
+    expect(document.title).toBe(`${nl.advanced.title} · ${nl.appName}`);
+    const nav = screen.getByRole('navigation', { name: nl.mainMenu });
+    expect(within(nav).getByRole('link', { current: 'page' }).textContent).toBe(nl.advanced.title);
+    const card = screen.getByRole('link', { name: new RegExp(nl.advanced.tools.rename.title) });
+    expect(card.getAttribute('href')).toBe('#/advanced/rename');
+    expect(card.closest('.desktop-only')).toBeTruthy();
+    expect(screen.getByText(nl.advanced.desktopOnly).closest('.mobile-only')).toBeTruthy();
+  });
+
+  it('Geavanceerd: een onderdeel heeft een eigen pagina, met de weg terug', () => {
+    goTo('#/advanced/rename');
+    renderApp();
+    const title = nl.advanced.tools.rename.title;
+    expect(screen.getByRole('heading', { level: 1, name: title })).toBeTruthy();
+    expect(document.title).toBe(`${title} · ${nl.appName}`);
+    expect(screen.getByRole('link', { name: nl.advanced.back }).getAttribute('href')).toBe(
+      '#/advanced',
+    );
+    // Het menu laat zien dat je in Geavanceerd zit.
+    const nav = screen.getByRole('navigation', { name: nl.mainMenu });
+    expect(within(nav).getByRole('link', { current: 'page' }).textContent).toBe(nl.advanced.title);
   });
 
   it('toont een duidelijke melding bij een onbekend adres', () => {

@@ -1442,6 +1442,20 @@ h1 {
   }
 }
 
+/* Alleen op een breed scherm (zoals Geavanceerd), of juist alleen op een smal scherm. Zelfde grens
+   als het splitscherm hieronder. */
+@media (max-width: 56.2rem) {
+  .desktop-only {
+    display: none !important;
+  }
+}
+
+@media (min-width: 56.25rem) {
+  .mobile-only {
+    display: none !important;
+  }
+}
+
 /* Breed scherm: splitscherm. De pagina zelf scrolt niet meer; elk vak scrolt los, zodat het
    gereedschap links altijd in beeld blijft. */
 @media (min-width: 56.25rem) {

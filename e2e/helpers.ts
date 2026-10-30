@@ -1,13 +1,19 @@
 import { expect, type Locator, type Page } from '@playwright/test';
 import { LANGUAGES, STORAGE_KEY, messages, type Language } from '../src/i18n';
-import { TASK_IDS } from '../src/router';
+import { ADVANCED_IDS, TASK_IDS } from '../src/router';
 import { THEME_STORAGE_KEY, type Theme } from '../src/theme';
 
 export { LANGUAGES, TASK_IDS, messages };
 export type { Language, Theme };
 
 /** Alle adressen van de app: de startpagina, elke taak en een onbekend adres. */
-export const ROUTES = ['/', ...TASK_IDS.map((id) => `/#/${id}`), '/#/bestaat-niet'] as const;
+export const ROUTES = [
+  '/',
+  ...TASK_IDS.map((id) => `/#/${id}`),
+  '/#/advanced',
+  ...ADVANCED_IDS.map((id) => `/#/advanced/${id}`),
+  '/#/bestaat-niet',
+] as const;
 
 type Preferences = { lang?: Language; theme?: Theme };
 

@@ -4,10 +4,13 @@ import { TASK_IDS, messages, openPage } from './helpers';
 const nl = messages.nl;
 
 test.describe('navigatie', () => {
-  test('de startpagina toont een kaart per taak', async ({ page }) => {
+  test('de startpagina toont een kaart per taak, en op de computer ook Geavanceerd', async ({
+    page,
+    isMobile,
+  }) => {
     await openPage(page, '/', { lang: 'nl' });
     await expect(page.getByRole('heading', { level: 1, name: nl.home.title })).toBeVisible();
-    await expect(page.locator('.card')).toHaveCount(TASK_IDS.length);
+    await expect(page.locator('.card:visible')).toHaveCount(TASK_IDS.length + (isMobile ? 0 : 1));
   });
 
   test('een kaart opent de taakpagina en markeert hem in het menu', async ({ page }) => {

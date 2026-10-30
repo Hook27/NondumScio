@@ -22,6 +22,13 @@ export function Home() {
             </a>
           </li>
         ))}
+        {/* Geavanceerd alleen op een breed scherm. */}
+        <li class="desktop-only">
+          <a class="card" href={hrefFor({ name: 'advanced' })}>
+            <h2 class="card__title">{t.advanced.title}</h2>
+            <p class="card__text">{t.advanced.description}</p>
+          </a>
+        </li>
       </ul>
     </>
   );
