@@ -155,7 +155,10 @@ async function buildPlain(
       // Koppelingen, bladwijzers en velden houden anders een weggehaalde pagina in het bestand
       // vast (zie `links.ts`); verplaatste pagina's houden zo ook hun koppelingen.
       const links = await import('./links');
-      links.cutLoose(lib, doc, new Set(pages.map((item) => item.source)));
+      const keep = new Set(pages.map((item) => item.source));
+      links.cutLoose(lib, doc, keep);
+      // De tags (voor schermlezers) van de weggehaalde pagina's: ook hun alternatieve tekst weg.
+      if (keep.size < sourcePages.length) (await import('./tags')).dropTagsOf(lib, doc, keep);
       links.detachPageRefs(lib, doc, { source: id, whole: true });
       // Blijft er een deel van de pagina's over, dan geen afbeeldingen van de rest via een gedeelde
       // lijst met hulpbronnen (zie `resources.ts`).
