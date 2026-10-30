@@ -429,6 +429,47 @@ export const nl = {
       close: 'Sluiten',
       error: 'Deze PDF kon niet worden getoond.',
     },
+    views: { label: 'Weergave', rename: 'Hernoemen', database: 'Database' },
+    recognizeAgain: 'Herken opnieuw',
+    recognized: 'Opnieuw herkend met de database.',
+    known: 'Herkend uit de database.',
+    knownHint:
+      'Een groene rand: herkend uit de database. Wat je bij afzender en onderwerp invult, wordt onthouden; herkenwoorden voeg je toe onder Database.',
+    db: {
+      title: 'Database',
+      intro:
+        'Afzenders en onderwerpen worden vanzelf onthouden zodra je ze bij Hernoemen invult of aanpast. Zo gebruik je steeds dezelfde naam. Met herkenwoorden (gescheiden door komma’s) vult de tool een naam zelf in als zo’n woord in de brief staat; bij meer treffers wint het langste.',
+      stored:
+        'De database blijft in deze browser bewaard. Een export is een reservekopie, en werkt ook in de losse pdf-hernoemer.',
+      export: 'Exporteren (.json)',
+      import: 'Importeren (.json)',
+      exported: 'Geëxporteerd: {senders}, {subjects}.',
+      imported: 'Geïmporteerd en samengevoegd: +{senders}, +{subjects}.',
+      importError: 'Importeren lukte niet: dit is geen database-export.',
+      kinds: {
+        afzenders: {
+          title: 'Afzenders',
+          one: '{n} afzender',
+          other: '{n} afzenders',
+          item: 'afzender',
+          add: 'Afzender toevoegen',
+        },
+        onderwerpen: {
+          title: 'Onderwerpen',
+          one: '{n} onderwerp',
+          other: '{n} onderwerpen',
+          item: 'onderwerp',
+          add: 'Onderwerp toevoegen',
+        },
+      },
+      columns: { name: 'Naam', triggers: 'Herkenwoorden', remove: 'Verwijderen' },
+      nameLabel: 'Naam van {item} {n}',
+      triggersLabel: 'Herkenwoorden van {item} {n}',
+      triggersPlaceholder: 'bv. belastingdienst, b/01',
+      remove: 'Verwijderen',
+      removeLabel: 'Verwijderen: {item} {n}',
+      empty: 'Nog niets onthouden.',
+    },
   },
   advanced: {
     title: 'Geavanceerd',

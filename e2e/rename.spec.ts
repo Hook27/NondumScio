@@ -117,6 +117,89 @@ test.describe('Slim hernoemen', () => {
     await expect(page.locator('.rename-table tbody tr')).toHaveCount(2);
   });
 
+  test('database: importeren, herkennen, onthouden en exporteren', async ({ page }) => {
+    const axe = () =>
+      new AxeBuilder({ page }).withTags(['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa']).analyze();
+    await openPage(page, '/#/advanced/rename', { lang: 'nl' });
+    const toView = (name: string) => page.getByRole('button', { name }).click();
+    await toView(r.views.database);
+    await expect(page.getByRole('button', { name: r.views.database })).toBeFocused();
+    await expect(page.getByText(r.db.empty)).toHaveCount(2);
+
+    // Een export van de HTML-tool (verzonnen namen).
+    await page.locator('#rename-db-import').setInputFiles({
+      name: 'pdf-hernoemer-database.json',
+      mimeType: 'application/json',
+      buffer: Buffer.from(
+        JSON.stringify(
+          {
+            afzenders: [{ naam: 'ING', triggers: ['ing bank'] }],
+            onderwerpen: [{ naam: 'Rekening', triggers: ['afschrift'] }],
+          },
+          null,
+          2,
+        ),
+      ),
+    });
+    await expect(
+      page.getByText('Geïmporteerd en samengevoegd: +1 afzender, +1 onderwerp.'),
+    ).toBeVisible();
+    expect((await axe()).violations).toEqual([]);
+
+    // Na herladen is de database er nog.
+    await page.reload();
+    await toView(r.views.database);
+    await expect(page.getByLabel('Naam van afzender 1')).toHaveValue('ING');
+    await expect(page.getByLabel('Herkenwoorden van onderwerp 1')).toHaveValue('afschrift');
+
+    await toView(r.views.rename);
+    await page.locator('#rename-files').setInputFiles([
+      {
+        name: 'scan_001.pdf',
+        mimeType: 'application/pdf',
+        buffer: await letter(['Gemeente Utrecht', 'Datum: 12 maart 2026', 'Betreft: Aanslag']),
+      },
+      {
+        name: 'scan_002.pdf',
+        mimeType: 'application/pdf',
+        buffer: await letter(['ING Bank N.V.', 'Datum 3-2-2026', 'Betreft: Afschrift']),
+      },
+    ]);
+    // Herkend uit de database, met een groene rand.
+    const sender = page.getByLabel('Afzender van scan_002.pdf');
+    await expect(sender).toHaveValue('ING');
+    await expect(nameOf(page, 'scan_002.pdf')).toHaveValue('260203 ing rekening.pdf');
+    await expect(sender).toHaveAccessibleDescription(r.known);
+    await expect(sender).toHaveCSS('border-top-color', 'rgb(21, 128, 61)');
+    await expect(page.getByLabel('Afzender van scan_001.pdf')).not.toHaveCSS(
+      'border-top-color',
+      'rgb(21, 128, 61)',
+    );
+    expect((await axe()).violations).toEqual([]);
+
+    // Een eigen onderwerp wordt onthouden zodra je het veld verlaat.
+    await page.getByLabel('Onderwerp van scan_001.pdf').fill('OZB');
+    await page.keyboard.press('Tab');
+    await toView(r.views.database);
+    await expect(page.getByLabel('Naam van onderwerp 2')).toHaveValue('OZB');
+
+    const [download] = await Promise.all([
+      page.waitForEvent('download'),
+      page.getByRole('button', { name: r.db.export }).click(),
+    ]);
+    expect(download.suggestedFilename()).toBe('pdf-hernoemer-database.json');
+    expect(JSON.parse(readFileSync((await download.path())!, 'utf8'))).toEqual({
+      afzenders: [{ naam: 'ING', triggers: ['ing bank'] }],
+      onderwerpen: [
+        { naam: 'Rekening', triggers: ['afschrift'] },
+        { naam: 'OZB', triggers: [] },
+      ],
+    });
+    // Terug naar Hernoemen: de brieven staan er nog.
+    await toView(r.views.rename);
+    await expect(nameOf(page, 'scan_001.pdf')).toHaveValue('260312 gemeente utrecht ozb.pdf');
+  });
+
   test('bekijken: de PDF in een venster, pagina voor pagina', async ({ page }) => {
     const doc = await PDFDocument.create();
     const font = await doc.embedFont(StandardFonts.Helvetica);
