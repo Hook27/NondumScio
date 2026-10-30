@@ -812,7 +812,9 @@ function TextEditor({
     element.style.width = `${Math.max(element.scrollWidth + 4, size * 4)}px`;
   };
 
-  useEffect(() => {
+  // Meteen bij het verschijnen de focus (layout-effect, niet een gewoon effect dat later kan lopen):
+  // wie direct na het klikken begint te typen, verliest anders de eerste letter.
+  useLayoutEffect(() => {
     field.current?.focus();
     fit();
   }, []);
