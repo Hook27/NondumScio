@@ -15,25 +15,8 @@ import {
   nameLimit,
   proposeNames,
   uniqueNames,
-  type DateCandidate,
 } from './recognize';
-
-/** Eén geopende PDF met wat erin herkend is en wat de gebruiker ervan maakt. */
-type RenameDoc = {
-  id: number;
-  file: File;
-  include: boolean;
-  /** Herkende tekst (regels), leeg als de PDF geen tekstlaag heeft. */
-  lines: string[];
-  dates: DateCandidate[];
-  date: string;
-  sender: string;
-  subject: string;
-  manualName: boolean;
-  customName: string;
-  showText: boolean;
-  error: boolean;
-};
+import { getRenameState, setRenameState, useRenameState, type RenameDoc } from './store';
 
 let nextId = 1;
 
@@ -46,17 +29,14 @@ function stamp(now = new Date()) {
 /**
  * Slim hernoemen: gescande brieven openen, per brief een naam voorstellen
  * (`JJMMDD afzender onderwerp.pdf`), die nakijken en hernoemde kopieën downloaden. Werkt los van de
- * gewone taken, met een eigen lijst bestanden.
+ * gewone taken, met een eigen lijst bestanden. De stand staat buiten het scherm (`store.ts`), zodat
+ * hij blijft als je even naar een andere taak gaat.
  */
 export function RenameTool() {
   const { t } = useI18n();
   const r = t.rename;
-  const [docs, setDocs] = useState<RenameDoc[]>([]);
-  const [reading, setReading] = useState(false);
-  const [showAll, setShowAll] = useState(true);
+  const { docs, reading, showAll, saved, changed } = useRenameState();
   const [asking, setAsking] = useState<'save' | 'clear' | null>(null);
-  const [saved, setSaved] = useState<string | null>(null);
-  const [changed, setChanged] = useState(false);
 
   const names = proposeNames(docs);
   const included = docs.filter((doc) => doc.include);
@@ -66,19 +46,19 @@ export function RenameTool() {
       counts.set(names[i]!.toLowerCase(), (counts.get(names[i]!.toLowerCase()) ?? 0) + 1);
   });
 
-  const update = (id: number, change: Partial<RenameDoc>) => {
-    setDocs((current) => current.map((doc) => (doc.id === id ? { ...doc, ...change } : doc)));
-    setChanged(true);
-    setSaved(null);
-  };
+  const update = (id: number, change: Partial<RenameDoc>) =>
+    setRenameState((current) => ({
+      docs: current.docs.map((doc) => (doc.id === id ? { ...doc, ...change } : doc)),
+      changed: true,
+      saved: null,
+    }));
 
   const add = async (files: File[]) => {
     const pdfs = files.filter(
       (file) => /\.pdf$/i.test(file.name) || file.type === 'application/pdf',
     );
     if (pdfs.length === 0) return;
-    setReading(true);
-    setSaved(null);
+    setRenameState(() => ({ reading: true, saved: null }));
     for (const file of pdfs) {
       const doc: RenameDoc = {
         id: nextId++,
@@ -91,7 +71,7 @@ export function RenameTool() {
         subject: '',
         manualName: false,
         customName: '',
-        showText: showAll,
+        showText: getRenameState().showAll,
         error: false,
       };
       try {
@@ -104,16 +84,13 @@ export function RenameTool() {
       } catch {
         doc.error = true;
       }
-      setDocs((current) => [...current, doc]);
+      setRenameState((current) => ({ docs: [...current.docs, doc] }));
     }
-    setReading(false);
-    setChanged(true);
+    setRenameState(() => ({ reading: false, changed: true }));
   };
 
   const clear = () => {
-    setDocs([]);
-    setSaved(null);
-    setChanged(false);
+    setRenameState(() => ({ docs: [], saved: null, changed: false }));
     setAsking(null);
   };
 
@@ -129,16 +106,16 @@ export function RenameTool() {
         unique[0]!,
         'application/pdf',
       );
-      setSaved(format(r.savedOne, { name: unique[0]! }));
+      setRenameState(() => ({ saved: format(r.savedOne, { name: unique[0]! }) }));
     } else {
       const zip = await zipWriter();
       for (const [i, entry] of chosen.entries()) {
         zip.add(unique[i]!, new Uint8Array(await entry.doc.file.arrayBuffer()));
       }
       downloadFile(zip.finish(), zipName!, 'application/zip');
-      setSaved(format(r.saved, { n: chosen.length, name: zipName! }));
+      setRenameState(() => ({ saved: format(r.saved, { n: chosen.length, name: zipName! }) }));
     }
-    setChanged(false);
+    setRenameState(() => ({ changed: false }));
   };
 
   if (docs.length === 0) {
@@ -209,10 +186,12 @@ export function RenameTool() {
               type="button"
               class="button button--secondary"
               aria-pressed={showAll}
-              onClick={() => {
-                setShowAll(!showAll);
-                setDocs((current) => current.map((doc) => ({ ...doc, showText: !showAll })));
-              }}
+              onClick={() =>
+                setRenameState((current) => ({
+                  showAll: !current.showAll,
+                  docs: current.docs.map((doc) => ({ ...doc, showText: !current.showAll })),
+                }))
+              }
             >
               {showAll ? r.hideAllText : r.showAllText}
             </button>

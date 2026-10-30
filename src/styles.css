@@ -1598,6 +1598,16 @@ h1 {
     min-height: 0;
   }
 
+  /* Geavanceerd: het omhulsel om een onderdeel doet niet mee, zodat het werkvak de ruimte vult. */
+  .advanced-tool {
+    display: contents;
+  }
+
+  /* Slim hernoemen: een smaller linkervak, zodat de tabel met namen meer ruimte heeft. */
+  .workspace.rename {
+    grid-template-columns: minmax(15rem, 18rem) minmax(0, 1fr);
+  }
+
   /* Een beetje ruimte rondom, zodat het focuskader niet wordt afgeknipt. */
   .workspace__tools,
   .workspace__view {

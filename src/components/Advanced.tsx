@@ -54,7 +54,9 @@ export function AdvancedToolPage({ id }: { id: AdvancedId }) {
         <p class="task-head__lead">{tool.description}</p>
       </div>
       <p class="lead mobile-only">{a.desktopOnly}</p>
-      <div class="desktop-only">
+      {/* Op een breed scherm telt dit omhulsel niet mee voor de opmaak: dan vult het werkvak de
+          ruimte en scrolt elk vak zelf, zoals bij de taken. */}
+      <div class="desktop-only advanced-tool">
         <Tool id={id} />
       </div>
     </>

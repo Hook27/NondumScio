@@ -6,6 +6,7 @@ import { messages } from '../i18n';
 import { LanguageProvider } from '../i18n/LanguageContext';
 import { downloadFile } from '../pdf/save';
 import { RenameTool } from './RenameTool';
+import { resetRenameState } from './store';
 
 /** Wat er per bestand "gelezen" wordt: de regels van de tekstlaag (of een fout). */
 const LETTERS: Record<string, string[] | Error> = {
@@ -58,7 +59,11 @@ const nameOf = (file: string) =>
 const row = (file: string) => screen.getByText(file).closest('tr')!;
 
 beforeEach(() => vi.mocked(downloadFile).mockClear());
-afterEach(() => cleanup());
+afterEach(() => {
+  cleanup();
+  // De stand blijft bewaard buiten het scherm; elke test begint leeg.
+  resetRenameState();
+});
 
 describe('Slim hernoemen', () => {
   it('stelt per brief een naam voor uit datum, afzender en onderwerp', async () => {
@@ -177,5 +182,33 @@ describe('Slim hernoemen', () => {
     fireEvent.click(screen.getByRole('button', { name: r.hideAllText }));
     fireEvent.click(screen.getByRole('button', { name: r.showAllText }));
     expect(row('gemeente.pdf').querySelector('pre')).toBeTruthy();
+  });
+});
+
+describe('Slim hernoemen: de stand blijft', () => {
+  it('weggaan (naar een andere taak) en terugkomen: alles staat er nog', async () => {
+    setup();
+    await open('gemeente.pdf');
+    fireEvent.input(screen.getByLabelText('Onderwerp van gemeente.pdf'), {
+      target: { value: 'OZB' },
+    });
+    cleanup();
+    setup();
+    expect(nameOf('gemeente.pdf')).toBe('260312 gemeente utrecht ozb.pdf');
+  });
+
+  it('waarschuwt bij het sluiten van het tabblad, zolang er iets niet gedownload is', async () => {
+    const leave = () => {
+      const event = new Event('beforeunload', { cancelable: true });
+      window.dispatchEvent(event);
+      return event.defaultPrevented;
+    };
+    setup();
+    expect(leave()).toBe(false);
+    await open('gemeente.pdf');
+    expect(leave()).toBe(true);
+    fireEvent.click(screen.getByRole('button', { name: r.download }));
+    await waitFor(() => expect(downloadFile).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect(leave()).toBe(false));
   });
 });
