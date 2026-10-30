@@ -407,8 +407,10 @@ export function DocumentProvider({
       // Voor oudere browsers, die alleen naar returnValue kijken.
       event.returnValue = '';
     };
-    window.addEventListener('beforeunload', warn);
-    return () => window.removeEventListener('beforeunload', warn);
+    // Het doel onthouden: opruimen kan na het einde van een test vallen, als `window` al weg is.
+    const win = window;
+    win.addEventListener('beforeunload', warn);
+    return () => win.removeEventListener('beforeunload', warn);
   }, [unsaved]);
 
   // Ruim alles op als de app verdwijnt.

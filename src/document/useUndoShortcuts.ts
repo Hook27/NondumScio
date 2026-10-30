@@ -21,7 +21,9 @@ export function useUndoShortcuts(undo: () => void, redo: () => void) {
         redo();
       }
     };
-    document.addEventListener('keydown', onKey);
-    return () => document.removeEventListener('keydown', onKey);
+    // Het doel onthouden: opruimen kan na het einde van een test vallen, als `document` al weg is.
+    const doc = document;
+    doc.addEventListener('keydown', onKey);
+    return () => doc.removeEventListener('keydown', onKey);
   }, [undo, redo]);
 }
