@@ -16,6 +16,8 @@
   --paper: #ffffff;
   /* Treffers van het zoeken, op de witte pagina en op de donkere of lichte rand eromheen. */
   --candidate: #d97706;
+  /* Slim hernoemen: een veld dat uit de database is ingevuld. */
+  --known: #15803d;
   --radius: 10px;
   --shadow: 0 1px 2px rgb(20 28 48 / 6%);
   --font: system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
@@ -32,6 +34,7 @@
     --accent: #8aa6f4;
     --accent-contrast: #0f1420;
     --focus: #9db6ff;
+    --known: #4ade80;
     --shadow: 0 1px 2px rgb(0 0 0 / 40%);
   }
 }
@@ -46,6 +49,7 @@
   --accent: #8aa6f4;
   --accent-contrast: #0f1420;
   --focus: #9db6ff;
+  --known: #4ade80;
   --shadow: 0 1px 2px rgb(0 0 0 / 40%);
 }
 
@@ -880,6 +884,51 @@ h1 {
 
 .rename-table__warn td:first-child {
   box-shadow: inset 3px 0 0 var(--candidate);
+}
+
+/* Herkend uit de database: een groene rand. */
+.rename-table input.rename-table__known {
+  border-color: var(--known);
+  box-shadow: inset 0 0 0 1px var(--known);
+}
+
+/* Twee uitlegalinea's onder elkaar: met wat ruimte ertussen. */
+.workspace.rename .annotate__hint + .annotate__hint {
+  margin-top: 0.5rem;
+}
+
+/* De keuze tussen Hernoemen en Database boven het openvak, zoals bij Omzetten. */
+.rename-mode {
+  max-width: 42rem;
+  margin: 0 0 0.75rem;
+}
+
+.rename-mode .segmented {
+  margin: 0;
+}
+
+/* Database: afzenders en onderwerpen naast elkaar als er ruimte is. */
+.rename-db {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(22rem, 1fr));
+  align-content: start;
+  gap: 1rem 1.5rem;
+}
+
+.rename-db__remove {
+  width: 6.5rem;
+}
+
+.rename-db__remove .link-button {
+  margin-top: 0.4rem;
+}
+
+.rename-db__empty {
+  color: var(--text-muted);
+}
+
+.rename-db__add {
+  margin-top: 0.75rem;
 }
 
 .link-button {

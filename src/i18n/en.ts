@@ -421,6 +421,47 @@ export const en: Messages = {
       close: 'Close',
       error: 'This PDF could not be shown.',
     },
+    views: { label: 'View', rename: 'Rename', database: 'Database' },
+    recognizeAgain: 'Recognise again',
+    recognized: 'Recognised again with the database.',
+    known: 'Recognised from the database.',
+    knownHint:
+      'A green border: recognised from the database. What you enter as sender and subject is remembered, and when you download, so is what the tool found itself. Add recognition words under Database.',
+    db: {
+      title: 'Database',
+      intro:
+        'Senders and subjects are remembered automatically: as soon as you enter or change them under Rename, and when you download the renamed copies. So you always use the same name. With recognition words (separated by commas) the tool fills in a name itself when such a word is in the letter; with several matches the longest wins.',
+      stored:
+        'The database is kept in this browser. An export is a backup, and also works in the separate pdf-hernoemer.',
+      export: 'Export (.json)',
+      import: 'Import (.json)',
+      exported: 'Exported: {senders}, {subjects}.',
+      imported: 'Imported and merged: +{senders}, +{subjects}.',
+      importError: 'Import failed: this is not a database export.',
+      kinds: {
+        afzenders: {
+          title: 'Senders',
+          one: '{n} sender',
+          other: '{n} senders',
+          item: 'sender',
+          add: 'Add sender',
+        },
+        onderwerpen: {
+          title: 'Subjects',
+          one: '{n} subject',
+          other: '{n} subjects',
+          item: 'subject',
+          add: 'Add subject',
+        },
+      },
+      columns: { name: 'Name', triggers: 'Recognition words', remove: 'Remove' },
+      nameLabel: 'Name of {item} {n}',
+      triggersLabel: 'Recognition words of {item} {n}',
+      triggersPlaceholder: 'e.g. tax office, b/01',
+      remove: 'Remove',
+      removeLabel: 'Remove: {item} {n}',
+      empty: 'Nothing remembered yet.',
+    },
   },
   advanced: {
     title: 'Advanced',

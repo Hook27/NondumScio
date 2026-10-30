@@ -5,6 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { messages } from '../i18n';
 import { LanguageProvider } from '../i18n/LanguageContext';
 import { downloadFile } from '../pdf/save';
+import { DB_STORAGE_KEY, type RenameDb } from './database';
 import { RenameTool } from './RenameTool';
 import { resetRenameState } from './store';
 
@@ -61,8 +62,9 @@ const row = (file: string) => screen.getByText(file).closest('tr')!;
 beforeEach(() => vi.mocked(downloadFile).mockClear());
 afterEach(() => {
   cleanup();
-  // De stand blijft bewaard buiten het scherm; elke test begint leeg.
+  // De stand blijft bewaard buiten het scherm, en de database in de browser; elke test begint leeg.
   resetRenameState();
+  window.localStorage.clear();
 });
 
 describe('Slim hernoemen', () => {
@@ -210,6 +212,198 @@ describe('Slim hernoemen: de stand blijft', () => {
     fireEvent.click(screen.getByRole('button', { name: r.download }));
     await waitFor(() => expect(downloadFile).toHaveBeenCalledTimes(1));
     await waitFor(() => expect(leave()).toBe(false));
+  });
+});
+
+describe('Slim hernoemen: de database', () => {
+  const d = r.db;
+  const stored = (): RenameDb => JSON.parse(window.localStorage.getItem(DB_STORAGE_KEY)!);
+  const store = (db: RenameDb) => window.localStorage.setItem(DB_STORAGE_KEY, JSON.stringify(db));
+  const field = (label: string) => screen.getByLabelText<HTMLInputElement>(label);
+  const toView = (name: string) => fireEvent.click(screen.getByRole('button', { name }));
+
+  /** Een export zoals de HTML-tool hem schrijft; verzonnen namen. */
+  const EXPORT = JSON.stringify(
+    {
+      afzenders: [
+        { naam: 'Belastingdienst', triggers: ['belastingdienst'] },
+        { naam: 'ING', triggers: ['ing bank'] },
+      ],
+      onderwerpen: [{ naam: 'Aanslag', triggers: ['aanslag'] }],
+    },
+    null,
+    2,
+  );
+  const json = (text: string) => new File([text], 'export.json', { type: 'application/json' });
+  const importFile = (file: File) =>
+    fireEvent.change(document.querySelector('#rename-db-import')!, { target: { files: [file] } });
+
+  it('herkenwoorden gaan vóór de gok; zo’n veld heeft een groene rand tot je het aanpast', async () => {
+    store({
+      afzenders: [
+        { naam: 'Bank', triggers: ['bank'] },
+        { naam: 'ING', triggers: ['ing bank'] },
+      ],
+      onderwerpen: [{ naam: 'Rekening', triggers: ['afschrift'] }],
+    });
+    setup();
+    await open('bank1.pdf', 'gemeente.pdf');
+    const sender = field('Afzender van bank1.pdf');
+    // Het langste herkenwoord wint ("ing bank", niet "bank").
+    expect(sender.value).toBe('ING');
+    expect(field('Onderwerp van bank1.pdf').value).toBe('Rekening');
+    expect(nameOf('bank1.pdf')).toBe('260203 ing rekening.pdf');
+    expect(sender.classList.contains('rename-table__known')).toBe(true);
+    expect(document.getElementById(sender.getAttribute('aria-describedby')!)!.textContent).toBe(
+      r.known,
+    );
+    // Zonder herkenwoord in de tekst: de eigen gok, zonder groene rand.
+    const gemeente = field('Afzender van gemeente.pdf');
+    expect(gemeente.value).toBe('Gemeente Utrecht');
+    expect(gemeente.classList.contains('rename-table__known')).toBe(false);
+
+    fireEvent.input(sender, { target: { value: 'ING Bank' } });
+    expect(sender.classList.contains('rename-table__known')).toBe(false);
+    expect(sender.hasAttribute('aria-describedby')).toBe(false);
+  });
+
+  it('wat je invult, wordt onthouden en komt terug als suggestie', async () => {
+    setup();
+    await open('gemeente.pdf');
+    const sender = field('Afzender van gemeente.pdf');
+    expect(sender.getAttribute('list')).toBe('rename-senders');
+    fireEvent.input(sender, { target: { value: ' Gemeente Utrecht (OZB) ' } });
+    // Tijdens het typen nog niet; pas als je het veld verlaat.
+    expect(window.localStorage.getItem(DB_STORAGE_KEY)).toBeNull();
+    fireEvent.change(sender);
+    fireEvent.change(field('Onderwerp van gemeente.pdf'), { target: { value: 'OZB' } });
+    // Dezelfde naam met andere hoofdletters komt er niet nog eens bij.
+    fireEvent.change(sender, { target: { value: 'gemeente utrecht (ozb)' } });
+    expect(stored()).toEqual({
+      afzenders: [{ naam: 'Gemeente Utrecht (OZB)', triggers: [] }],
+      onderwerpen: [{ naam: 'OZB', triggers: [] }],
+    });
+    const options = [...document.querySelectorAll('#rename-senders option')];
+    expect(options.map((option) => option.getAttribute('value'))).toEqual([
+      'Gemeente Utrecht (OZB)',
+    ]);
+    // Wissen haalt de brieven weg, niet de database.
+    fireEvent.click(screen.getByRole('button', { name: r.clear }));
+    fireEvent.click(within(screen.getByRole('dialog')).getByRole('button', { name: r.clear }));
+    expect(stored().afzenders).toHaveLength(1);
+  });
+
+  it('bij downloaden: ook wat de tool zelf vond, van de meegenomen brieven', async () => {
+    store({
+      afzenders: [],
+      onderwerpen: [{ naam: 'aanslag gemeentelijke belastingen', triggers: ['x'] }],
+    });
+    setup();
+    await open('gemeente.pdf', 'bank1.pdf', 'scan.pdf');
+    fireEvent.click(screen.getByLabelText('bank1.pdf meenemen'));
+    // Nog niets aangepast: nog niets onthouden.
+    expect(stored().afzenders).toEqual([]);
+    fireEvent.click(screen.getByRole('button', { name: r.download }));
+    fireEvent.click(
+      within(screen.getByRole('dialog')).getByRole('button', {
+        name: messages.nl.saveDialog.download,
+      }),
+    );
+    await waitFor(() => expect(downloadFile).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect(stored().afzenders).toHaveLength(1));
+    // Niet de uitgevinkte bankbrief, geen lege velden (de scan zonder tekst), en een bekende naam
+    // (op hoofdletters na) niet nog eens.
+    expect(stored()).toEqual({
+      afzenders: [{ naam: 'Gemeente Utrecht', triggers: [] }],
+      onderwerpen: [{ naam: 'aanslag gemeentelijke belastingen', triggers: ['x'] }],
+    });
+  });
+
+  it('nieuwe herkenwoorden onder Database; Herken opnieuw past ze toe op de geladen brieven', async () => {
+    setup();
+    await open('gemeente.pdf');
+    fireEvent.input(screen.getByLabelText('Nieuwe naam voor gemeente.pdf'), {
+      target: { value: 'eigen naam' },
+    });
+    toView(r.views.database);
+    // De schakelaar houdt de focus, ook al staat hij nu op een andere plek.
+    const database = screen.getByRole('button', { name: r.views.database });
+    expect(database.getAttribute('aria-pressed')).toBe('true');
+    expect(document.activeElement).toBe(database);
+
+    fireEvent.click(screen.getByRole('button', { name: d.kinds.afzenders.add }));
+    const naam = field('Naam van afzender 1');
+    // Een nieuwe regel krijgt meteen de focus.
+    expect(document.activeElement).toBe(naam);
+    fireEvent.change(naam, { target: { value: 'Gemeente' } });
+    fireEvent.change(field('Herkenwoorden van afzender 1'), {
+      target: { value: 'postbus 16200' },
+    });
+
+    toView(r.views.rename);
+    // De lijst met brieven is er nog, met de eigen naam.
+    expect(nameOf('gemeente.pdf')).toBe('eigen naam');
+    fireEvent.click(screen.getByRole('button', { name: r.recognizeAgain }));
+    expect(field('Afzender van gemeente.pdf').value).toBe('Gemeente');
+    expect(field('Afzender van gemeente.pdf').classList.contains('rename-table__known')).toBe(true);
+    // De eigen naam maakt weer plaats voor het voorstel.
+    expect(nameOf('gemeente.pdf')).toBe('260312 gemeente aanslag gem.pdf');
+    expect(screen.getByRole('status').textContent).toBe(r.recognized);
+  });
+
+  it('regels bewerken en verwijderen; de rij blijft staan terwijl je bewerkt', () => {
+    setup();
+    toView(r.views.database);
+    expect(screen.getAllByText(d.empty)).toHaveLength(2);
+    fireEvent.click(screen.getByRole('button', { name: d.kinds.onderwerpen.add }));
+    fireEvent.click(screen.getByRole('button', { name: d.kinds.onderwerpen.add }));
+    const naam = field('Naam van onderwerp 1');
+    fireEvent.change(naam, { target: { value: '  Notaris  ' } });
+    // Dezelfde rij (het veld is niet opnieuw gemaakt), dus de focus blijft waar hij was.
+    expect(field('Naam van onderwerp 1')).toBe(naam);
+    expect(naam.value).toBe('Notaris');
+    const triggers = field('Herkenwoorden van onderwerp 1');
+    fireEvent.change(triggers, { target: { value: 'notaris,  notariaat ,' } });
+    expect(triggers.value).toBe('notaris, notariaat');
+    expect(stored().onderwerpen).toEqual([
+      { naam: 'Notaris', triggers: ['notaris', 'notariaat'] },
+      { naam: '', triggers: [] },
+    ]);
+    expect(screen.getByText('2 onderwerpen')).toBeTruthy();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Verwijderen: onderwerp 1' }));
+    expect(stored().onderwerpen).toEqual([{ naam: '', triggers: [] }]);
+    expect(field('Naam van onderwerp 1').value).toBe('');
+  });
+
+  it('importeren voegt samen; exporteren geeft het bestand van de HTML-tool', async () => {
+    store({ afzenders: [{ naam: 'ing', triggers: ['nl99ingb'] }], onderwerpen: [] });
+    setup();
+    toView(r.views.database);
+    importFile(json(EXPORT));
+    expect(
+      await screen.findByText('Geïmporteerd en samengevoegd: +1 afzender, +1 onderwerp.'),
+    ).toBeTruthy();
+    expect(stored()).toEqual({
+      afzenders: [
+        { naam: 'ing', triggers: ['nl99ingb', 'ing bank'] },
+        { naam: 'Belastingdienst', triggers: ['belastingdienst'] },
+      ],
+      onderwerpen: [{ naam: 'Aanslag', triggers: ['aanslag'] }],
+    });
+    expect(field('Herkenwoorden van afzender 1').value).toBe('nl99ingb, ing bank');
+
+    fireEvent.click(screen.getByRole('button', { name: d.export }));
+    expect(downloadFile).toHaveBeenCalledTimes(1);
+    const [bytes, name, type] = vi.mocked(downloadFile).mock.calls[0]!;
+    expect([name, type]).toEqual(['pdf-hernoemer-database.json', 'application/json']);
+    const text = new TextDecoder().decode(bytes as Uint8Array);
+    expect(text).toBe(JSON.stringify(stored(), null, 2));
+    expect(screen.getByText('Geëxporteerd: 2 afzenders, 1 onderwerp.')).toBeTruthy();
+
+    importFile(json('{"afzenders": []}'));
+    expect((await screen.findByRole('alert')).textContent).toBe(d.importError);
+    expect(stored().afzenders).toHaveLength(2);
   });
 });
 
