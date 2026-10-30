@@ -791,6 +791,110 @@ h1 {
   gap: 0.5rem;
 }
 
+/* Slim hernoemen (Geavanceerd): de tabel met voorstellen */
+.rename-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.9rem;
+}
+
+.rename-table th,
+.rename-table td {
+  padding: 0.45rem 0.4rem;
+  border-bottom: 1px solid var(--border);
+  text-align: left;
+  vertical-align: top;
+}
+
+.rename-table th {
+  color: var(--text-muted);
+  font-weight: 600;
+}
+
+.rename-table input[type='text'],
+.rename-table select {
+  width: 100%;
+  min-width: 0;
+  padding: 0.35rem 0.45rem;
+  background: var(--bg);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  font: inherit;
+}
+
+.rename-table input[aria-invalid='true'] {
+  border-color: var(--candidate);
+}
+
+.rename-table select {
+  margin-top: 0.3rem;
+  font-size: 0.8rem;
+}
+
+.rename-table__include {
+  width: 2rem;
+}
+
+.rename-table__date {
+  width: 9rem;
+}
+
+.rename-table__name {
+  width: 30%;
+}
+
+.rename-table__original {
+  max-width: 16rem;
+  overflow-wrap: anywhere;
+}
+
+.rename-table__file {
+  display: block;
+  font-weight: 600;
+}
+
+.rename-table__problem,
+.rename-table__meta {
+  display: block;
+  margin-top: 0.25rem;
+  color: var(--text-muted);
+  font-size: 0.8rem;
+}
+
+.rename-table__text {
+  max-height: 12rem;
+  margin: 0.35rem 0 0;
+  padding: 0.4rem;
+  overflow: auto;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  font-size: 0.75rem;
+  white-space: pre-wrap;
+}
+
+.rename-table__skip td:not(.rename-table__include) {
+  opacity: 0.5;
+}
+
+.rename-table__warn td:first-child {
+  box-shadow: inset 3px 0 0 var(--candidate);
+}
+
+.link-button {
+  display: block;
+  margin-top: 0.25rem;
+  padding: 0;
+  background: none;
+  color: var(--accent);
+  border: 0;
+  font: inherit;
+  font-size: 0.8rem;
+  text-decoration: underline;
+  cursor: pointer;
+}
+
 /* Venster dat om bevestiging vraagt (zelfde stijl als "Opslaan als") */
 .confirm-dialog__text {
   margin: 0 0 1.25rem;
@@ -1492,6 +1596,16 @@ h1 {
     grid-template-columns: minmax(22rem, 28rem) minmax(0, 1fr);
     gap: 1.25rem;
     min-height: 0;
+  }
+
+  /* Geavanceerd: het omhulsel om een onderdeel doet niet mee, zodat het werkvak de ruimte vult. */
+  .advanced-tool {
+    display: contents;
+  }
+
+  /* Slim hernoemen: een smaller linkervak, zodat de tabel met namen meer ruimte heeft. */
+  .workspace.rename {
+    grid-template-columns: minmax(15rem, 18rem) minmax(0, 1fr);
   }
 
   /* Een beetje ruimte rondom, zodat het focuskader niet wordt afgeknipt. */

@@ -1,3 +1,5 @@
+import type { FunctionComponent } from 'preact';
+import { useEffect, useState } from 'preact/hooks';
 import { useI18n } from '../i18n/LanguageContext';
 import { ADVANCED_IDS, hrefFor, type AdvancedId } from '../router';
 
@@ -52,9 +54,30 @@ export function AdvancedToolPage({ id }: { id: AdvancedId }) {
         <p class="task-head__lead">{tool.description}</p>
       </div>
       <p class="lead mobile-only">{a.desktopOnly}</p>
-      <div class="desktop-only">
-        <p class="lead">{a.soon}</p>
+      {/* Op een breed scherm telt dit omhulsel niet mee voor de opmaak: dan vult het werkvak de
+          ruimte en scrolt elk vak zelf, zoals bij de taken. */}
+      <div class="desktop-only advanced-tool">
+        <Tool id={id} />
       </div>
     </>
   );
+}
+
+/** Laadt een onderdeel pas als het geopend wordt, zodat de rest van de app er niet zwaarder van wordt. */
+const tools: Record<AdvancedId, () => Promise<FunctionComponent>> = {
+  rename: async () => (await import('../rename/RenameTool')).RenameTool,
+};
+
+function Tool({ id }: { id: AdvancedId }) {
+  const [Component, setComponent] = useState<FunctionComponent | null>(null);
+  useEffect(() => {
+    let cancelled = false;
+    void tools[id]().then((loaded) => {
+      if (!cancelled) setComponent(() => loaded);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [id]);
+  return Component ? <Component /> : null;
 }
