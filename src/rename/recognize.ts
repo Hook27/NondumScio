@@ -1,7 +1,9 @@
 /**
  * Slim hernoemen: uit de tekst van een gescande brief een bestandsnaam voorstellen,
  * `JJMMDD afzender onderwerp.pdf`. Overgenomen uit Jörgs `pdf-hernoemer.html` (daar beproefd met
- * echte scans); de regels en de scores zijn bewust gelijk gehouden.
+ * echte scans); de regels en de scores zijn bewust gelijk gehouden, behalve bij de datum: daar
+ * zijn ingangs- en einddatums ("per 1 januari") en de plaats vóór de datum ("Heerlen,") later
+ * toegevoegd, na brieven waar het misging.
  */
 
 /** Een stukje tekst van pdf.js (`getTextContent`), met zijn plek op de pagina. */
@@ -89,15 +91,36 @@ export type DateCandidate = {
   ymd: string;
   score: number;
   source: DateSource;
-  /** Zoals hij in de tekst (of de naam) stond. */
+  /** Zoals hij in de tekst (of de naam) stond; bij een ingangsdatum met het woord ervoor. */
   raw: string;
+  /**
+   * Een ingangs-, eind- of verwijsdatum ("per 1 januari 2026", "vervaldatum 30 juni"): geen
+   * briefdatum. Hij staat wel in de lijst, maar wordt niet vanzelf gekozen.
+   */
+  excluded: boolean;
 };
 
+/** Een label waar de briefdatum bij staat (niet "vervaldatum" of "geboortedatum"). */
+const DATE_LABEL = /\b(?:datum|dagtekening|verzonden|verzenddatum|briefdatum|factuurdatum)\b/i;
+
+/** Hetzelfde label aan het eind van een regel: de datum staat dan op de regel eronder. */
+const DATE_LABEL_ABOVE = /\b(?:datum|dagtekening|verzenddatum|briefdatum)\s*:?\s*$/i;
+
+/** Woorden vlak vóór een datum die er een ingangs-, eind- of verwijsdatum van maken. */
+const NOT_LETTER_DATE =
+  /(?:\b(?:per|op|vanaf|van|sinds|tot(?: en met)?|t\/m|t\.m\.|v[oó]{2}r|uiterlijk|m\.i\.v\.?|met ingang van)|(?:verval|geboorte|ingangs|eind|betaal|verloop)datum\s*:?)\s*$/i;
+
+/** Een plaatsnaam met een komma, zoals in "Heerlen, 3 november 2025" (ook "'s-Hertogenbosch,"). */
+const PLACE = /^(?:['’]s-)?[A-ZÀ-Þ][\p{L}'’ .-]{1,30},\s*$/u;
+
 /**
- * Alle datums in de tekst, de waarschijnlijkste eerst. Een datum bij "datum" of "dagtekening"
- * telt zwaar, een datum hoger op de pagina iets zwaarder, een uitgeschreven datum ook. Als laatste
- * redmiddel telt een datum in de bestandsnaam van de scan (`scan_20260613_…`) mee. Jaren voor 1990
- * of na volgend jaar vallen weg.
+ * Alle datums in de tekst, de waarschijnlijkste eerst. Een datum bij "datum" of "dagtekening" (ook
+ * als dat label op de regel erboven staat) of na een plaatsnaam ("Heerlen,") telt zwaar, een datum
+ * hoger op de pagina iets zwaarder, een uitgeschreven datum ook. Een datum na "per", "vanaf", "tot",
+ * "vóór" en dergelijke (`NOT_LETTER_DATE`) is geen briefdatum: die komt achteraan en wordt niet
+ * vanzelf gekozen (zie `pickDate`), behalve als de regel zelf een datumlabel heeft ("verzonden op").
+ * Als laatste redmiddel telt een datum in de bestandsnaam van de scan (`scan_20260613_…`) mee.
+ * Jaren voor 1990 of na volgend jaar vallen weg.
  */
 export function findDates(
   lines: readonly string[],
@@ -124,6 +147,7 @@ export function findDates(
     source: DateSource,
     raw: string,
     bonus = 0,
+    excluded = false,
   ) => {
     if (!(month >= 1 && month <= 12) || !(day >= 1 && day <= 31)) return;
     if (year < 1990 || year > nowYear + 1) return;
@@ -135,20 +159,39 @@ export function findDates(
       String(year % 100).padStart(2, '0') +
       String(month).padStart(2, '0') +
       String(day).padStart(2, '0');
-    candidates.push({ ymd, score, source, raw: raw.trim() });
+    candidates.push({ ymd, score, source, raw: raw.trim(), excluded });
   };
 
   lines.forEach((line, index) => {
-    const near = /datum|dagtekening|verzonden|verzenddatum/i.test(line);
+    const labelled = DATE_LABEL.test(line);
+    const above = index > 0 ? lines[index - 1]! : '';
     const early = (total - index) / total;
+    const found = (
+      m: RegExpMatchArray,
+      source: DateSource,
+      day: number,
+      month: number,
+      year: number,
+    ) => {
+      const before = line.slice(0, m.index ?? 0);
+      // Het label of de plaats op de regel erboven telt alleen als de datum vooraan staat.
+      const first = before.trim() === '';
+      const near =
+        labelled ||
+        PLACE.test(before) ||
+        (first && (DATE_LABEL_ABOVE.test(above) || PLACE.test(above)));
+      const context = labelled ? null : NOT_LETTER_DATE.exec(before);
+      const raw = context ? `${context[0].trim()} ${m[0]}` : m[0];
+      add(day, month, year, near, early, source, raw, 0, context !== null);
+    };
     for (const m of line.matchAll(reText)) {
-      add(+m[1]!, MONTHS[m[2]!.toLowerCase()]!, +m[3]!, near, early, 'text', m[0]);
+      found(m, 'text', +m[1]!, MONTHS[m[2]!.toLowerCase()]!, +m[3]!);
     }
-    for (const m of line.matchAll(reIso)) add(+m[3]!, +m[2]!, +m[1]!, near, early, 'iso', m[0]);
+    for (const m of line.matchAll(reIso)) found(m, 'iso', +m[3]!, +m[2]!, +m[1]!);
     for (const m of line.matchAll(reNum)) {
       let year = +m[3]!;
       if (year < 100) year += year < 70 ? 2000 : 1900;
-      add(+m[1]!, +m[2]!, year, near, early, 'dmy', m[0]);
+      found(m, 'dmy', +m[1]!, +m[2]!, year);
     }
   });
 
@@ -157,13 +200,21 @@ export function findDates(
     add(+fromName[3]!, +fromName[2]!, +fromName[1]!, false, 0, 'fileName', fromName[0], -3);
   }
 
-  // Per datum de hoogste score.
+  // Een briefdatum gaat vóór een ingangsdatum; daarna de hoogste score.
+  const better = (a: DateCandidate, b: DateCandidate) =>
+    a.excluded !== b.excluded ? (a.excluded ? 1 : -1) : b.score - a.score;
+  // Per datum de beste plek waar hij stond.
   const best = new Map<string, DateCandidate>();
   for (const candidate of candidates) {
     const known = best.get(candidate.ymd);
-    if (!known || candidate.score > known.score) best.set(candidate.ymd, candidate);
+    if (!known || better(candidate, known) < 0) best.set(candidate.ymd, candidate);
   }
-  return [...best.values()].sort((a, b) => b.score - a.score);
+  return [...best.values()].sort(better);
+}
+
+/** De datum die vanzelf wordt ingevuld: de beste briefdatum, of leeg (nooit een ingangsdatum). */
+export function pickDate(candidates: readonly DateCandidate[]): string {
+  return candidates.find((candidate) => !candidate.excluded)?.ymd ?? '';
 }
 
 /* Afzender */
