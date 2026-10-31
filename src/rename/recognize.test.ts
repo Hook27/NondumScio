@@ -158,6 +158,7 @@ describe('findDates en pickDate: briefdatum of ingangsdatum', () => {
       'Vervaldatum:',
       'geboortedatum',
       'Ingangsdatum',
+      'Wijzigingsdatum',
     ];
     for (const words of before) {
       const line = `${words} 1 mei 2026`;
@@ -171,6 +172,28 @@ describe('findDates en pickDate: briefdatum of ingangsdatum', () => {
     expect(pick(['Datum van verzending: 3 mei 2026'])).toBe('260503');
     // Een woord dat er alleen op lijkt, telt niet ("koop 1 mei").
     expect(pick(['Koop 1 mei 2026 iets moois'])).toBe('260501');
+  });
+
+  it('staat het woord aan het eind van de regel erboven, dan telt het ook', () => {
+    // Zoals de tekstlaag de regels afbreekt: het woord op de ene regel, de datum op de volgende.
+    const lines = [
+      'Verzekeraar',
+      'Wilt u opzeggen? Laat ons dit dan weten vóór',
+      '1 februari 2026. Dit kan via MijnVerzekeraar.',
+      'Er komen meer uitkeringen. We verhogen daarom per',
+      '1 januari 2027 de premie van uw verzekering.',
+    ];
+    expect(
+      findDates(lines, 'f.pdf', 2026).map((date) => [date.ymd, date.raw, date.excluded]),
+    ).toEqual([
+      ['260201', 'vóór 1 februari 2026', true],
+      ['270101', 'per 1 januari 2027', true],
+    ]);
+    expect(pick(lines)).toBe('');
+    // Alleen als de datum vooraan de regel staat.
+    expect(pick(['Laat ons dit weten vóór', 'Heerlen, 3 november 2025'])).toBe('251103');
+    // Met een datumlabel op de regel erboven is het wel de briefdatum.
+    expect(pick(['Verzonden op', '3 mei 2026'])).toBe('260503');
   });
 
   it('een vervaldatum is geen datumlabel', () => {

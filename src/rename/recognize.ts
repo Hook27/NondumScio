@@ -108,7 +108,7 @@ const DATE_LABEL_ABOVE = /\b(?:datum|dagtekening|verzenddatum|briefdatum)\s*:?\s
 
 /** Woorden vlak vóór een datum die er een ingangs-, eind- of verwijsdatum van maken. */
 const NOT_LETTER_DATE =
-  /(?:\b(?:per|op|vanaf|van|sinds|tot(?: en met)?|t\/m|t\.m\.|v[oó]{2}r|uiterlijk|m\.i\.v\.?|met ingang van)|(?:verval|geboorte|ingangs|eind|betaal|verloop)datum\s*:?)\s*$/i;
+  /(?:\b(?:per|op|vanaf|van|sinds|tot(?: en met)?|t\/m|t\.m\.|v[oó]{2}r|uiterlijk|m\.i\.v\.?|met ingang van)|(?:verval|geboorte|ingangs|eind|betaal|verloop|wijzigings)datum\s*:?)\s*$/i;
 
 /** Een plaatsnaam met een komma, zoals in "Heerlen, 3 november 2025" (ook "'s-Hertogenbosch,"). */
 const PLACE = /^(?:['’]s-)?[A-ZÀ-Þ][\p{L}'’ .-]{1,30},\s*$/u;
@@ -119,6 +119,8 @@ const PLACE = /^(?:['’]s-)?[A-ZÀ-Þ][\p{L}'’ .-]{1,30},\s*$/u;
  * hoger op de pagina iets zwaarder, een uitgeschreven datum ook. Een datum na "per", "vanaf", "tot",
  * "vóór" en dergelijke (`NOT_LETTER_DATE`) is geen briefdatum: die komt achteraan en wordt niet
  * vanzelf gekozen (zie `pickDate`), behalve als de regel zelf een datumlabel heeft ("verzonden op").
+ * Staat de datum vooraan een regel, dan telt zo'n woord ook aan het eind van de regel erboven: de
+ * tekstlaag breekt regels af zoals ze op papier staan ("Laat het ons weten vóór" / "1 februari").
  * Als laatste redmiddel telt een datum in de bestandsnaam van de scan (`scan_20260613_…`) mee.
  * Jaren voor 1990 of na volgend jaar vallen weg.
  */
@@ -180,7 +182,10 @@ export function findDates(
         labelled ||
         PLACE.test(before) ||
         (first && (DATE_LABEL_ABOVE.test(above) || PLACE.test(above)));
-      const context = labelled ? null : NOT_LETTER_DATE.exec(before);
+      const context = labelled
+        ? null
+        : (NOT_LETTER_DATE.exec(before) ??
+          (first && !DATE_LABEL.test(above) ? NOT_LETTER_DATE.exec(above) : null));
       const raw = context ? `${context[0].trim()} ${m[0]}` : m[0];
       add(day, month, year, near, early, source, raw, 0, context !== null);
     };
