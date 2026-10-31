@@ -22,6 +22,8 @@ const LETTERS: Record<string, string[] | Error> = {
   'bank2.pdf': ['ING Bank N.V.', 'Datum 3-2-2026', 'Betreft: Afschrift'],
   'scan.pdf': [],
   'kapot.pdf': new Error('kapot'),
+  // De briefdatum ontbreekt in de tekstlaag; alleen een ingangsdatum.
+  'premie.pdf': ['Verzekeraar', 'Heerlen,', 'Onderwerp: premieverhoging per 1 januari 2026'],
   'ocr-gemeente.pdf': [],
   'ocr-kapot.pdf': [],
 };
@@ -171,6 +173,19 @@ describe('Slim hernoemen', () => {
     expect(within(row('bank1.pdf')).getByText(/geen datum/)).toBeTruthy();
     fireEvent.change(select, { target: { value: '260203' } });
     expect(nameOf('bank1.pdf')).toBe('260203 ing bank n afschrift.pdf');
+  });
+
+  it('een ingangsdatum ("per 1 januari") wordt niet de datum: liever leeg, wel in de lijst', async () => {
+    setup();
+    await open('premie.pdf');
+    expect(screen.getByLabelText<HTMLInputElement>('Datum voor premie.pdf').value).toBe('');
+    expect(within(row('premie.pdf')).getByText(/geen datum/)).toBeTruthy();
+    expect(row('premie.pdf').classList.contains('rename-table__warn')).toBe(true);
+    const select = screen.getByLabelText<HTMLSelectElement>('Gevonden datums in premie.pdf');
+    expect([...select.options].map((option) => option.textContent)).toEqual([
+      r.candidates,
+      '260101 · tekst: per 1 januari 2026',
+    ]);
   });
 
   it('dubbele namen krijgen een volgnummer en een melding; uitvinken haalt dat weg', async () => {
