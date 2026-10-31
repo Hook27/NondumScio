@@ -12,6 +12,7 @@ import { DatabaseView } from './DatabaseView';
 import { PreviewDialog } from './PreviewDialog';
 import { openScanReader, readLines, type ScanReader } from './readText';
 import { RenameMerge } from './RenameMerge';
+import { stamp } from './stamp';
 import {
   clearDate,
   findDates,
@@ -158,12 +159,6 @@ function rememberAll(docs: readonly RenameDoc[]) {
     db = learn(db, 'onderwerpen', doc.subject);
   }
   setRenameDb(db);
-}
-
-/** Datum-tijdstempel JJJJMMDD_UUMM, voor de naam van de ZIP. */
-function stamp(now = new Date()) {
-  const p = (n: number) => String(n).padStart(2, '0');
-  return `${now.getFullYear()}${p(now.getMonth() + 1)}${p(now.getDate())}_${p(now.getHours())}${p(now.getMinutes())}`;
 }
 
 /**
