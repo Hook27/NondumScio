@@ -1,0 +1,34 @@
+<!doctype html>
+<html lang="nl">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="color-scheme" content="light dark" />
+    <title>Nondum Scio</title>
+    <link rel="icon" href="./favicon.svg" type="image/svg+xml" />
+    <script>
+      // Past een bewaarde themakeuze toe vóór de eerste weergave, zodat de pagina niet
+      // even in het verkeerde thema oplicht. Houd de sleutel gelijk aan src/theme.ts.
+      (function () {
+        try {
+          var theme = localStorage.getItem('nondumscio:theme');
+          if (theme === 'light' || theme === 'dark') {
+            document.documentElement.dataset.theme = theme;
+          }
+        } catch (error) {
+          /* opslag niet beschikbaar: het systeemthema geldt */
+        }
+      })();
+    </script>
+    <script type="module" crossorigin src="./assets/index-DPJ7PyH0.js"></script>
+    <link rel="stylesheet" crossorigin href="./assets/index-ByHzsj_-.css">
+  </head>
+  <body>
+    <div id="app">
+      <noscript>
+        <h1>Nondum Scio</h1>
+        <p>Deze PDF-werkbank heeft JavaScript nodig om in je browser te kunnen werken.</p>
+      </noscript>
+    </div>
+  </body>
+</html>
