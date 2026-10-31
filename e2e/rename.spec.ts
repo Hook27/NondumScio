@@ -21,6 +21,31 @@ async function letter(lines: string[]): Promise<Buffer> {
   return Buffer.from(await doc.save());
 }
 
+/** Een brief met een eigen paginabreedte (om de volgorde in het resultaat te herkennen). */
+async function letterOf(lines: string[], width: number, pages = 1): Promise<Buffer> {
+  const doc = await PDFDocument.create();
+  const font = await doc.embedFont(StandardFonts.Helvetica);
+  for (let n = 0; n < pages; n += 1) {
+    const page = doc.addPage([width, 842]);
+    lines.forEach((line, i) => page.drawText(line, { x: 40, y: 780 - i * 24, size: 12, font }));
+  }
+  return Buffer.from(await doc.save());
+}
+
+/** De bladwijzers zoals een PDF-lezer ze ziet (gelezen met pdf.js): titel en pagina (vanaf 1). */
+async function readOutline(path: string) {
+  const pdfjs = await import('pdfjs-dist/legacy/build/pdf.mjs');
+  const doc = await pdfjs.getDocument({ data: new Uint8Array(readFileSync(path)) }).promise;
+  const outline = (await doc.getOutline()) ?? [];
+  const result = [];
+  for (const item of outline) {
+    const dest = item.dest as [{ num: number; gen: number }, ...unknown[]];
+    result.push({ title: item.title, page: (await doc.getPageIndex(dest[0])) + 1 });
+  }
+  await doc.loadingTask.destroy();
+  return result;
+}
+
 const nameOf = (page: Page, file: string) => page.getByLabel(`Nieuwe naam voor ${file}`);
 
 async function openLetters(page: Page, count: number) {
@@ -208,6 +233,64 @@ test.describe('Slim hernoemen', () => {
     // Terug naar Hernoemen: de brieven staan er nog.
     await toView(r.views.rename);
     await expect(nameOf(page, 'scan_001.pdf')).toHaveValue('260312 gemeente utrecht ozb.pdf');
+  });
+
+  test('samenvoegen: op datum, met een losse PDF, eigen volgorde en bladwijzers', async ({
+    page,
+  }) => {
+    await openPage(page, '/#/advanced/rename', { lang: 'nl' });
+    await page.locator('#rename-files').setInputFiles([
+      {
+        name: 'scan_001.pdf',
+        mimeType: 'application/pdf',
+        buffer: await letterOf(['ING Bank N.V.', 'Datum 3-2-2026', 'Betreft: Afschrift'], 400, 2),
+      },
+      {
+        name: 'scan_002.pdf',
+        mimeType: 'application/pdf',
+        buffer: await letterOf(['Gemeente Utrecht', 'Datum: 12 maart 2026', 'Betreft: OZB'], 500),
+      },
+    ]);
+    await expect(nameOf(page, 'scan_002.pdf')).toHaveValue('260312 gemeente utrecht ozb.pdf');
+    await page.getByRole('button', { name: r.views.merge }).click();
+    await page.locator('#rename-merge-add').setInputFiles({
+      name: '260101 notaris akte.pdf',
+      mimeType: 'application/pdf',
+      buffer: await letterOf(['Notaris'], 300),
+    });
+    await expect(page.getByText(r.merge.addedOne)).toBeVisible();
+    const rows = page.locator('.rename-merge tbody tr');
+    await expect(rows.locator('.rename-table__file')).toHaveText([
+      '260312 gemeente utrecht ozb.pdf',
+      '260203 ing bank n afschrift.pdf',
+      /^260101 notaris akte\.pdf\s*extern$/,
+    ]);
+    await expect(
+      page.getByText('3 bestanden · 4 pagina’s · eerst de nieuwste, als laatste de oudste'),
+    ).toBeVisible();
+    const result = await new AxeBuilder({ page })
+      .withTags(['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa'])
+      .analyze();
+    expect(result.violations).toEqual([]);
+
+    // De notaris naar boven: de focus blijft bij de pijlen van die brief.
+    const up = page.getByRole('button', { name: '260101 notaris akte.pdf omhoog' });
+    await up.click();
+    await up.click();
+    await expect(
+      page.getByRole('button', { name: '260101 notaris akte.pdf omlaag' }),
+    ).toBeFocused();
+
+    const download = await downloadVia(page, page.getByRole('button', { name: r.merge.download }));
+    expect(download.suggestedFilename()).toBe('260101-260312 samengevoegd.pdf');
+    const path = (await download.path())!;
+    const merged = await PDFDocument.load(readFileSync(path));
+    expect(merged.getPages().map((p) => p.getWidth())).toEqual([300, 500, 400, 400]);
+    expect(await readOutline(path)).toEqual([
+      { title: '260101 notaris akte', page: 1 },
+      { title: '260312 gemeente utrecht ozb', page: 2 },
+      { title: '260203 ing bank n afschrift', page: 3 },
+    ]);
   });
 
   test('bekijken: de PDF in een venster, pagina voor pagina', async ({ page }) => {

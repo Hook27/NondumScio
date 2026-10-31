@@ -23,3 +23,10 @@ export async function readLines(file: File): Promise<{ pageCount: number; lines:
     closePdf(pdf);
   }
 }
+
+/** Het aantal pagina's van een PDF (voor een losse PDF bij het samenvoegen). */
+export async function countPages(file: File): Promise<number> {
+  const { pdf, pageCount } = await loadPdf(new Uint8Array(await file.arrayBuffer()));
+  closePdf(pdf);
+  return pageCount;
+}

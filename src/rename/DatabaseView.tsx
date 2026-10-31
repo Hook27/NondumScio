@@ -1,4 +1,3 @@
-import type { ComponentChildren } from 'preact';
 import { useLayoutEffect, useRef, useState } from 'preact/hooks';
 import { PaneHead } from '../components/WorkspaceParts';
 import { useI18n } from '../i18n/LanguageContext';
@@ -42,7 +41,7 @@ function setList(kind: DbKind, change: (list: readonly DbEntry[]) => DbEntry[]) 
  * De database van Slim hernoemen: afzenders en onderwerpen met hun herkenwoorden, te bewerken,
  * te exporteren en te importeren (in de vorm van de HTML-tool, zodat een bestand in beide werkt).
  */
-export function DatabaseView({ head }: { head: ComponentChildren }) {
+export function DatabaseView() {
   const { t } = useI18n();
   const d = t.rename.db;
   const db = useRenameDb();
@@ -81,7 +80,6 @@ export function DatabaseView({ head }: { head: ComponentChildren }) {
   return (
     <section class="workspace rename" aria-labelledby="rename-db-title">
       <div class="workspace__tools">
-        {head}
         <div class="document__bar">
           <div class="document__info">
             <h2 id="rename-db-title" class="document__name">
