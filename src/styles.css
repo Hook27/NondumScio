@@ -897,9 +897,9 @@ h1 {
   margin-top: 0.5rem;
 }
 
-/* De keuze tussen Hernoemen en Database boven het openvak, zoals bij Omzetten. */
+/* De keuze tussen Hernoemen, Samenvoegen en Database: op een vaste plek boven het werkvak. */
 .rename-mode {
-  max-width: 42rem;
+  max-width: 36rem;
   margin: 0 0 0.75rem;
 }
 
@@ -929,6 +929,48 @@ h1 {
 
 .rename-db__add {
   margin-top: 0.75rem;
+}
+
+/* Samenvoegen: de volgorde van de brieven. */
+.rename-merge td {
+  vertical-align: middle;
+}
+
+.rename-merge__position {
+  width: 2.5rem;
+  color: var(--text-muted);
+}
+
+.rename-merge__date {
+  width: 7rem;
+  white-space: nowrap;
+}
+
+.rename-merge__pages {
+  width: 5.5rem;
+}
+
+.rename-merge__order {
+  width: 6.5rem;
+}
+
+.rename-merge__arrows {
+  display: inline-flex;
+  gap: 0.25rem;
+}
+
+.rename-merge__tag {
+  margin-left: 0.4rem;
+  padding: 0.05rem 0.4rem;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  color: var(--text-muted);
+  font-size: 0.75rem;
+  font-weight: 400;
+}
+
+.rename-merge__empty {
+  color: var(--text-muted);
 }
 
 .link-button {

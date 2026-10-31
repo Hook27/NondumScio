@@ -20,10 +20,22 @@ export type RenameDoc = {
   customName: string;
   showText: boolean;
   error: boolean;
+  /** Aantal pagina's (voor het samenvoegen); 0 als de PDF niet te lezen was. */
+  pageCount: number;
 };
 
-/** Wat de tool laat zien: de brieven om te hernoemen, of de database. */
-export type RenameView = 'rename' | 'database';
+/** Een al hernoemde PDF die je los toevoegt, alleen om mee samen te voegen. */
+export type ExtraDoc = {
+  id: number;
+  file: File;
+  /** JJMMDD uit de bestandsnaam, of leeg. */
+  date: string;
+  pageCount: number;
+  error: boolean;
+};
+
+/** Wat de tool laat zien: de brieven om te hernoemen, ze samenvoegen, of de database. */
+export type RenameView = 'rename' | 'merge' | 'database';
 
 export type RenameState = {
   view: RenameView;
@@ -34,6 +46,14 @@ export type RenameState = {
   saved: string | null;
   /** Er is iets veranderd sinds het laatste downloaden. */
   changed: boolean;
+  /** Samenvoegen: los toegevoegde, al hernoemde PDF's. */
+  extras: ExtraDoc[];
+  /** Samenvoegen: de eigen volgorde (ids) na schuiven, of `null` om op datum te sorteren. */
+  mergeOrder: number[] | null;
+  /** Samenvoegen: de PDF's (ids) die uitgezet zijn. */
+  mergeSkip: ReadonlySet<number>;
+  /** Samenvoegen: een bladwijzer per brief, met zijn nieuwe naam. */
+  bookmarks: boolean;
 };
 
 const INITIAL: RenameState = {
@@ -43,7 +63,31 @@ const INITIAL: RenameState = {
   showAll: true,
   saved: null,
   changed: false,
+  extras: [],
+  mergeOrder: null,
+  mergeSkip: new Set(),
+  bookmarks: true,
 };
+
+/** Wat Wissen leeg maakt: de brieven, de losse PDF's en wat je bij samenvoegen koos. */
+export function clearRename(): void {
+  setRenameState(() => ({
+    docs: [],
+    extras: [],
+    mergeOrder: null,
+    mergeSkip: new Set(),
+    saved: null,
+    changed: false,
+  }));
+}
+
+let lastId = 0;
+
+/** Een nieuw nummer voor een brief of losse PDF; uniek over beide. */
+export function newId(): number {
+  lastId += 1;
+  return lastId;
+}
 
 /**
  * De stand van Slim hernoemen, buiten het scherm bewaard: wie naar een andere taak gaat en terugkomt,

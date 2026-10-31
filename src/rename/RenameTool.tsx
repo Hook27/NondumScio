@@ -1,5 +1,4 @@
-import type { ComponentChildren } from 'preact';
-import { useLayoutEffect, useRef, useState } from 'preact/hooks';
+import { useState } from 'preact/hooks';
 import { ConfirmDialog } from '../components/ConfirmDialog';
 import { Dropzone } from '../components/Dropzone';
 import { PaneHead } from '../components/WorkspaceParts';
@@ -12,6 +11,7 @@ import { learn, recognize, suggestions, type DbKind, type RenameDb } from './dat
 import { DatabaseView } from './DatabaseView';
 import { PreviewDialog } from './PreviewDialog';
 import { readLines } from './readText';
+import { RenameMerge } from './RenameMerge';
 import {
   findDates,
   findSender,
@@ -21,8 +21,10 @@ import {
   uniqueNames,
 } from './recognize';
 import {
+  clearRename,
   getRenameDb,
   getRenameState,
+  newId,
   setRenameDb,
   setRenameState,
   useRenameDb,
@@ -30,8 +32,6 @@ import {
   type RenameDoc,
   type RenameView,
 } from './store';
-
-let nextId = 1;
 
 /** Wat de database in de tekst van een brief herkent; dat gaat vóór wat de tool zelf vond. */
 function fromDb(lines: readonly string[], db: RenameDb): Partial<RenameDoc> {
@@ -71,40 +71,30 @@ function stamp(now = new Date()) {
  * Slim hernoemen: gescande brieven openen, per brief een naam voorstellen
  * (`JJMMDD afzender onderwerp.pdf`), die nakijken en hernoemde kopieën downloaden. Werkt los van de
  * gewone taken, met een eigen lijst bestanden. De stand staat buiten het scherm (`store.ts`), zodat
- * hij blijft als je even naar een andere taak gaat. Met de schakelaar bovenaan ga je naar de
- * database met afzenders en onderwerpen.
+ * hij blijft als je even naar een andere taak gaat. Met de schakelaar bovenaan ga je naar
+ * samenvoegen en naar de database met afzenders en onderwerpen.
  */
 export function RenameTool() {
   const { view } = useRenameState();
-  const restoreFocus = useRef(false);
-  const toggle = <ViewToggle view={view} restoreFocus={restoreFocus} />;
-  return view === 'database' ? <DatabaseView head={toggle} /> : <RenameList head={toggle} />;
+  return (
+    <>
+      {/* Op een vaste plek boven het werkvak, zodat hij niet verspringt (en de focus houdt). */}
+      <div class="rename-mode">
+        <ViewToggle view={view} />
+      </div>
+      {view === 'merge' ? <RenameMerge /> : view === 'database' ? <DatabaseView /> : <RenameList />}
+    </>
+  );
 }
 
-/**
- * De keuze tussen Hernoemen en Database, zoals bij Omzetten. De knoppen staan in elke weergave op
- * een andere plek en worden bij het wisselen opnieuw opgebouwd; `restoreFocus` zet de focus dan
- * meteen terug op de gekozen knop.
- */
-function ViewToggle({
-  view,
-  restoreFocus,
-}: {
-  view: RenameView;
-  restoreFocus: { current: boolean };
-}) {
+/** De keuze tussen Hernoemen, Samenvoegen en Database, met dezelfde knoppen als bij Omzetten. */
+function ViewToggle({ view }: { view: RenameView }) {
   const { t } = useI18n();
   const v = t.rename.views;
-  const pressed = useRef<HTMLButtonElement>(null);
-
-  useLayoutEffect(() => {
-    if (!restoreFocus.current) return;
-    restoreFocus.current = false;
-    pressed.current?.focus();
-  }, [restoreFocus]);
 
   const options: readonly { value: RenameView; label: string }[] = [
     { value: 'rename', label: v.rename },
+    { value: 'merge', label: v.merge },
     { value: 'database', label: v.database },
   ];
 
@@ -113,15 +103,10 @@ function ViewToggle({
       {options.map((option) => (
         <button
           key={option.value}
-          ref={view === option.value ? pressed : undefined}
           type="button"
           class="segmented__button"
           aria-pressed={view === option.value}
-          onClick={() => {
-            if (view === option.value) return;
-            restoreFocus.current = true;
-            setRenameState(() => ({ view: option.value }));
-          }}
+          onClick={() => setRenameState(() => ({ view: option.value }))}
         >
           {option.label}
         </button>
@@ -131,7 +116,7 @@ function ViewToggle({
 }
 
 /** Hernoemen: de lijst met brieven en hun voorgestelde namen. */
-function RenameList({ head }: { head: ComponentChildren }) {
+function RenameList() {
   const { t } = useI18n();
   const r = t.rename;
   const { docs, reading, showAll, saved, changed } = useRenameState();
@@ -163,7 +148,7 @@ function RenameList({ head }: { head: ComponentChildren }) {
     setRenameState(() => ({ reading: true, saved: null }));
     for (const file of pdfs) {
       const doc: RenameDoc = {
-        id: nextId++,
+        id: newId(),
         file,
         include: true,
         lines: [],
@@ -177,10 +162,12 @@ function RenameList({ head }: { head: ComponentChildren }) {
         customName: '',
         showText: getRenameState().showAll,
         error: false,
+        pageCount: 0,
       };
       try {
-        const { lines } = await readLines(file);
+        const { lines, pageCount } = await readLines(file);
         doc.lines = lines;
+        doc.pageCount = pageCount;
         doc.dates = findDates(lines, file.name);
         doc.date = doc.dates[0]?.ymd ?? '';
         doc.sender = findSender(lines);
@@ -195,7 +182,7 @@ function RenameList({ head }: { head: ComponentChildren }) {
   };
 
   const clear = () => {
-    setRenameState(() => ({ docs: [], saved: null, changed: false }));
+    clearRename();
     setAsking(null);
   };
 
@@ -236,24 +223,21 @@ function RenameList({ head }: { head: ComponentChildren }) {
 
   if (docs.length === 0) {
     return (
-      <>
-        <div class="rename-mode">{head}</div>
-        <Dropzone
-          title={r.openTitle}
-          dropTitle={r.dropHere}
-          hint={r.openHint}
-          inputId="rename-files"
-          accept="application/pdf,.pdf"
-          chooseLabel={r.choose}
-          onFiles={(files) => void add(files)}
-        >
-          {reading && (
-            <p class="dropzone__status" role="status">
-              {r.reading}
-            </p>
-          )}
-        </Dropzone>
-      </>
+      <Dropzone
+        title={r.openTitle}
+        dropTitle={r.dropHere}
+        hint={r.openHint}
+        inputId="rename-files"
+        accept="application/pdf,.pdf"
+        chooseLabel={r.choose}
+        onFiles={(files) => void add(files)}
+      >
+        {reading && (
+          <p class="dropzone__status" role="status">
+            {r.reading}
+          </p>
+        )}
+      </Dropzone>
     );
   }
 
@@ -266,7 +250,6 @@ function RenameList({ head }: { head: ComponentChildren }) {
   return (
     <section class="workspace rename" aria-labelledby="rename-tools-title">
       <div class="workspace__tools">
-        {head}
         <div class="document__bar">
           <div class="document__info">
             <h2 id="rename-tools-title" class="document__name">

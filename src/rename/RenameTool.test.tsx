@@ -4,7 +4,7 @@ import { unzipSync } from 'fflate';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { messages } from '../i18n';
 import { LanguageProvider } from '../i18n/LanguageContext';
-import { downloadFile } from '../pdf/save';
+import { PdfSaveError, buildPdf, downloadFile, downloadPdf } from '../pdf/save';
 import { DB_STORAGE_KEY, type RenameDb } from './database';
 import { RenameTool } from './RenameTool';
 import { resetRenameState } from './store';
@@ -29,11 +29,18 @@ vi.mock('./readText', () => ({
     if (lines instanceof Error) throw lines;
     return { pageCount: 1, lines: lines ?? [] };
   }),
+  // Losse PDF's bij samenvoegen: het aantal pagina's staat in de naam ("… 3p.pdf"), anders 1.
+  countPages: vi.fn(async (file: File) => {
+    if (file.name.includes('kapot')) throw new Error('kapot');
+    return Number(/(\d+)p\.pdf$/.exec(file.name)?.[1] ?? 1);
+  }),
 }));
 
 vi.mock('../pdf/save', async (importOriginal) => ({
   ...(await importOriginal<typeof import('../pdf/save')>()),
   downloadFile: vi.fn(),
+  downloadPdf: vi.fn(),
+  buildPdf: vi.fn(async () => new Uint8Array([1, 2, 3])),
 }));
 
 const r = messages.nl.rename;
@@ -59,7 +66,11 @@ const nameOf = (file: string) =>
   screen.getByLabelText<HTMLInputElement>(`Nieuwe naam voor ${file}`).value;
 const row = (file: string) => screen.getByText(file).closest('tr')!;
 
-beforeEach(() => vi.mocked(downloadFile).mockClear());
+beforeEach(() => {
+  vi.mocked(downloadFile).mockClear();
+  vi.mocked(downloadPdf).mockClear();
+  vi.mocked(buildPdf).mockClear();
+});
 afterEach(() => {
   cleanup();
   // De stand blijft bewaard buiten het scherm, en de database in de browser; elke test begint leeg.
@@ -325,9 +336,10 @@ describe('Slim hernoemen: de database', () => {
     fireEvent.input(screen.getByLabelText('Nieuwe naam voor gemeente.pdf'), {
       target: { value: 'eigen naam' },
     });
-    toView(r.views.database);
-    // De schakelaar houdt de focus, ook al staat hij nu op een andere plek.
+    // De schakelaar blijft staan (wordt niet opnieuw gemaakt), dus de knop houdt de focus.
     const database = screen.getByRole('button', { name: r.views.database });
+    database.focus();
+    fireEvent.click(database);
     expect(database.getAttribute('aria-pressed')).toBe('true');
     expect(document.activeElement).toBe(database);
 
@@ -404,6 +416,168 @@ describe('Slim hernoemen: de database', () => {
     importFile(json('{"afzenders": []}'));
     expect((await screen.findByRole('alert')).textContent).toBe(d.importError);
     expect(stored().afzenders).toHaveLength(2);
+  });
+});
+
+describe('Slim hernoemen: samenvoegen', () => {
+  const m = r.merge;
+  const toView = (name: string) => fireEvent.click(screen.getByRole('button', { name }));
+  /** De nieuwe namen in de volgorde van de lijst. */
+  const order = () =>
+    [...document.querySelectorAll('.rename-merge tbody .rename-table__file')].map(
+      (cell) => cell.firstChild!.textContent,
+    );
+  const addExtras = async (...names: string[]) => {
+    fireEvent.change(document.querySelector('#rename-merge-add')!, {
+      target: { files: names.map(pdf) },
+    });
+    await screen.findByText(names.length === 1 ? m.addedOne : `${names.length} PDF’s toegevoegd.`);
+  };
+  const up = (name: string) => screen.getByRole('button', { name: `${name} omhoog` });
+  const down = (name: string) => screen.getByRole('button', { name: `${name} omlaag` });
+  const GEMEENTE = '260312 gemeente utrecht aan.pdf';
+  const BANK = '260203 ing bank n afschrift.pdf';
+
+  it('op datum: de nieuwste eerst, zonder datum onderaan; aan/uit los van meenemen', async () => {
+    setup();
+    await open('scan.pdf', 'bank1.pdf', 'gemeente.pdf', 'kapot.pdf');
+    // Bij Hernoemen uitgevinkt: bij samenvoegen staat hij gewoon aan.
+    fireEvent.click(screen.getByLabelText('bank1.pdf meenemen'));
+    toView(r.views.merge);
+    expect(order()).toEqual([GEMEENTE, BANK, 'naamloos_01.pdf', 'naamloos_02.pdf']);
+    expect(screen.getByLabelText<HTMLInputElement>(`${BANK} samenvoegen`).checked).toBe(true);
+    // Niet te lezen: niet samen te voegen.
+    const kapot = screen.getByLabelText<HTMLInputElement>('naamloos_02.pdf samenvoegen');
+    expect([kapot.checked, kapot.disabled]).toEqual([false, true]);
+    expect(
+      screen.getByText('3 bestanden · 3 pagina’s · eerst de nieuwste, als laatste de oudste'),
+    ).toBeTruthy();
+    fireEvent.click(screen.getByLabelText(`${BANK} samenvoegen`));
+    expect(screen.getByText(/^2 bestanden · 2 pagina’s/)).toBeTruthy();
+  });
+
+  it('een aangepaste datum schuift mee, tot je zelf schuift; Sorteer op datum zet het terug', async () => {
+    setup();
+    await open('gemeente.pdf', 'bank1.pdf');
+    toView(r.views.merge);
+    expect(order()).toEqual([GEMEENTE, BANK]);
+    expect((screen.getByRole('button', { name: m.sort }) as HTMLButtonElement).disabled).toBe(true);
+
+    // Een half ingevulde datum telt niet: onderaan.
+    toView(r.views.rename);
+    fireEvent.input(screen.getByLabelText('Datum voor bank1.pdf'), { target: { value: '2604' } });
+    toView(r.views.merge);
+    expect(order()).toEqual([GEMEENTE, '2604 ing bank n afschrift.pdf']);
+
+    toView(r.views.rename);
+    fireEvent.input(screen.getByLabelText('Datum voor bank1.pdf'), { target: { value: '260401' } });
+    toView(r.views.merge);
+    const bank = '260401 ing bank n afschrift.pdf';
+    expect(order()).toEqual([bank, GEMEENTE]);
+
+    // Zelf schuiven; de focus blijft op een pijl van dezelfde brief (bovenaan: de pijl omlaag).
+    fireEvent.click(up(GEMEENTE));
+    expect(order()).toEqual([GEMEENTE, bank]);
+    expect(document.activeElement).toBe(down(GEMEENTE));
+    fireEvent.click(down(GEMEENTE));
+    fireEvent.click(up(GEMEENTE));
+    expect(document.activeElement).toBe(down(GEMEENTE));
+    // Een nieuwe datum verandert de eigen volgorde niet meer.
+    toView(r.views.rename);
+    fireEvent.input(screen.getByLabelText('Datum voor bank1.pdf'), { target: { value: '260501' } });
+    toView(r.views.merge);
+    expect(order()).toEqual([GEMEENTE, '260501 ing bank n afschrift.pdf']);
+
+    fireEvent.click(screen.getByRole('button', { name: m.sort }));
+    expect(order()).toEqual(['260501 ing bank n afschrift.pdf', GEMEENTE]);
+  });
+
+  it('losse, al hernoemde PDF’s: datum uit de naam, label extern; eigen volgorde houdt ze onderaan', async () => {
+    setup();
+    toView(r.views.merge);
+    expect(screen.getByText(m.empty)).toBeTruthy();
+    await addExtras('260501 notaris akte 3p.pdf', 'losse scan.pdf', '260101 kapot.pdf');
+    expect(order()).toEqual(['260501 notaris akte 3p.pdf', '260101 kapot.pdf', 'losse scan.pdf']);
+    expect(screen.getAllByText(m.external)).toHaveLength(3);
+    expect(screen.getByText(/^2 bestanden · 4 pagina’s/)).toBeTruthy();
+
+    // Na zelf schuiven komen nieuwe PDF's onderaan, ook met een nieuwere datum.
+    fireEvent.click(down('260501 notaris akte 3p.pdf'));
+    await addExtras('261231 nieuw.pdf');
+    expect(order()).toEqual([
+      '260101 kapot.pdf',
+      '260501 notaris akte 3p.pdf',
+      'losse scan.pdf',
+      '261231 nieuw.pdf',
+    ]);
+
+    fireEvent.click(screen.getByRole('button', { name: m.clearExtras }));
+    expect(screen.getByText(m.empty)).toBeTruthy();
+    expect(screen.queryByRole('button', { name: m.clearExtras })).toBeNull();
+  });
+
+  it('samenvoegen: de gekozen PDF’s in volgorde, met een bladwijzer per brief', async () => {
+    setup();
+    await open('gemeente.pdf', 'bank1.pdf');
+    toView(r.views.merge);
+    await addExtras('260101 oud 2p.pdf');
+    fireEvent.click(screen.getByLabelText(`${BANK} samenvoegen`));
+    fireEvent.click(screen.getByRole('button', { name: m.download }));
+    const dialog = screen.getByRole('dialog', { name: m.saveTitle });
+    expect((within(dialog).getByRole('textbox') as HTMLInputElement).value).toBe(
+      '260101-260312 samengevoegd',
+    );
+    fireEvent.click(within(dialog).getByRole('button', { name: messages.nl.saveDialog.download }));
+    await waitFor(() => expect(downloadPdf).toHaveBeenCalledTimes(1));
+
+    const [sources, pages, options] = vi.mocked(buildPdf).mock.calls[0]!;
+    const fileOf = (doc: number) => new TextDecoder().decode(sources.get(doc));
+    // Alle pagina's van elk bestand, op volgorde van de lijst, met unieke sleutels.
+    expect(pages.map((page) => [fileOf(page.doc), page.source, page.key])).toEqual([
+      ['%PDF-1.7 gemeente.pdf', 0, 0],
+      ['%PDF-1.7 260101 oud 2p.pdf', 0, 1],
+      ['%PDF-1.7 260101 oud 2p.pdf', 1, 2],
+    ]);
+    expect(options!.bookmarks!.map((mark) => [fileOf(mark.doc), mark.title])).toEqual([
+      ['%PDF-1.7 gemeente.pdf', '260312 gemeente utrecht aan'],
+      ['%PDF-1.7 260101 oud 2p.pdf', '260101 oud 2p'],
+    ]);
+    expect(vi.mocked(downloadPdf).mock.calls[0]).toEqual([
+      new Uint8Array([1, 2, 3]),
+      '260101-260312 samengevoegd.pdf',
+    ]);
+    expect(screen.getByText('Opgeslagen als 260101-260312 samengevoegd.pdf.')).toBeTruthy();
+
+    // Zonder bladwijzers; en een fout van het opslaan wordt gemeld.
+    fireEvent.click(screen.getByLabelText(m.bookmarks));
+    vi.mocked(buildPdf).mockRejectedValueOnce(new PdfSaveError('encrypted'));
+    fireEvent.click(screen.getByRole('button', { name: m.download }));
+    fireEvent.click(
+      within(screen.getByRole('dialog')).getByRole('button', {
+        name: messages.nl.saveDialog.download,
+      }),
+    );
+    expect((await screen.findByRole('alert')).textContent).toBe(messages.nl.pages.errors.encrypted);
+    expect(vi.mocked(buildPdf).mock.calls[1]![2]).toEqual({});
+  });
+
+  it('Wissen (ook bij Hernoemen) haalt de losse PDF’s en de eigen volgorde weg', async () => {
+    setup();
+    await open('gemeente.pdf', 'bank1.pdf');
+    toView(r.views.merge);
+    await addExtras('260101 oud.pdf');
+    fireEvent.click(up(BANK));
+    toView(r.views.rename);
+    fireEvent.click(screen.getByRole('button', { name: r.clear }));
+    fireEvent.click(within(screen.getByRole('dialog')).getByRole('button', { name: r.clear }));
+    toView(r.views.merge);
+    expect(screen.getByText(m.empty)).toBeTruthy();
+    toView(r.views.rename);
+    await open('gemeente.pdf', 'bank1.pdf');
+    toView(r.views.merge);
+    // Weer op datum (er is geen eigen volgorde meer om terug te zetten).
+    expect(order()).toEqual([GEMEENTE, BANK]);
+    expect((screen.getByRole('button', { name: m.sort }) as HTMLButtonElement).disabled).toBe(true);
   });
 });
 
