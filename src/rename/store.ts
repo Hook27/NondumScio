@@ -24,6 +24,11 @@ export type RenameDoc = {
   pageCount: number;
   /** Tekstherkenning voor een scan zonder tekstlaag: niet nodig, bezig, klaar, niets gevonden, mislukt. */
   ocr: 'none' | 'waiting' | 'done' | 'empty' | 'failed';
+  /**
+   * Een brief mét tekstlaag maar zonder duidelijke briefdatum: de datum zoeken met
+   * tekstherkenning. Niet nodig, bezig, gevonden, niet gevonden, mislukt.
+   */
+  dateOcr: 'none' | 'waiting' | 'found' | 'notFound' | 'failed';
 };
 
 /** Hoever de tekstherkenning is: eerst laden (0 tot 1), dan brief voor brief. */

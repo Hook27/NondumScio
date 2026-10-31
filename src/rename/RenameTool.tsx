@@ -13,6 +13,7 @@ import { PreviewDialog } from './PreviewDialog';
 import { openScanReader, readLines, type ScanReader } from './readText';
 import { RenameMerge } from './RenameMerge';
 import {
+  clearDate,
   findDates,
   findSender,
   findSubject,
@@ -60,15 +61,63 @@ function fieldsFrom(lines: readonly string[], fileName: string, db: RenameDb) {
 }
 
 /**
- * Tekstherkenning (OCR) voor de brieven zonder tekstlaag, nadat de rest gelezen is. Wat je
- * intussen zelf aanpaste, blijft staan: alleen velden die nog zijn zoals ze waren, worden ingevuld.
+ * Een scan zonder tekstlaag, na de tekstherkenning: alles uit de herkende tekst. `scan` is de brief
+ * zoals hij was vóór de herkenning; wat je intussen zelf aanpaste, blijft staan.
  */
-async function recognizeScans(scans: readonly RenameDoc[]) {
-  const total = scans.length;
+function fromScan(scan: RenameDoc, lines: string[]) {
+  const found = fieldsFrom(lines, scan.file.name, getRenameDb());
+  return (doc: RenameDoc): Partial<RenameDoc> => {
+    const change: Partial<RenameDoc> = {
+      lines,
+      dates: found.dates,
+      ocr: lines.length > 0 ? 'done' : 'empty',
+    };
+    if (doc.date === scan.date) change.date = found.date;
+    if (doc.sender === scan.sender) {
+      Object.assign(change, { sender: found.sender, senderRec: found.senderRec });
+    }
+    if (doc.subject === scan.subject) {
+      Object.assign(change, { subject: found.subject, subjectRec: found.subjectRec });
+    }
+    return change;
+  };
+}
+
+/**
+ * Een brief met tekstlaag maar zonder duidelijke briefdatum, na de tekstherkenning: alleen een
+ * duidelijke datum (bij "Datum" of na een plaatsnaam) neemt het over, zodat rommel uit de kantlijn
+ * nooit wint. Afzender en onderwerp blijven uit de tekstlaag komen. De herkende datums komen in de
+ * lijst, met "OCR" erbij; een zelf ingevulde datum blijft staan.
+ */
+function dateFromScan(letter: RenameDoc, lines: string[]) {
+  const found = findDates(lines, '').map((date) => ({ ...date, viaOcr: true }));
+  const clear = clearDate(found);
+  return (doc: RenameDoc): Partial<RenameDoc> => {
+    const known = new Set(doc.dates.map((date) => date.ymd));
+    const extra = found.filter((date) => date !== clear && !known.has(date.ymd));
+    const change: Partial<RenameDoc> = {
+      dateOcr: clear ? 'found' : 'notFound',
+      dates: clear
+        ? [clear, ...doc.dates.filter((date) => date.ymd !== clear.ymd), ...extra]
+        : [...doc.dates, ...extra],
+    };
+    if (clear && doc.date === letter.date) change.date = clear.ymd;
+    return change;
+  };
+}
+
+/**
+ * Tekstherkenning (OCR) nadat alles gelezen is, voor scans zonder tekstlaag (`ocr`) en voor
+ * brieven zonder duidelijke briefdatum (`dateOcr`), in één rij en met één herkenner.
+ */
+async function recognizeScans(jobs: readonly RenameDoc[]) {
+  const total = jobs.length;
   const finish = (id: number, change: (doc: RenameDoc) => Partial<RenameDoc>) =>
     setRenameState((current) => ({
       docs: current.docs.map((doc) => (doc.id === id ? { ...doc, ...change(doc) } : doc)),
     }));
+  const failed = (job: RenameDoc) =>
+    finish(job.id, () => (job.ocr === 'waiting' ? { ocr: 'failed' } : { dateOcr: 'failed' }));
   setRenameState(() => ({ ocrProgress: { loading: 0, done: 0, total } }));
   let reader: ScanReader;
   try {
@@ -76,32 +125,17 @@ async function recognizeScans(scans: readonly RenameDoc[]) {
       setRenameState(() => ({ ocrProgress: { loading, done: 0, total } })),
     );
   } catch {
-    for (const scan of scans) finish(scan.id, () => ({ ocr: 'failed' }));
+    for (const job of jobs) failed(job);
     return;
   }
   try {
-    for (const [index, scan] of scans.entries()) {
+    for (const [index, job] of jobs.entries()) {
       setRenameState(() => ({ ocrProgress: { loading: null, done: index, total } }));
       try {
-        const lines = await reader.read(scan.file);
-        const found = fieldsFrom(lines, scan.file.name, getRenameDb());
-        finish(scan.id, (doc) => {
-          const change: Partial<RenameDoc> = {
-            lines,
-            dates: found.dates,
-            ocr: lines.length > 0 ? 'done' : 'empty',
-          };
-          if (doc.date === scan.date) change.date = found.date;
-          if (doc.sender === scan.sender) {
-            Object.assign(change, { sender: found.sender, senderRec: found.senderRec });
-          }
-          if (doc.subject === scan.subject) {
-            Object.assign(change, { subject: found.subject, subjectRec: found.subjectRec });
-          }
-          return change;
-        });
+        const lines = await reader.read(job.file);
+        finish(job.id, job.ocr === 'waiting' ? fromScan(job, lines) : dateFromScan(job, lines));
       } catch {
-        finish(scan.id, () => ({ ocr: 'failed' }));
+        failed(job);
       }
     }
   } finally {
@@ -185,6 +219,12 @@ function RenameList() {
   const { t } = useI18n();
   const r = t.rename;
   const { docs, reading, ocrProgress, showAll, saved, changed } = useRenameState();
+  // Wat de datumcontrole met OCR bij een brief meldt (niets als er geen duidelijke datum was).
+  const dateNotes: Partial<Record<RenameDoc['dateOcr'], string>> = {
+    waiting: r.ocr.dateWaiting,
+    found: r.ocr.dateFound,
+    failed: r.ocr.dateFailed,
+  };
   const db = useRenameDb();
   const [asking, setAsking] = useState<'save' | 'clear' | null>(null);
   // De brief die nu in het voorbeeldvenster staat.
@@ -230,20 +270,22 @@ function RenameList() {
         error: false,
         pageCount: 0,
         ocr: 'none',
+        dateOcr: 'none',
       };
       try {
         const { lines, pageCount } = await readLines(file);
         Object.assign(doc, { lines, pageCount }, fieldsFrom(lines, file.name, getRenameDb()));
-        // Een scan zonder tekstlaag: straks met tekstherkenning.
+        // Een scan zonder tekstlaag, of zonder duidelijke briefdatum: straks met tekstherkenning.
         if (lines.length === 0 && pageCount > 0) doc.ocr = 'waiting';
+        else if (lines.length > 0 && !clearDate(doc.dates)) doc.dateOcr = 'waiting';
       } catch {
         doc.error = true;
       }
       added.push(doc);
       setRenameState((current) => ({ docs: [...current.docs, doc] }));
     }
-    const scans = added.filter((doc) => doc.ocr === 'waiting');
-    if (scans.length > 0) await recognizeScans(scans);
+    const jobs = added.filter((doc) => doc.ocr === 'waiting' || doc.dateOcr === 'waiting');
+    if (jobs.length > 0) await recognizeScans(jobs);
     setRenameState(() => ({ reading: false, ocrProgress: null, changed: true }));
   };
 
@@ -461,6 +503,9 @@ function RenameList() {
                     {!doc.error && doc.ocr !== 'none' && (
                       <span class="rename-table__problem">{r.ocr[doc.ocr]}</span>
                     )}
+                    {!doc.error && dateNotes[doc.dateOcr] && (
+                      <span class="rename-table__problem">{dateNotes[doc.dateOcr]}</span>
+                    )}
                     {!doc.error && doc.ocr === 'none' && doc.lines.length === 0 && (
                       <span class="rename-table__problem">{r.noText}</span>
                     )}
@@ -517,7 +562,7 @@ function RenameList() {
                         <option value="">{r.candidates}</option>
                         {doc.dates.map((date) => (
                           <option key={date.ymd} value={date.ymd}>
-                            {`${date.ymd} · ${r.sources[date.source]}: ${date.raw}`}
+                            {`${date.ymd} · ${r.sources[date.source]}: ${date.raw}${date.viaOcr ? ' · OCR' : ''}`}
                           </option>
                         ))}
                       </select>

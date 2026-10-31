@@ -98,6 +98,13 @@ export type DateCandidate = {
    * briefdatum. Hij staat wel in de lijst, maar wordt niet vanzelf gekozen.
    */
   excluded: boolean;
+  /**
+   * Een duidelijke briefdatum: bij "Datum" of "Dagtekening" (ook op de regel erboven), of na een
+   * plaatsnaam ("Heerlen,"). Zonder zo'n datum leest de tool pagina 1 zelf met OCR (zie `clearDate`).
+   */
+  clear: boolean;
+  /** Gevonden met de eigen tekstherkenning (OCR), niet in de tekstlaag van de scan. */
+  viaOcr?: boolean;
 };
 
 /** Een label waar de briefdatum bij staat (niet "vervaldatum" of "geboortedatum"). */
@@ -161,7 +168,7 @@ export function findDates(
       String(year % 100).padStart(2, '0') +
       String(month).padStart(2, '0') +
       String(day).padStart(2, '0');
-    candidates.push({ ymd, score, source, raw: raw.trim(), excluded });
+    candidates.push({ ymd, score, source, raw: raw.trim(), excluded, clear: near });
   };
 
   lines.forEach((line, index) => {
@@ -220,6 +227,15 @@ export function findDates(
 /** De datum die vanzelf wordt ingevuld: de beste briefdatum, of leeg (nooit een ingangsdatum). */
 export function pickDate(candidates: readonly DateCandidate[]): string {
   return candidates.find((candidate) => !candidate.excluded)?.ymd ?? '';
+}
+
+/**
+ * De duidelijke briefdatum (bij een datumlabel of na een plaatsnaam), als die er is. Zonder zo'n
+ * datum is de briefdatum misschien niet in de tekstlaag terechtgekomen (bij Jörgs scanner gebeurde
+ * dat met "Heerlen, / 3 november 2025"); dan leest de tool pagina 1 zelf met OCR.
+ */
+export function clearDate(candidates: readonly DateCandidate[]): DateCandidate | undefined {
+  return candidates.find((candidate) => !candidate.excluded && candidate.clear);
 }
 
 /* Afzender */
