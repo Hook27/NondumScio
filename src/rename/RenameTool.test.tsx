@@ -494,7 +494,8 @@ describe('Slim hernoemen: de database', () => {
     fireEvent.click(screen.getByRole('button', { name: d.export }));
     expect(downloadFile).toHaveBeenCalledTimes(1);
     const [bytes, name, type] = vi.mocked(downloadFile).mock.calls[0]!;
-    expect([name, type]).toEqual(['pdf-hernoemer-database.json', 'application/json']);
+    expect(name).toMatch(/^pdf-hernoemer-database_\d{8}_\d{4}\.json$/);
+    expect(type).toBe('application/json');
     const text = new TextDecoder().decode(bytes as Uint8Array);
     expect(text).toBe(JSON.stringify(stored(), null, 2));
     expect(screen.getByText('Geëxporteerd: 2 afzenders, 1 onderwerp.')).toBeTruthy();

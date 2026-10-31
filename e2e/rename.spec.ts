@@ -222,7 +222,7 @@ test.describe('Slim hernoemen', () => {
       page.waitForEvent('download'),
       page.getByRole('button', { name: r.db.export }).click(),
     ]);
-    expect(download.suggestedFilename()).toBe('pdf-hernoemer-database.json');
+    expect(download.suggestedFilename()).toMatch(/^pdf-hernoemer-database_\d{8}_\d{4}\.json$/);
     expect(JSON.parse(readFileSync((await download.path())!, 'utf8'))).toEqual({
       afzenders: [{ naam: 'ING', triggers: ['ing bank'] }],
       onderwerpen: [

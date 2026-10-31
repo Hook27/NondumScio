@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import type { StorageLike } from '../lib/storage';
 import {
   DB_STORAGE_KEY,
+  dbFileName,
   emptyDb,
   exportDb,
   importInto,
@@ -159,6 +160,15 @@ describe('exportDb: hetzelfde bestand als de HTML-tool', () => {
     const db = importInto(emptyDb(), EXPORT).db;
     expect(exportDb(db)).toBe(EXPORT);
     expect(importInto(emptyDb(), exportDb(db)).db).toEqual(db);
+  });
+
+  it('de naam heeft een datum-tijdstempel (lokale tijd, met voorloopnullen)', () => {
+    expect(dbFileName(new Date(2026, 10, 1, 14, 30))).toBe(
+      'pdf-hernoemer-database_20261101_1430.json',
+    );
+    expect(dbFileName(new Date(2026, 0, 5, 9, 7))).toBe(
+      'pdf-hernoemer-database_20260105_0907.json',
+    );
   });
 });
 

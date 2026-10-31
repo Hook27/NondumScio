@@ -4,7 +4,7 @@ import { useI18n } from '../i18n/LanguageContext';
 import { format, plural } from '../i18n/format';
 import { downloadFile } from '../pdf/save';
 import {
-  DB_FILE_NAME,
+  dbFileName,
   exportDb,
   importInto,
   parseTriggers,
@@ -50,7 +50,7 @@ export function DatabaseView() {
   const count = (kind: DbKind, n: number) => plural(n, d.kinds[kind].one, d.kinds[kind].other);
 
   const save = () => {
-    downloadFile(new TextEncoder().encode(exportDb(db)), DB_FILE_NAME, 'application/json');
+    downloadFile(new TextEncoder().encode(exportDb(db)), dbFileName(), 'application/json');
     setStatus({
       text: format(d.exported, {
         senders: count('afzenders', db.afzenders.length),

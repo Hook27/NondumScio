@@ -5,6 +5,7 @@
  */
 
 import { readItem, writeItem, type StorageLike, browserStorage } from '../lib/storage';
+import { stamp } from './stamp';
 
 /** Een afzender of onderwerp: de naam in de bestandsnaam, en woorden waaraan hij te herkennen is. */
 export type DbEntry = { naam: string; triggers: string[] };
@@ -16,8 +17,13 @@ export type DbKind = keyof RenameDb;
 
 export const DB_STORAGE_KEY = 'nondumscio:rename-db';
 
-/** Dezelfde naam als bij de HTML-tool. */
-export const DB_FILE_NAME = 'pdf-hernoemer-database.json';
+/**
+ * De naam van de export: die van de HTML-tool, met een datum-tijdstempel erachter
+ * (`pdf-hernoemer-database_20261101_1430.json`), zodat een nieuwe export een oude niet overschrijft.
+ */
+export function dbFileName(now = new Date()): string {
+  return `pdf-hernoemer-database_${stamp(now)}.json`;
+}
 
 export function emptyDb(): RenameDb {
   return { afzenders: [], onderwerpen: [] };
