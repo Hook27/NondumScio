@@ -6,6 +6,7 @@ import {
   findSubject,
   linesFrom,
   nameLimit,
+  pickDate,
   proposeNames,
   uniqueNames,
   type NameInput,
@@ -77,6 +78,153 @@ describe('findDates', () => {
 
   it('negeert jaartallen voor 1990 en na volgend jaar, en onmogelijke datums', () => {
     expect(findDates(['1-1-1985', '31-12-2030', '32-13-2026'], 'f.pdf', 2026)).toEqual([]);
+  });
+});
+
+/*
+ * Verzonnen brieven met de opbouw van echte scans waar het misging (de tekstlaag van de scanner:
+ * kolommen door elkaar, en soms ontbreekt de briefdatum helemaal).
+ */
+describe('findDates en pickDate: briefdatum of ingangsdatum', () => {
+  const ymds = (lines: string[], fileName = 'f.pdf') =>
+    findDates(lines, fileName, 2026).map((date) => date.ymd);
+  const pick = (lines: string[], fileName = 'f.pdf') => pickDate(findDates(lines, fileName, 2026));
+
+  it('ontbreekt de briefdatum, dan geen "per 1 januari": liever leeg (of de datum van de scan)', () => {
+    const lines = [
+      'Verzekeraar',
+      'Postbus 1234, 1234 AB Heerlen',
+      'Heerlen,',
+      'Klantnummer Polisnummer',
+      'Onderwerp: premieverhoging per 1 januari 2026',
+      'Per 1 januari 2026 stijgt de premie.',
+      'Op 1 januari 2026 gaat de basispremie omhoog.',
+    ];
+    expect(findDates(lines, 'f.pdf', 2026)).toEqual([
+      expect.objectContaining({ ymd: '260101', raw: 'per 1 januari 2026', excluded: true }),
+    ]);
+    expect(pick(lines)).toBe('');
+    // De datum in de naam van de scan blijft het laatste redmiddel.
+    expect(pick(lines, 'scan_20251110.pdf')).toBe('251110');
+  });
+
+  it('"Heerlen," met de datum eronder wint ruim van een ingangsdatum', () => {
+    const lines = [
+      'Verzekeraar',
+      'Heerlen,',
+      '19 oktober 2026',
+      'AFM-vergunningnummer Onderwerp: nieuwe voorwaarden per 1 januari 2027',
+      'Daarom veranderen we per 1 januari 2027 onze voorwaarden.',
+    ];
+    const dates = findDates(lines, 'f.pdf', 2026);
+    expect(dates.map((date) => [date.ymd, date.excluded])).toEqual([
+      ['261019', false],
+      ['270101', true],
+    ]);
+    expect(pick(lines)).toBe('261019');
+  });
+
+  it('de plaats vóór de datum telt zwaar, op dezelfde regel of de regel erboven', () => {
+    // Zonder de plaats zou de datum hoger op de pagina winnen.
+    expect(pick(['Afgedrukt 2 oktober 2026', 'Heerlen,', '19 oktober 2026'])).toBe('261019');
+    expect(pick(['Afgedrukt 2 oktober 2026', 'Utrecht, 12 maart 2026'])).toBe('260312');
+    expect(pick(['Afgedrukt 2 oktober 2026', "'s-Hertogenbosch, 12-3-2026"])).toBe('260312');
+    // Maar alleen als de datum vooraan de regel staat.
+    expect(pick(['Afgedrukt 2 oktober 2026', 'Heerlen,', 'Zie ook 19 oktober 2026'])).toBe(
+      '261002',
+    );
+  });
+
+  it('"Datum" op de regel erboven telt als label', () => {
+    expect(pick(['Afgedrukt 1 april 2026', 'Jansen Datum', '22 april 2026'])).toBe('260422');
+    expect(pick(['Afgedrukt 1 april 2026', 'Dagtekening:', '22 april 2026'])).toBe('260422');
+  });
+
+  it('woorden die een ingangs-, eind- of verwijsdatum maken', () => {
+    const before = [
+      'per',
+      'Op',
+      'vanaf',
+      'uw brief van',
+      'sinds',
+      'tot',
+      'tot en met',
+      't/m',
+      'vóór',
+      'voor',
+      'uiterlijk',
+      'm.i.v.',
+      'met ingang van',
+      'Vervaldatum:',
+      'geboortedatum',
+      'Ingangsdatum',
+      'Wijzigingsdatum',
+    ];
+    for (const words of before) {
+      const line = `${words} 1 mei 2026`;
+      const [date] = findDates([line], 'f.pdf', 2026);
+      expect(date!.excluded, words).toBe(true);
+      // In de lijst met het woord ervoor, zodat te zien is waarom hij niet gekozen is.
+      expect(line.endsWith(date!.raw) && date!.raw !== '1 mei 2026', date!.raw).toBe(true);
+    }
+    // Met een datumlabel op de regel is het wel de briefdatum ("verzonden op").
+    expect(pick(['Verzonden op 3 mei 2026'])).toBe('260503');
+    expect(pick(['Datum van verzending: 3 mei 2026'])).toBe('260503');
+    // Een woord dat er alleen op lijkt, telt niet ("koop 1 mei").
+    expect(pick(['Koop 1 mei 2026 iets moois'])).toBe('260501');
+  });
+
+  it('staat het woord aan het eind van de regel erboven, dan telt het ook', () => {
+    // Zoals de tekstlaag de regels afbreekt: het woord op de ene regel, de datum op de volgende.
+    const lines = [
+      'Verzekeraar',
+      'Wilt u opzeggen? Laat ons dit dan weten vóór',
+      '1 februari 2026. Dit kan via MijnVerzekeraar.',
+      'Er komen meer uitkeringen. We verhogen daarom per',
+      '1 januari 2027 de premie van uw verzekering.',
+    ];
+    expect(
+      findDates(lines, 'f.pdf', 2026).map((date) => [date.ymd, date.raw, date.excluded]),
+    ).toEqual([
+      ['260201', 'vóór 1 februari 2026', true],
+      ['270101', 'per 1 januari 2027', true],
+    ]);
+    expect(pick(lines)).toBe('');
+    // Alleen als de datum vooraan de regel staat.
+    expect(pick(['Laat ons dit weten vóór', 'Heerlen, 3 november 2025'])).toBe('251103');
+    // Met een datumlabel op de regel erboven is het wel de briefdatum.
+    expect(pick(['Verzonden op', '3 mei 2026'])).toBe('260503');
+  });
+
+  it('een vervaldatum is geen datumlabel', () => {
+    expect(pick(['Vervaldatum: 30 juni 2026', 'Amsterdam, 3 juni 2026'])).toBe('260603');
+    expect(ymds(['Vervaldatum: 30 juni 2026', 'Amsterdam, 3 juni 2026'])).toEqual([
+      '260603',
+      '260630',
+    ]);
+  });
+
+  it('een ingangsdatum komt achteraan, ook als hij meer punten heeft', () => {
+    // "Per 1 mei 2026" staat bovenaan en is uitgeschreven: meer punten dan "3-4-2026" onderaan.
+    const lines = ['Per 1 mei 2026 gaat de premie omhoog', 'Tekst', 'Tekst', 'Tekst', '3-4-2026'];
+    expect(ymds(lines)).toEqual(['260403', '260501']);
+    // Staat dezelfde datum ook gewoon in de brief (met minder punten), dan telt die plek.
+    const same = ['Per 1 mei 2026 gaat de premie omhoog', 'Tekst', 'Tekst', 'Tekst', '1-5-2026'];
+    expect(findDates(same, 'f.pdf', 2026)).toEqual([
+      expect.objectContaining({ ymd: '260501', raw: '1-5-2026', excluded: false }),
+    ]);
+    expect(pick(same)).toBe('260501');
+  });
+
+  it('staat dezelfde datum ook als briefdatum in de brief, dan telt die', () => {
+    const dates = findDates(
+      ['Gemeente', 'Utrecht, 1 januari 2026', 'De regels gelden per 1 januari 2026.'],
+      'f.pdf',
+      2026,
+    );
+    expect(dates).toEqual([
+      expect.objectContaining({ ymd: '260101', raw: '1 januari 2026', excluded: false }),
+    ]);
   });
 });
 

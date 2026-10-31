@@ -17,6 +17,7 @@ import {
   findSender,
   findSubject,
   nameLimit,
+  pickDate,
   proposeNames,
   uniqueNames,
 } from './recognize';
@@ -49,7 +50,7 @@ function fieldsFrom(lines: readonly string[], fileName: string, db: RenameDb) {
   const dates = findDates(lines, fileName);
   return {
     dates,
-    date: dates[0]?.ymd ?? '',
+    date: pickDate(dates),
     sender: findSender(lines),
     subject: findSubject(lines),
     senderRec: false,
