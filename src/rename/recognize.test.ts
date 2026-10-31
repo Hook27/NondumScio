@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   cleanRest,
+  clearDate,
   findDates,
   findSender,
   findSubject,
@@ -225,6 +226,35 @@ describe('findDates en pickDate: briefdatum of ingangsdatum', () => {
     expect(dates).toEqual([
       expect.objectContaining({ ymd: '260101', raw: '1 januari 2026', excluded: false }),
     ]);
+  });
+});
+
+describe('clearDate: is er een duidelijke briefdatum?', () => {
+  const clear = (lines: string[], fileName = 'f.pdf') =>
+    clearDate(findDates(lines, fileName, 2026))?.ymd;
+
+  it('bij "datum" op de regel, "Datum" op de regel erboven of na een plaatsnaam: ja', () => {
+    // Zoals bij de gemeente (twee kolommen op één regel), de Belastingdienst en de verzekeraar.
+    expect(clear(['Gemeente', 'Jaaropgave 2025 datum 29 januari 2026'])).toBe('260129');
+    expect(clear(['Belastingdienst', 'Jansen Datum', '22 april 2026'])).toBe('260422');
+    expect(clear(['Verzekeraar', 'Heerlen,', '19 oktober 2026'])).toBe('261019');
+  });
+
+  it('alleen een datum in de lopende tekst, alleen een ingangsdatum of niets: nee', () => {
+    // Zoals bij de verzekeraar waar de briefdatum in de tekstlaag ontbrak.
+    const lines = [
+      'Verzekeraar',
+      'Heerlen,',
+      'Onderwerp: premieverhoging per 1 januari 2026',
+      '5 januari 2026 terug op uw salarisspecificatie.',
+    ];
+    expect(findDates(lines, 'f.pdf', 2026)[0]!.ymd).toBe('260105');
+    expect(clear(lines)).toBeUndefined();
+    expect(clear(['Datum? Zie per 1 januari 2026 onderaan'])).toBe('260101');
+    expect(clear(['Uw premie gaat omhoog per 1 januari 2026'])).toBeUndefined();
+    expect(clear(['Brief zonder datum'])).toBeUndefined();
+    // De datum in de bestandsnaam is geen duidelijke briefdatum.
+    expect(clear(['Brief zonder datum'], 'scan_20260613.pdf')).toBeUndefined();
   });
 });
 

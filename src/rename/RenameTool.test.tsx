@@ -26,12 +26,30 @@ const LETTERS: Record<string, string[] | Error> = {
   'premie.pdf': ['Verzekeraar', 'Heerlen,', 'Onderwerp: premieverhoging per 1 januari 2026'],
   'ocr-gemeente.pdf': [],
   'ocr-kapot.pdf': [],
+  // Met tekstlaag, maar de briefdatum ontbreekt erin: alleen een datum in de lopende tekst.
+  'vaag.pdf': [
+    'Verzekeraar',
+    'Heerlen,',
+    'Onderwerp: premieverhoging per 1 januari 2026',
+    'U ziet het 5 januari 2026 terug op uw salarisspecificatie.',
+  ],
+  'vaag-niets.pdf': ['Verzekeraar', 'Heerlen,', 'U ziet het 5 januari 2026 terug.'],
 };
 
 /** Wat de tekstherkenning "ziet" in een scan zonder tekstlaag (of een fout); anders niets. */
 const SCANS: Record<string, string[] | Error> = {
   'ocr-gemeente.pdf': ['Gemeente Utrecht', 'Datum: 12 maart 2026', 'Betreft: Aanslag'],
   'ocr-kapot.pdf': new Error('kapot'),
+  // De eigen OCR leest de briefdatum wél, met rommel uit de kantlijn ("5 Verzekeraar").
+  'vaag.pdf': [
+    '5 Verzekeraar',
+    'Heerlen,',
+    '3 november 2025',
+    'Onderwerp: premieverhoging per 1 januari 2026',
+    'U ziet het 5 januari 2026 terug op uw salarisspecificatie.',
+  ],
+  // Hier vindt ook de OCR alleen een vage datum.
+  'vaag-niets.pdf': ['Verzekeraar', 'Kantlijn 7 maart 2026'],
 };
 
 /**
@@ -720,6 +738,62 @@ describe('Slim hernoemen: tekstherkenning (OCR)', () => {
     expect(value('Datum voor ocr-gemeente.pdf')).toBe('260101');
     expect(value('Afzender van ocr-gemeente.pdf')).toBe('Gemeente Utrecht');
     expect(screen.getByText('1 bestand · klaar')).toBeTruthy();
+  });
+
+  it('zonder duidelijke briefdatum zoekt OCR de datum; alleen een duidelijke datum telt', async () => {
+    setup();
+    await open('gemeente.pdf', 'vaag.pdf', 'vaag-niets.pdf');
+    // Met "Datum:" in de tekstlaag is OCR niet nodig.
+    expect(ocr.read).toEqual(['vaag.pdf', 'vaag-niets.pdf']);
+
+    expect(value('Datum voor vaag.pdf')).toBe('251103');
+    expect(within(row('vaag.pdf')).getByText(o.dateFound)).toBeTruthy();
+    const options = (file: string) =>
+      [...screen.getByLabelText<HTMLSelectElement>(`Gevonden datums in ${file}`).options].map(
+        (option) => option.textContent,
+      );
+    expect(options('vaag.pdf')).toEqual([
+      r.candidates,
+      '251103 · tekst: 3 november 2025 · OCR',
+      '260105 · tekst: 5 januari 2026',
+      '260101 · tekst: per 1 januari 2026',
+    ]);
+    // Afzender, onderwerp en de getoonde tekst blijven uit de tekstlaag (zonder kantlijnrommel).
+    expect(value('Afzender van vaag.pdf')).toBe('Verzekeraar');
+    expect(value('Onderwerp van vaag.pdf')).toBe('premieverhoging per 1 januari 2026');
+    expect(row('vaag.pdf').querySelector('pre')!.textContent).not.toContain('3 november 2025');
+
+    // Vindt ook de OCR alleen een vage datum, dan blijft het zoals het was, zonder melding.
+    expect(value('Datum voor vaag-niets.pdf')).toBe('260105');
+    expect(row('vaag-niets.pdf').querySelector('.rename-table__problem')).toBeNull();
+    expect(options('vaag-niets.pdf')).toEqual([
+      r.candidates,
+      '260105 · tekst: 5 januari 2026',
+      '260307 · tekst: 7 maart 2026 · OCR',
+    ]);
+  });
+
+  it('datum zoeken met OCR: voortgang, en een zelf ingevulde datum blijft staan', async () => {
+    const reading = gate();
+    ocr.reading = reading.promise;
+    setup();
+    await start('vaag.pdf');
+    expect(
+      await screen.findByText('1 bestand · Tekst herkennen (OCR)… brief 1 van 1'),
+    ).toBeTruthy();
+    expect(within(row('vaag.pdf')).getByText(o.dateWaiting)).toBeTruthy();
+    fireEvent.input(screen.getByLabelText('Datum voor vaag.pdf'), { target: { value: '251104' } });
+    reading.open();
+    await waitFor(() => expect(within(row('vaag.pdf')).getByText(o.dateFound)).toBeTruthy());
+    expect(value('Datum voor vaag.pdf')).toBe('251104');
+  });
+
+  it('werkt de herkenning niet bij het zoeken naar de datum, dan blijft de datum staan', async () => {
+    ocr.fail = true;
+    setup();
+    await open('vaag.pdf');
+    expect(value('Datum voor vaag.pdf')).toBe('260105');
+    expect(within(row('vaag.pdf')).getByText(o.dateFailed)).toBeTruthy();
   });
 
   it('werkt de herkenning niet, dan een melding en vul je zelf in', async () => {

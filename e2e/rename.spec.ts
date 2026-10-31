@@ -349,6 +349,66 @@ test.describe('Slim hernoemen', () => {
     expect(result.violations).toEqual([]);
   });
 
+  test('ontbreekt de briefdatum in de tekstlaag, dan vindt OCR hem op de pagina', async ({
+    page,
+  }) => {
+    test.setTimeout(240_000);
+    await openPage(page, '/#/advanced/rename', { lang: 'nl' });
+    // Wat er op papier staat: met "Heerlen," en de briefdatum eronder.
+    const png = await page.evaluate(() => {
+      const canvas = document.createElement('canvas');
+      canvas.width = 1240;
+      canvas.height = 1754;
+      const context = canvas.getContext('2d')!;
+      context.fillStyle = '#ffffff';
+      context.fillRect(0, 0, canvas.width, canvas.height);
+      context.fillStyle = '#000000';
+      context.font = '40px Arial, sans-serif';
+      [
+        'Verzekeraar',
+        'Heerlen,',
+        '3 november 2025',
+        'Onderwerp: premieverhoging per 1 januari 2026',
+        'U ziet het 5 januari 2026 terug.',
+      ].forEach((line, i) => context.fillText(line, 120, 200 + i * 70));
+      return canvas.toDataURL('image/png').split(',')[1]!;
+    });
+    const doc = await PDFDocument.create();
+    const font = await doc.embedFont(StandardFonts.Helvetica);
+    const sheet = doc.addPage([595, 842]);
+    sheet.drawImage(await doc.embedPng(Buffer.from(png, 'base64')), {
+      x: 0,
+      y: 0,
+      width: 595,
+      height: 842,
+    });
+    // De (onzichtbare) tekstlaag van de scanner, waarin de briefdatum ontbreekt.
+    [
+      'Verzekeraar',
+      'Heerlen,',
+      'Onderwerp: premieverhoging per 1 januari 2026',
+      'U ziet het 5 januari 2026 terug.',
+    ].forEach((line, i) =>
+      sheet.drawText(line, { x: 60, y: 760 - i * 34, size: 12, font, opacity: 0 }),
+    );
+    await page.locator('#rename-files').setInputFiles({
+      name: 'scan_009.pdf',
+      mimeType: 'application/pdf',
+      buffer: Buffer.from(await doc.save()),
+    });
+    const row = page.locator('.rename-table tbody tr').filter({ hasText: 'scan_009.pdf' });
+    await expect(row.getByText(r.ocr.dateFound)).toBeVisible({ timeout: 200_000 });
+    await expect(page.getByLabel('Datum voor scan_009.pdf')).toHaveValue('251103');
+    // Afzender en onderwerp komen uit de tekstlaag.
+    await expect(page.getByLabel('Afzender van scan_009.pdf')).toHaveValue('Verzekeraar');
+    await expect(page.getByLabel('Onderwerp van scan_009.pdf')).toHaveValue(
+      'premieverhoging per 1 januari 2026',
+    );
+    await expect(
+      page.getByLabel('Gevonden datums in scan_009.pdf').locator('option').nth(1),
+    ).toHaveText('251103 · tekst: 3 november 2025 · OCR');
+  });
+
   test('bekijken: de PDF in een venster, pagina voor pagina', async ({ page }) => {
     const doc = await PDFDocument.create();
     const font = await doc.embedFont(StandardFonts.Helvetica);
