@@ -373,7 +373,7 @@ export const nl = {
   rename: {
     openTitle: 'Open PDF’s om te hernoemen',
     openHint:
-      'Sleep gescande brieven hierheen of kies ze. Alleen de eerste twee pagina’s worden gelezen, en je bestanden blijven op je apparaat.',
+      'Sleep gescande brieven hierheen of kies ze. Alleen de eerste twee pagina’s worden gelezen (bij een scan zonder tekstlaag de eerste, met tekstherkenning), en je bestanden blijven op je apparaat.',
     choose: 'Kies PDF’s',
     dropHere: 'Laat los om te openen',
     reading: 'Bezig met lezen…',
@@ -415,6 +415,14 @@ export const nl = {
     duplicate: 'dubbele naam',
     noDate: 'geen datum',
     noText: 'Geen tekst gevonden: deze scan heeft geen tekstlaag.',
+    ocr: {
+      loading: 'Tekstherkenning laden… {percent}%',
+      progress: 'Tekst herkennen (OCR)… brief {n} van {total}',
+      waiting: 'Geen tekstlaag: wacht op tekstherkenning (OCR)…',
+      done: 'Tekst herkend met OCR: kijk extra goed na.',
+      empty: 'Ook met OCR geen tekst gevonden.',
+      failed: 'De tekstherkenning (OCR) werkte niet: vul de velden zelf in.',
+    },
     readError: 'Kon niet worden gelezen.',
     saveTitle: 'Hernoemde kopieën opslaan',
     zipName: 'pdfs-hernoemd',

@@ -365,7 +365,7 @@ export const en: Messages = {
   rename: {
     openTitle: 'Open PDFs to rename',
     openHint:
-      'Drag scanned letters here or choose them. Only the first two pages are read, and your files stay on your device.',
+      'Drag scanned letters here or choose them. Only the first two pages are read (for a scan without a text layer the first, with text recognition), and your files stay on your device.',
     choose: 'Choose PDFs',
     dropHere: 'Release to open',
     reading: 'Reading…',
@@ -407,6 +407,14 @@ export const en: Messages = {
     duplicate: 'duplicate name',
     noDate: 'no date',
     noText: 'No text found: this scan has no text layer.',
+    ocr: {
+      loading: 'Loading text recognition… {percent}%',
+      progress: 'Recognising text (OCR)… letter {n} of {total}',
+      waiting: 'No text layer: waiting for text recognition (OCR)…',
+      done: 'Text recognised with OCR: check it extra carefully.',
+      empty: 'No text found, not even with OCR.',
+      failed: 'Text recognition (OCR) did not work: fill in the fields yourself.',
+    },
     readError: 'Could not be read.',
     saveTitle: 'Save renamed copies',
     zipName: 'pdfs-renamed',

@@ -10,7 +10,7 @@ import { downloadFile } from '../pdf/save';
 import { learn, recognize, suggestions, type DbKind, type RenameDb } from './database';
 import { DatabaseView } from './DatabaseView';
 import { PreviewDialog } from './PreviewDialog';
-import { readLines } from './readText';
+import { openScanReader, readLines, type ScanReader } from './readText';
 import { RenameMerge } from './RenameMerge';
 import {
   findDates,
@@ -42,6 +42,70 @@ function fromDb(lines: readonly string[], db: RenameDb): Partial<RenameDoc> {
   if (sender) Object.assign(found, { sender, senderRec: true });
   if (subject) Object.assign(found, { subject, subjectRec: true });
   return found;
+}
+
+/** Wat de tool in de tekst van een brief vindt: datums, afzender en onderwerp (de database voorop). */
+function fieldsFrom(lines: readonly string[], fileName: string, db: RenameDb) {
+  const dates = findDates(lines, fileName);
+  return {
+    dates,
+    date: dates[0]?.ymd ?? '',
+    sender: findSender(lines),
+    subject: findSubject(lines),
+    senderRec: false,
+    subjectRec: false,
+    ...fromDb(lines, db),
+  };
+}
+
+/**
+ * Tekstherkenning (OCR) voor de brieven zonder tekstlaag, nadat de rest gelezen is. Wat je
+ * intussen zelf aanpaste, blijft staan: alleen velden die nog zijn zoals ze waren, worden ingevuld.
+ */
+async function recognizeScans(scans: readonly RenameDoc[]) {
+  const total = scans.length;
+  const finish = (id: number, change: (doc: RenameDoc) => Partial<RenameDoc>) =>
+    setRenameState((current) => ({
+      docs: current.docs.map((doc) => (doc.id === id ? { ...doc, ...change(doc) } : doc)),
+    }));
+  setRenameState(() => ({ ocrProgress: { loading: 0, done: 0, total } }));
+  let reader: ScanReader;
+  try {
+    reader = await openScanReader((loading) =>
+      setRenameState(() => ({ ocrProgress: { loading, done: 0, total } })),
+    );
+  } catch {
+    for (const scan of scans) finish(scan.id, () => ({ ocr: 'failed' }));
+    return;
+  }
+  try {
+    for (const [index, scan] of scans.entries()) {
+      setRenameState(() => ({ ocrProgress: { loading: null, done: index, total } }));
+      try {
+        const lines = await reader.read(scan.file);
+        const found = fieldsFrom(lines, scan.file.name, getRenameDb());
+        finish(scan.id, (doc) => {
+          const change: Partial<RenameDoc> = {
+            lines,
+            dates: found.dates,
+            ocr: lines.length > 0 ? 'done' : 'empty',
+          };
+          if (doc.date === scan.date) change.date = found.date;
+          if (doc.sender === scan.sender) {
+            Object.assign(change, { sender: found.sender, senderRec: found.senderRec });
+          }
+          if (doc.subject === scan.subject) {
+            Object.assign(change, { subject: found.subject, subjectRec: found.subjectRec });
+          }
+          return change;
+        });
+      } catch {
+        finish(scan.id, () => ({ ocr: 'failed' }));
+      }
+    }
+  } finally {
+    reader.close();
+  }
 }
 
 /** Onthoudt een ingevulde afzender of onderwerp in de database. */
@@ -119,7 +183,7 @@ function ViewToggle({ view }: { view: RenameView }) {
 function RenameList() {
   const { t } = useI18n();
   const r = t.rename;
-  const { docs, reading, showAll, saved, changed } = useRenameState();
+  const { docs, reading, ocrProgress, showAll, saved, changed } = useRenameState();
   const db = useRenameDb();
   const [asking, setAsking] = useState<'save' | 'clear' | null>(null);
   // De brief die nu in het voorbeeldvenster staat.
@@ -146,6 +210,7 @@ function RenameList() {
     );
     if (pdfs.length === 0) return;
     setRenameState(() => ({ reading: true, saved: null }));
+    const added: RenameDoc[] = [];
     for (const file of pdfs) {
       const doc: RenameDoc = {
         id: newId(),
@@ -163,22 +228,22 @@ function RenameList() {
         showText: getRenameState().showAll,
         error: false,
         pageCount: 0,
+        ocr: 'none',
       };
       try {
         const { lines, pageCount } = await readLines(file);
-        doc.lines = lines;
-        doc.pageCount = pageCount;
-        doc.dates = findDates(lines, file.name);
-        doc.date = doc.dates[0]?.ymd ?? '';
-        doc.sender = findSender(lines);
-        doc.subject = findSubject(lines);
-        Object.assign(doc, fromDb(lines, getRenameDb()));
+        Object.assign(doc, { lines, pageCount }, fieldsFrom(lines, file.name, getRenameDb()));
+        // Een scan zonder tekstlaag: straks met tekstherkenning.
+        if (lines.length === 0 && pageCount > 0) doc.ocr = 'waiting';
       } catch {
         doc.error = true;
       }
+      added.push(doc);
       setRenameState((current) => ({ docs: [...current.docs, doc] }));
     }
-    setRenameState(() => ({ reading: false, changed: true }));
+    const scans = added.filter((doc) => doc.ocr === 'waiting');
+    if (scans.length > 0) await recognizeScans(scans);
+    setRenameState(() => ({ reading: false, ocrProgress: null, changed: true }));
   };
 
   const clear = () => {
@@ -242,9 +307,14 @@ function RenameList() {
   }
 
   const withoutDate = included.filter((doc) => doc.date.length !== 6).length;
+  const busy = !ocrProgress
+    ? r.reading
+    : ocrProgress.loading !== null
+      ? format(r.ocr.loading, { percent: Math.round(ocrProgress.loading * 100) })
+      : format(r.ocr.progress, { n: ocrProgress.done + 1, total: ocrProgress.total });
   const status = [
     plural(docs.length, r.filesOne, format(r.files, { n: docs.length })),
-    reading ? r.reading : withoutDate > 0 ? format(r.withoutDate, { n: withoutDate }) : r.ready,
+    reading ? busy : withoutDate > 0 ? format(r.withoutDate, { n: withoutDate }) : r.ready,
   ].join(' · ');
 
   return (
@@ -387,7 +457,10 @@ function RenameList() {
                   <td class="rename-table__original">
                     <span class="rename-table__file">{file}</span>
                     {doc.error && <span class="rename-table__problem">{r.readError}</span>}
-                    {!doc.error && doc.lines.length === 0 && (
+                    {!doc.error && doc.ocr !== 'none' && (
+                      <span class="rename-table__problem">{r.ocr[doc.ocr]}</span>
+                    )}
+                    {!doc.error && doc.ocr === 'none' && doc.lines.length === 0 && (
                       <span class="rename-table__problem">{r.noText}</span>
                     )}
                     {!doc.error && (

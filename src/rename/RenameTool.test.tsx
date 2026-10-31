@@ -6,6 +6,7 @@ import { messages } from '../i18n';
 import { LanguageProvider } from '../i18n/LanguageContext';
 import { PdfSaveError, buildPdf, downloadFile, downloadPdf } from '../pdf/save';
 import { DB_STORAGE_KEY, type RenameDb } from './database';
+import { openScanReader } from './readText';
 import { RenameTool } from './RenameTool';
 import { resetRenameState } from './store';
 
@@ -21,6 +22,27 @@ const LETTERS: Record<string, string[] | Error> = {
   'bank2.pdf': ['ING Bank N.V.', 'Datum 3-2-2026', 'Betreft: Afschrift'],
   'scan.pdf': [],
   'kapot.pdf': new Error('kapot'),
+  'ocr-gemeente.pdf': [],
+  'ocr-kapot.pdf': [],
+};
+
+/** Wat de tekstherkenning "ziet" in een scan zonder tekstlaag (of een fout); anders niets. */
+const SCANS: Record<string, string[] | Error> = {
+  'ocr-gemeente.pdf': ['Gemeente Utrecht', 'Datum: 12 maart 2026', 'Betreft: Aanslag'],
+  'ocr-kapot.pdf': new Error('kapot'),
+};
+
+/**
+ * De nagebootste tekstherkenning: of hij opent, en "poortjes" om het openen of het lezen even
+ * vast te houden (om te zien wat er intussen op het scherm staat).
+ */
+const ocr = {
+  fail: false,
+  opening: null as Promise<void> | null,
+  reading: null as Promise<void> | null,
+  opened: 0,
+  closed: 0,
+  read: [] as string[],
 };
 
 vi.mock('./readText', () => ({
@@ -28,6 +50,24 @@ vi.mock('./readText', () => ({
     const lines = LETTERS[file.name];
     if (lines instanceof Error) throw lines;
     return { pageCount: 1, lines: lines ?? [] };
+  }),
+  openScanReader: vi.fn(async (onStatus?: (progress: number) => void) => {
+    onStatus?.(0.4);
+    if (ocr.opening) await ocr.opening;
+    if (ocr.fail) throw new Error('geen OCR');
+    ocr.opened += 1;
+    return {
+      read: async (file: File) => {
+        ocr.read.push(file.name);
+        if (ocr.reading) await ocr.reading;
+        const lines = SCANS[file.name];
+        if (lines instanceof Error) throw lines;
+        return lines ?? [];
+      },
+      close: () => {
+        ocr.closed += 1;
+      },
+    };
   }),
   // Losse PDF's bij samenvoegen: het aantal pagina's staat in de naam ("… 3p.pdf"), anders 1.
   countPages: vi.fn(async (file: File) => {
@@ -54,7 +94,8 @@ function setup() {
   );
 }
 
-async function open(...names: string[]) {
+/** Opent brieven en wacht tot ze in de tabel staan (de tekstherkenning kan dan nog bezig zijn). */
+async function start(...names: string[]) {
   fireEvent.change(document.querySelector('#rename-files')!, {
     target: { files: names.map(pdf) },
   });
@@ -62,11 +103,21 @@ async function open(...names: string[]) {
   await waitFor(() => expect(screen.getAllByRole('row')).toHaveLength(names.length + 1));
 }
 
+/** Opent brieven en wacht tot alles gelezen is, ook met tekstherkenning. */
+async function open(...names: string[]) {
+  await start(...names);
+  await waitFor(() =>
+    expect(document.querySelector<HTMLInputElement>('#rename-add')!.disabled).toBe(false),
+  );
+}
+
 const nameOf = (file: string) =>
   screen.getByLabelText<HTMLInputElement>(`Nieuwe naam voor ${file}`).value;
 const row = (file: string) => screen.getByText(file).closest('tr')!;
 
 beforeEach(() => {
+  Object.assign(ocr, { fail: false, opening: null, reading: null, opened: 0, closed: 0, read: [] });
+  vi.mocked(openScanReader).mockClear();
   vi.mocked(downloadFile).mockClear();
   vi.mocked(downloadPdf).mockClear();
   vi.mocked(buildPdf).mockClear();
@@ -131,11 +182,13 @@ describe('Slim hernoemen', () => {
     expect(nameOf('bank1.pdf')).toBe('260203 ing bank n afschrift.pdf');
   });
 
-  it('meldt een scan zonder tekstlaag en een bestand dat niet te lezen is', async () => {
+  it('meldt een scan waarin ook OCR niets vindt, en een bestand dat niet te lezen is', async () => {
     setup();
     await open('scan.pdf', 'kapot.pdf');
-    expect(within(row('scan.pdf')).getByText(r.noText)).toBeTruthy();
+    expect(within(row('scan.pdf')).getByText(r.ocr.empty)).toBeTruthy();
     expect(within(row('kapot.pdf')).getByText(r.readError)).toBeTruthy();
+    // Een bestand dat niet te lezen was, gaat niet naar de tekstherkenning.
+    expect(ocr.read).toEqual(['scan.pdf']);
     expect(screen.getByText('2 bestanden · 2 zonder datum')).toBeTruthy();
   });
 
@@ -578,6 +631,102 @@ describe('Slim hernoemen: samenvoegen', () => {
     // Weer op datum (er is geen eigen volgorde meer om terug te zetten).
     expect(order()).toEqual([GEMEENTE, BANK]);
     expect((screen.getByRole('button', { name: m.sort }) as HTMLButtonElement).disabled).toBe(true);
+  });
+});
+
+describe('Slim hernoemen: tekstherkenning (OCR)', () => {
+  const o = r.ocr;
+  const value = (label: string) => screen.getByLabelText<HTMLInputElement>(label).value;
+  /** Een poortje: de nagebootste OCR wacht tot `open()` wordt aangeroepen. */
+  const gate = () => {
+    let open = () => {};
+    const promise = new Promise<void>((resolve) => (open = resolve));
+    return { promise, open };
+  };
+
+  it('een scan zonder tekstlaag krijgt toch een naam; alleen scans, met één herkenner', async () => {
+    window.localStorage.setItem(
+      DB_STORAGE_KEY,
+      JSON.stringify({ afzenders: [], onderwerpen: [{ naam: 'OZB', triggers: ['aanslag'] }] }),
+    );
+    setup();
+    await open('bank1.pdf', 'ocr-gemeente.pdf', 'scan.pdf');
+    expect(ocr.read).toEqual(['ocr-gemeente.pdf', 'scan.pdf']);
+    expect([ocr.opened, ocr.closed]).toEqual([1, 1]);
+
+    expect(value('Datum voor ocr-gemeente.pdf')).toBe('260312');
+    expect(value('Afzender van ocr-gemeente.pdf')).toBe('Gemeente Utrecht');
+    // Ook de database werkt op de herkende tekst.
+    const subject = screen.getByLabelText('Onderwerp van ocr-gemeente.pdf');
+    expect((subject as HTMLInputElement).value).toBe('OZB');
+    expect(subject.classList.contains('rename-table__known')).toBe(true);
+    expect(nameOf('ocr-gemeente.pdf')).toBe('260312 gemeente utrecht ozb.pdf');
+    expect(within(row('ocr-gemeente.pdf')).getByText(o.done)).toBeTruthy();
+    expect(row('ocr-gemeente.pdf').querySelector('pre')!.textContent).toContain('Betreft: Aanslag');
+    expect(within(row('scan.pdf')).getByText(o.empty)).toBeTruthy();
+    // Een brief met tekstlaag krijgt geen melding over OCR.
+    expect(within(row('bank1.pdf')).queryByText(/OCR/)).toBeNull();
+    expect(screen.getByText('3 bestanden · 1 zonder datum')).toBeTruthy();
+  });
+
+  it('zonder scans wordt de tekstherkenning niet geopend', async () => {
+    setup();
+    await open('gemeente.pdf', 'bank1.pdf');
+    expect(openScanReader).not.toHaveBeenCalled();
+  });
+
+  it('tijdens de herkenning: voortgang, en wat je intussen typt blijft staan', async () => {
+    const opening = gate();
+    const reading = gate();
+    ocr.opening = opening.promise;
+    ocr.reading = reading.promise;
+    setup();
+    await start('ocr-gemeente.pdf');
+    expect(await screen.findByText('1 bestand · Tekstherkenning laden… 40%')).toBeTruthy();
+    opening.open();
+    expect(
+      await screen.findByText('1 bestand · Tekst herkennen (OCR)… brief 1 van 1'),
+    ).toBeTruthy();
+    expect(within(row('ocr-gemeente.pdf')).getByText(o.waiting)).toBeTruthy();
+    expect((screen.getByRole('button', { name: r.download }) as HTMLButtonElement).disabled).toBe(
+      true,
+    );
+
+    fireEvent.input(screen.getByLabelText('Onderwerp van ocr-gemeente.pdf'), {
+      target: { value: 'Eigen onderwerp' },
+    });
+    fireEvent.input(screen.getByLabelText('Datum voor ocr-gemeente.pdf'), {
+      target: { value: '260101' },
+    });
+    reading.open();
+    await waitFor(() => expect(within(row('ocr-gemeente.pdf')).getByText(o.done)).toBeTruthy());
+    // Zelf getypt blijft; wat je niet aanraakte, vult de herkenning in.
+    expect(value('Onderwerp van ocr-gemeente.pdf')).toBe('Eigen onderwerp');
+    expect(value('Datum voor ocr-gemeente.pdf')).toBe('260101');
+    expect(value('Afzender van ocr-gemeente.pdf')).toBe('Gemeente Utrecht');
+    expect(screen.getByText('1 bestand · klaar')).toBeTruthy();
+  });
+
+  it('werkt de herkenning niet, dan een melding en vul je zelf in', async () => {
+    setup();
+    await open('ocr-kapot.pdf', 'ocr-gemeente.pdf');
+    // Eén scan mislukt, de ander lukt gewoon.
+    expect(within(row('ocr-kapot.pdf')).getByText(o.failed)).toBeTruthy();
+    expect(within(row('ocr-gemeente.pdf')).getByText(o.done)).toBeTruthy();
+    expect(ocr.closed).toBe(1);
+    cleanup();
+    resetRenameState();
+
+    // De herkenner zelf laadt niet: alle scans krijgen de melding, de rest werkt gewoon.
+    ocr.fail = true;
+    setup();
+    await open('ocr-gemeente.pdf', 'gemeente.pdf');
+    expect(within(row('ocr-gemeente.pdf')).getByText(o.failed)).toBeTruthy();
+    expect(value('Afzender van ocr-gemeente.pdf')).toBe('');
+    expect(nameOf('gemeente.pdf')).toBe('260312 gemeente utrecht aan.pdf');
+    expect((screen.getByRole('button', { name: r.download }) as HTMLButtonElement).disabled).toBe(
+      false,
+    );
   });
 });
 
