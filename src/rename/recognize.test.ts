@@ -284,10 +284,61 @@ describe('findSubject', () => {
     expect(findSubject(['x', 'Re: deelnemersnummer'])).toBe('deelnemersnummer');
   });
 
-  it('anders een opvallende korte regel, niet de eerste', () => {
-    expect(findSubject(['Belastingdienst', 'Postbus 2500', 'Voorlopige aanslag'])).toBe(
-      'Postbus 2500',
+  /*
+   * Verzonnen regels met de opbouw van echte scans: kolommen naast elkaar op één regel, rommel van
+   * de OCR ervoor, of een klein "betreft" zonder dubbele punt.
+   */
+  it('het label midden in een regel, met een dubbele punt', () => {
+    expect(
+      findSubject(['Verzekeraar', 'AFM-vergunningnummer Onderwerp: Nieuwe voorwaarden per 2027']),
+    ).toBe('Nieuwe voorwaarden per 2027');
+    expect(findSubject(['Verzekeraar', '< Onderwerp: premieverhoging AOV'])).toBe(
+      'premieverhoging AOV',
     );
+    expect(findSubject(['Kenmerk 123 Betreft: Uw aanvraag'])).toBe('Uw aanvraag');
+    // "re:" midden in gewone tekst is geen label.
+    expect(findSubject(['Zie ook de regels re: privacy op de site'])).toBe('');
+  });
+
+  it('alleen het label op een regel: het onderwerp staat eronder', () => {
+    expect(findSubject(['Gemeente', 'Betreft', 'Jaaropgave 2025', 'uitbetaalde bedragen'])).toBe(
+      'Jaaropgave 2025',
+    );
+    expect(findSubject(['Gemeente', 'Onderwerp:', 'Aanslag'])).toBe('Aanslag');
+    // Staat eronder alleen een nummer, dan is dat geen onderwerp.
+    expect(findSubject(['Gemeente', 'Onderwerp:', '12345'])).toBe('');
+  });
+
+  it('het label zonder dubbele punt aan het begin van een regel', () => {
+    expect(findSubject(['Gemeente', 'betreft Jaaropgave 2025'])).toBe('Jaaropgave 2025');
+    expect(findSubject(['Gemeente', 'Inzake de aanslag 2026'])).toBe('de aanslag 2026');
+  });
+
+  it('een label aan het begin met dubbele punt gaat vóór de andere plekken', () => {
+    expect(findSubject(['Kolom Onderwerp: Eerste', 'Betreft: Tweede'])).toBe('Tweede');
+    expect(findSubject(['Betreft', 'Derde', 'Kolom Onderwerp: Tweede'])).toBe('Tweede');
+    expect(findSubject(['betreft Vierde', 'Betreft', 'Derde'])).toBe('Derde');
+  });
+
+  it('de nieuwe plekken alleen bovenaan; "Betreft:" aan het begin ook lager', () => {
+    const filler = Array.from({ length: 30 }, (_, i) => `Regel ${i + 1} van de brief`);
+    expect(findSubject([...filler, 'Kolom Onderwerp: Laat'])).toBe('');
+    expect(findSubject([...filler, 'betreft Laat'])).toBe('');
+    expect(findSubject([...filler, 'Betreft', 'Laat'])).toBe('');
+    expect(findSubject([...filler, 'Betreft: Laat'])).toBe('Laat');
+  });
+
+  it('zonder label: leeg (liever niets dan een gok die niet klopt)', () => {
+    // Zoals bij de gemeente, waar het kleine "betreft" niet in de tekstlaag stond.
+    expect(
+      findSubject([
+        'Rijswijk',
+        'inlichtingen bij E.J. Jansen',
+        'Bedrijfsvoering',
+        'Jaaropgave 2025 datum 29 januari 2026',
+      ]),
+    ).toBe('');
+    expect(findSubject(['Belastingdienst', 'Postbus 2500', 'Voorlopige aanslag'])).toBe('');
     expect(findSubject(['Alleen de afzender'])).toBe('');
   });
 });

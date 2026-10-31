@@ -1,9 +1,9 @@
 /**
  * Slim hernoemen: uit de tekst van een gescande brief een bestandsnaam voorstellen,
  * `JJMMDD afzender onderwerp.pdf`. Overgenomen uit Jörgs `pdf-hernoemer.html` (daar beproefd met
- * echte scans); de regels en de scores zijn bewust gelijk gehouden, behalve bij de datum: daar
- * zijn ingangs- en einddatums ("per 1 januari") en de plaats vóór de datum ("Heerlen,") later
- * toegevoegd, na brieven waar het misging.
+ * echte scans); de regels en de scores zijn bewust gelijk gehouden, behalve bij de datum en het
+ * onderwerp: daar zijn ingangs- en einddatums ("per 1 januari"), de plaats vóór de datum
+ * ("Heerlen,") en meer plekken voor het onderwerplabel later toegevoegd, na brieven waar het misging.
  */
 
 /** Een stukje tekst van pdf.js (`getTextContent`), met zijn plek op de pagina. */
@@ -289,24 +289,50 @@ export function findSender(lines: readonly string[]): string {
 
 /* Onderwerp */
 
+/** Een label aan het begin van een regel, met een dubbele punt of streepje (zoals de HTML-tool). */
+const SUBJECT_START = /^(?:betreft|onderwerp|inzake|re|subject)\s*[:-]\s*(.+)$/i;
+
 /**
- * Het onderwerp: wat na "Betreft:", "Onderwerp:" of "Inzake:" staat, of anders een opvallende
- * korte regel bovenaan (niet de eerste, dat is meestal de afzender).
+ * Een label midden in een regel, met een dubbele punt: de scanner zet kolommen naast elkaar op één
+ * regel ("AFM-vergunningnummer Onderwerp: …"), of de OCR zet er rommel voor ("< Onderwerp: …").
+ * Niet voor "re:", dat ook in gewone tekst voorkomt.
+ */
+const SUBJECT_INSIDE = /\b(?:betreft|onderwerp|inzake)\s*:\s*(.+)$/i;
+
+/** Alleen het label op een regel: het onderwerp staat op de regel eronder. */
+const SUBJECT_ALONE = /^(?:betreft|onderwerp|inzake)\s*:?\s*$/i;
+
+/** Een label zonder dubbele punt aan het begin van een regel ("betreft Jaaropgave 2025"). */
+const SUBJECT_BARE = /^(?:betreft|onderwerp|inzake)\s+(.+)$/i;
+
+/** Het onderwerp staat bovenaan: alleen het label aan het begin met dubbele punt telt ook lager. */
+const SUBJECT_TOP = 30;
+
+/**
+ * Het onderwerp: wat na "Betreft", "Onderwerp" of "Inzake" staat. Eerst een label aan het begin van
+ * een regel met een dubbele punt (ook "Re:"), dan midden in een regel, dan alleen het label met het
+ * onderwerp op de regel eronder, dan een label zonder dubbele punt. Zonder label blijft het
+ * onderwerp leeg: liever niets dan een gok die niet klopt (de database vult het dan vaak in). Dit
+ * wijkt bewust af van de HTML-tool, die dan een korte regel bovenaan nam.
  */
 export function findSubject(lines: readonly string[]): string {
-  const labelRe = /^(betreft|onderwerp|inzake|re|subject)\s*[:-]\s*(.+)$/i;
+  const usable = (text: string | undefined) => (text?.trim().length ?? 0) >= 2;
   for (const line of lines) {
-    const m = line.match(labelRe);
-    if (m && m[2]!.trim().length >= 2) return m[2]!.trim();
+    const m = SUBJECT_START.exec(line);
+    if (m && usable(m[1])) return m[1]!.trim();
   }
-  const top = lines.slice(0, 18);
-  for (let i = 0; i < top.length; i += 1) {
-    const line = top[i]!;
-    if (isNoise(line)) continue;
-    if (line.length >= 6 && line.length <= 60 && /[a-zà-þ]/i.test(line)) {
-      if (i === 0) continue;
-      return line;
-    }
+  const top = lines.slice(0, SUBJECT_TOP);
+  for (const line of top) {
+    const m = SUBJECT_INSIDE.exec(line);
+    if (m && usable(m[1])) return m[1]!.trim();
+  }
+  for (let i = 0; i < top.length - 1; i += 1) {
+    const next = top[i + 1]!;
+    if (SUBJECT_ALONE.test(top[i]!) && usable(next) && !isNoise(next)) return next.trim();
+  }
+  for (const line of top) {
+    const m = SUBJECT_BARE.exec(line);
+    if (m && usable(m[1])) return m[1]!.trim();
   }
   return '';
 }
