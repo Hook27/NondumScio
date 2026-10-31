@@ -22,7 +22,12 @@ export type RenameDoc = {
   error: boolean;
   /** Aantal pagina's (voor het samenvoegen); 0 als de PDF niet te lezen was. */
   pageCount: number;
+  /** Tekstherkenning voor een scan zonder tekstlaag: niet nodig, bezig, klaar, niets gevonden, mislukt. */
+  ocr: 'none' | 'waiting' | 'done' | 'empty' | 'failed';
 };
+
+/** Hoever de tekstherkenning is: eerst laden (0 tot 1), dan brief voor brief. */
+export type OcrProgress = { loading: number | null; done: number; total: number };
 
 /** Een al hernoemde PDF die je los toevoegt, alleen om mee samen te voegen. */
 export type ExtraDoc = {
@@ -41,6 +46,8 @@ export type RenameState = {
   view: RenameView;
   docs: RenameDoc[];
   reading: boolean;
+  /** Tijdens het lezen: de tekstherkenning van scans zonder tekstlaag. */
+  ocrProgress: OcrProgress | null;
   showAll: boolean;
   /** De melding na het downloaden (of na opnieuw herkennen). */
   saved: string | null;
@@ -60,6 +67,7 @@ const INITIAL: RenameState = {
   view: 'rename',
   docs: [],
   reading: false,
+  ocrProgress: null,
   showAll: true,
   saved: null,
   changed: false,

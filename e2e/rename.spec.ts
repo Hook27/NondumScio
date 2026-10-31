@@ -293,6 +293,62 @@ test.describe('Slim hernoemen', () => {
     ]);
   });
 
+  test('een scan zonder tekstlaag krijgt met OCR toch een naam; zonder scans geen OCR', async ({
+    page,
+  }) => {
+    test.setTimeout(240_000);
+    const requests: string[] = [];
+    page.on('request', (request) => requests.push(request.url()));
+    await openPage(page, '/#/advanced/rename', { lang: 'nl' });
+    await page.locator('#rename-files').setInputFiles({
+      name: 'tekst.pdf',
+      mimeType: 'application/pdf',
+      buffer: await letter(['ING Bank N.V.', 'Datum 3-2-2026', 'Betreft: Afschrift']),
+    });
+    await expect(nameOf(page, 'tekst.pdf')).toHaveValue('260203 ing bank n afschrift.pdf');
+    await expect(page.getByText('1 bestand · klaar')).toBeVisible();
+    // Een brief met tekstlaag: niets van de tekstherkenning geladen.
+    expect(requests.filter((url) => url.includes('/ocr/'))).toEqual([]);
+
+    // Een scan: alleen een afbeelding van de brief, zonder tekstlaag. Met een datum in de
+    // bestandsnaam, die het moet afleggen tegen de herkende datum.
+    const png = await page.evaluate(() => {
+      const canvas = document.createElement('canvas');
+      canvas.width = 1240;
+      canvas.height = 1754;
+      const context = canvas.getContext('2d')!;
+      context.fillStyle = '#ffffff';
+      context.fillRect(0, 0, canvas.width, canvas.height);
+      context.fillStyle = '#000000';
+      context.font = '40px Arial, sans-serif';
+      ['Gemeente Utrecht', 'Postbus 16200', 'Datum: 12 maart 2026', 'Betreft: Aanslag'].forEach(
+        (line, i) => context.fillText(line, 120, 200 + i * 70),
+      );
+      return canvas.toDataURL('image/png').split(',')[1]!;
+    });
+    const doc = await PDFDocument.create();
+    const image = await doc.embedPng(Buffer.from(png, 'base64'));
+    doc.addPage([595, 842]).drawImage(image, { x: 0, y: 0, width: 595, height: 842 });
+    await page.locator('#rename-add').setInputFiles({
+      name: 'scan_20260101.pdf',
+      mimeType: 'application/pdf',
+      buffer: Buffer.from(await doc.save()),
+    });
+    const scan = page.locator('.rename-table tbody tr').filter({ hasText: 'scan_20260101.pdf' });
+    await expect(scan.getByText(r.ocr.done)).toBeVisible({ timeout: 200_000 });
+    await expect(page.getByLabel('Datum voor scan_20260101.pdf')).toHaveValue('260312');
+    await expect(page.getByLabel('Afzender van scan_20260101.pdf')).toHaveValue('Gemeente Utrecht');
+    await expect(nameOf(page, 'scan_20260101.pdf')).toHaveValue('260312 gemeente utrecht aan.pdf');
+    await expect(page.getByText('2 bestanden · klaar')).toBeVisible();
+    // De herkenning kwam van de eigen site (/ocr/), met Nederlandse taaldata.
+    expect(requests.some((url) => url.includes('/ocr/lang/nld.traineddata.gz'))).toBe(true);
+
+    const result = await new AxeBuilder({ page })
+      .withTags(['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa'])
+      .analyze();
+    expect(result.violations).toEqual([]);
+  });
+
   test('bekijken: de PDF in een venster, pagina voor pagina', async ({ page }) => {
     const doc = await PDFDocument.create();
     const font = await doc.embedFont(StandardFonts.Helvetica);
