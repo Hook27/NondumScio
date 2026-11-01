@@ -514,10 +514,72 @@ export const nl = {
       empty: 'Nog niets onthouden.',
     },
   },
+  compare: {
+    toolbar: 'Vergelijken',
+    sides: {
+      a: {
+        title: 'Origineel (A)',
+        hint: 'Het oudere of originele document.',
+        choose: 'Kies PDF A',
+        replace: 'Andere PDF voor A',
+      },
+      b: {
+        title: 'Nieuwe versie (B)',
+        hint: 'Het nieuwere document, dat je wilt controleren.',
+        choose: 'Kies PDF B',
+        replace: 'Andere PDF voor B',
+      },
+    },
+    dropHere: 'Laat los om te openen',
+    bothHint: 'Kies of sleep je twee PDF’s tegelijk, dan wordt de eerste A en de tweede B.',
+    readingStart: 'Bezig met lezen…',
+    reading: 'Bezig met lezen… pagina {n} van {total}',
+    pagesOne: '1 pagina',
+    pages: '{n} pagina’s',
+    charsOne: '1 teken',
+    chars: '{n} tekens',
+    noTextOne: '1 pagina zonder tekstlaag',
+    noText: '{n} pagina’s zonder tekstlaag',
+    errors: {
+      'not-pdf': 'Dit is geen PDF.',
+      password: 'Deze PDF is beveiligd met een wachtwoord. Dat wordt nog niet ondersteund.',
+      damaged: 'Deze PDF kon niet worden gelezen.',
+    },
+    tooMany: 'Je koos meer dan twee PDF’s: alleen de eerste twee worden vergeleken.',
+    swap: 'A en B omwisselen',
+    clear: 'Wissen',
+    counts: { added: '{n} toegevoegd', removed: '{n} verwijderd', changed: '{n} gewijzigd' },
+    colorsHint:
+      'Rood: alleen in A. Groen: alleen in B. Geel: gewijzigd, met de woorden die verschillen gemarkeerd. p3 = pagina 3 van de PDF.',
+    settings:
+      'Vergeleken per alinea. Witruimte telt niet mee, terugkerende kop- en voetteksten worden weggelaten, twee kolommen worden na elkaar gelezen en afgebroken woorden weer aan elkaar gezet.',
+    about:
+      'De tekst uit een PDF is een reconstructie: geen tekstverschillen betekent niet dat de documenten gelijk zijn. Je bestanden blijven op je apparaat.',
+    textTitle: 'Tekstverschillen',
+    placeholder: 'Kies twee PDF’s om hun tekst te vergelijken.',
+    waitingFor: 'Kies nog PDF {side} om te vergelijken.',
+    summary: 'A: {a} · B: {b}',
+    unitsOne: '1 alinea',
+    units: '{n} alinea’s',
+    gapOne: '1 ongewijzigde alinea tonen',
+    gap: '{n} ongewijzigde alinea’s tonen',
+    kinds: { added: 'Toegevoegd', removed: 'Verwijderd', changed: 'Gewijzigd' },
+    page: 'p{n}',
+    pageLabel: 'Pagina {n}',
+    noDiff: 'Geen tekstverschillen gevonden.',
+    noDiffNote: 'Dit zegt niets over afbeeldingen, stempels, handtekeningen of opmaak.',
+    fallback:
+      'De documenten zijn te groot voor een volledige vergelijking: ze zijn alleen op volgorde vergeleken. Verschoven tekst kan daardoor ten onrechte als gewijzigd verschijnen.',
+    noTextWarning:
+      'Pagina’s zonder tekstlaag: {list}. Die pagina’s zijn een afbeelding (gescand of afgevlakt) en kunnen niet op tekst worden vergeleken.',
+    noTextIn: '{n} van {total} in {side}',
+    noTextAnd: ' en ',
+    noTextAll: 'Voor dit document zegt de tekstvergelijking dus niets.',
+  },
   advanced: {
     title: 'Geavanceerd',
     description:
-      'Gereedschap voor op de computer, zoals PDF’s slim hernoemen op basis van hun inhoud.',
+      'Gereedschap voor op de computer, zoals PDF’s slim hernoemen op basis van hun inhoud of twee versies van een PDF vergelijken.',
     intro:
       'Deze onderdelen werken los van de andere taken: je opent je PDF’s hier apart, en wat je hier doet, komt niet bij de andere taken terecht. Ze zijn alleen beschikbaar op een computer.',
     desktopOnly:
@@ -529,6 +591,11 @@ export const nl = {
         title: 'Slim hernoemen',
         description:
           'Stel voor gescande brieven een naam voor op basis van datum, afzender en onderwerp, en download hernoemde kopieën.',
+      },
+      compare: {
+        title: 'PDF’s vergelijken',
+        description:
+          'Vergelijk twee versies van een PDF: zie welke tekst is toegevoegd, verwijderd of gewijzigd.',
       },
     },
   },

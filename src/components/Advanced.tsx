@@ -66,6 +66,7 @@ export function AdvancedToolPage({ id }: { id: AdvancedId }) {
 /** Laadt een onderdeel pas als het geopend wordt, zodat de rest van de app er niet zwaarder van wordt. */
 const tools: Record<AdvancedId, () => Promise<FunctionComponent>> = {
   rename: async () => (await import('../rename/RenameTool')).RenameTool,
+  compare: async () => (await import('../compare/CompareTool')).CompareTool,
 };
 
 function Tool({ id }: { id: AdvancedId }) {

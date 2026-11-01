@@ -506,9 +506,72 @@ export const en: Messages = {
       empty: 'Nothing remembered yet.',
     },
   },
+  compare: {
+    toolbar: 'Compare',
+    sides: {
+      a: {
+        title: 'Original (A)',
+        hint: 'The older or original document.',
+        choose: 'Choose PDF A',
+        replace: 'Other PDF for A',
+      },
+      b: {
+        title: 'New version (B)',
+        hint: 'The newer document, which you want to check.',
+        choose: 'Choose PDF B',
+        replace: 'Other PDF for B',
+      },
+    },
+    dropHere: 'Release to open',
+    bothHint: 'Choose or drag two PDFs at once, and the first becomes A and the second B.',
+    readingStart: 'Reading…',
+    reading: 'Reading… page {n} of {total}',
+    pagesOne: '1 page',
+    pages: '{n} pages',
+    charsOne: '1 character',
+    chars: '{n} characters',
+    noTextOne: '1 page without a text layer',
+    noText: '{n} pages without a text layer',
+    errors: {
+      'not-pdf': 'This is not a PDF.',
+      password: 'This PDF is protected with a password. This is not supported yet.',
+      damaged: 'This PDF could not be read.',
+    },
+    tooMany: 'You chose more than two PDFs: only the first two are compared.',
+    swap: 'Swap A and B',
+    clear: 'Clear',
+    counts: { added: '{n} added', removed: '{n} removed', changed: '{n} changed' },
+    colorsHint:
+      'Red: only in A. Green: only in B. Yellow: changed, with the words that differ highlighted. p3 = page 3 of the PDF.',
+    settings:
+      'Compared by paragraph. White space does not count, repeating headers and footers are left out, two columns are read one after the other and hyphenated words are joined again.',
+    about:
+      'The text from a PDF is a reconstruction: no text differences does not mean the documents are the same. Your files stay on your device.',
+    textTitle: 'Text differences',
+    placeholder: 'Choose two PDFs to compare their text.',
+    waitingFor: 'Choose PDF {side} as well to compare.',
+    summary: 'A: {a} · B: {b}',
+    unitsOne: '1 paragraph',
+    units: '{n} paragraphs',
+    gapOne: 'Show 1 unchanged paragraph',
+    gap: 'Show {n} unchanged paragraphs',
+    kinds: { added: 'Added', removed: 'Removed', changed: 'Changed' },
+    page: 'p{n}',
+    pageLabel: 'Page {n}',
+    noDiff: 'No text differences found.',
+    noDiffNote: 'This says nothing about images, stamps, signatures or layout.',
+    fallback:
+      'The documents are too large for a full comparison: they were only compared in order. Moved text may therefore wrongly show up as changed.',
+    noTextWarning:
+      'Pages without a text layer: {list}. Those pages are an image (scanned or flattened) and cannot be compared by text.',
+    noTextIn: '{n} of {total} in {side}',
+    noTextAnd: ' and ',
+    noTextAll: 'For this document, the text comparison therefore says nothing.',
+  },
   advanced: {
     title: 'Advanced',
-    description: 'Tools for the computer, such as renaming PDFs smartly based on their content.',
+    description:
+      'Tools for the computer, such as renaming PDFs smartly based on their content or comparing two versions of a PDF.',
     intro:
       'These tools work separately from the other tasks: you open your PDFs here on their own, and what you do here does not end up in the other tasks. They are only available on a computer.',
     desktopOnly:
@@ -520,6 +583,10 @@ export const en: Messages = {
         title: 'Smart rename',
         description:
           'Suggest a name for scanned letters based on date, sender and subject, and download renamed copies.',
+      },
+      compare: {
+        title: 'Compare PDFs',
+        description: 'Compare two versions of a PDF: see which text was added, removed or changed.',
       },
     },
   },
