@@ -18,6 +18,11 @@
   --candidate: #d97706;
   /* Slim hernoemen: een veld dat uit de database is ingevuld. */
   --known: #15803d;
+  /* PDF's vergelijken, beeld: de kleuren in het plaatje van het pixelverschil (dat is in beide
+     thema's hetzelfde plaatje, dus deze kleuren ook). */
+  --visual-a: #f87171;
+  --visual-b: #4ade80;
+  --visual-same: #55556e;
   /* PDF's vergelijken: alleen in A (rood), alleen in B (groen), gewijzigd (geel); de achtergrond
      van een stuk, de gemarkeerde woorden erin en een streep aan de rand. */
   --removed: #fbe9e9;
@@ -1163,6 +1168,140 @@ h1 {
   font-style: italic;
 }
 
+/* Het beeld: bladeren, de verschuiving van B en de zoom. */
+.compare-visual__nav,
+.compare-visual__zoom {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin: 0 0 0.75rem;
+}
+
+.compare-visual__nav span {
+  flex: 1;
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+}
+
+.compare-visual__nav .button,
+.compare-visual__zoom .button {
+  min-width: 2.5rem;
+  padding-inline: 0.6rem;
+}
+
+.compare-visual__zoom-value {
+  min-width: 3.5rem;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  text-align: center;
+}
+
+.compare-visual__offset {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.6rem;
+  font-size: 0.9rem;
+}
+
+.compare-visual__offset input {
+  width: 5rem;
+  padding: 0.3rem 0.45rem;
+  background: var(--bg);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  font: inherit;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+}
+
+.compare-visual__controls .compare-settings__range .compare-settings__hint {
+  grid-column: 1 / -1;
+}
+
+/* De kleuren van het pixelverschil, met een vierkantje ervoor. */
+.compare-visual__legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem 1rem;
+  margin: 0 0 0.6rem;
+  padding: 0;
+  list-style: none;
+  font-size: 0.85rem;
+}
+
+.compare-visual__legend li {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+.compare-visual__legend li::before {
+  content: '';
+  width: 0.7rem;
+  height: 0.7rem;
+  border-radius: 2px;
+}
+
+.compare-visual__legend-a::before {
+  background: var(--visual-a);
+}
+
+.compare-visual__legend-b::before {
+  background: var(--visual-b);
+}
+
+.compare-visual__legend-same::before {
+  background: var(--visual-same);
+}
+
+.compare-visual__stat {
+  min-height: 1.4em;
+  margin: 0 0 0.6rem;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 0.85rem;
+}
+
+/* Het vak met de getekende pagina's: schuift zelf als je inzoomt. */
+.compare-visual__wrap {
+  overflow-x: auto;
+  padding: 1rem;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+}
+
+/* Gecentreerd zolang het past; is het breder, dan links, anders valt de linkerrand buiten beeld. */
+.compare-visual__canvas {
+  display: block;
+  height: auto;
+  margin-inline: auto;
+  background: var(--paper);
+  box-shadow: var(--shadow);
+}
+
+.compare-visual__side {
+  display: flex;
+  gap: 16px;
+  width: max-content;
+  margin-inline: auto;
+}
+
+.compare-visual__side figure {
+  margin: 0;
+}
+
+.compare-visual__side figcaption {
+  margin: 0 0 0.35rem;
+  color: var(--text-muted);
+  font-size: 0.85rem;
+}
+
+.compare-visual__msg {
+  margin: 1rem 0;
+  color: var(--text-muted);
+  text-align: center;
+}
+
 /* De instellingen bij het vergelijken: ze werken meteen. */
 .compare-settings {
   margin: 0 0 0.75rem;
@@ -2194,6 +2333,12 @@ h1 {
   /* PDF's vergelijken: een smal linkervak, zodat de tekst van A en B naast elkaar past. */
   .workspace.compare {
     grid-template-columns: minmax(16rem, 20rem) minmax(0, 1fr);
+  }
+
+  /* Altijd ruimte voor de schuifbalk: anders wordt het vak smaller als hij verschijnt, tekent het
+     beeld opnieuw (passend), kan hij weer verdwijnen, en zo heen en weer. */
+  .workspace.compare .workspace__view {
+    scrollbar-gutter: stable;
   }
 
   /* Een beetje ruimte rondom, zodat het focuskader niet wordt afgeknipt. */

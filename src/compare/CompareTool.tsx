@@ -1,4 +1,4 @@
-import { useLayoutEffect, useRef, useState } from 'preact/hooks';
+import { useEffect, useLayoutEffect, useRef, useState } from 'preact/hooks';
 import { Dropzone } from '../components/Dropzone';
 import { PaneHead } from '../components/WorkspaceParts';
 import { useI18n } from '../i18n/LanguageContext';
@@ -16,19 +16,31 @@ import {
 } from './diff';
 import { pageRows, pageSize, profileRows, type PageNote, type ProfileDoc } from './profile';
 import {
+  ZOOM_STEPS,
+  composeDiff,
+  composeOverlay,
+  fitWidth,
+  renderPage,
+  stepZoom,
+  targetWidths,
+} from './visual';
+import {
   clearCompare,
   expandRows,
+  getCompareState,
   isReading,
   openFiles,
   setOnlyDiff,
   setOptions,
   setTab,
   setView,
+  setVisual,
   swapSides,
   useCompareState,
   type CompareDoc,
   type CompareTab,
   type CompareView,
+  type VisualMode,
   type Side,
   type Slot,
 } from './store';
@@ -36,7 +48,8 @@ import {
 const SIDES: readonly Side[] = ['a', 'b'];
 const LEVELS: readonly CompareLevel[] = ['paragraph', 'sentence', 'line'];
 const VIEWS: readonly CompareView[] = ['split', 'unified'];
-const TABS: readonly CompareTab[] = ['text', 'profile'];
+const TABS: readonly CompareTab[] = ['text', 'profile', 'visual'];
+const MODES: readonly VisualMode[] = ['diff', 'side', 'overlay'];
 const LETTER: Record<Side, string> = { a: 'A', b: 'B' };
 
 /**
@@ -100,10 +113,11 @@ export function CompareTool() {
               <p class="annotate__hint">{c.colorsHint}</p>
             </>
           )}
+          {tab === 'visual' && <VisualControls />}
           <p class="annotate__hint">{c.about}</p>
         </div>
         <div class="workspace__view" data-scroll-root>
-          {tab === 'text' ? <Results /> : <ProfileView />}
+          {tab === 'text' ? <Results /> : tab === 'profile' ? <ProfileView /> : <VisualView />}
         </div>
       </section>
     </>
@@ -130,6 +144,413 @@ function TabToggle() {
       ))}
     </div>
   );
+}
+
+/** Het aantal pagina's om door te bladeren: de meeste van A en B (0 zolang ze er niet zijn). */
+function pageTotal(state: ReturnType<typeof useCompareState>) {
+  const count = (slot: Slot) => (slot.status === 'ready' ? slot.doc.pageCount : 0);
+  return Math.max(count(state.a), count(state.b));
+}
+
+/** Een getal met een vast aantal cijfers achter de komma, in de taal van de app. */
+const decimals = (n: number, digits: number, language: string) =>
+  n.toLocaleString(language, { minimumFractionDigits: digits, maximumFractionDigits: digits });
+
+/** Links bij het beeld: bladeren, B verschuiven, de weergave, de drempel of B over A, en de zoom. */
+function VisualControls() {
+  const { t } = useI18n();
+  const v = t.compare.visual;
+  const state = useCompareState();
+  const { visual } = state;
+  const total = pageTotal(state);
+  const page = Math.min(visual.page, Math.max(1, total));
+  const lastZoom = ZOOM_STEPS[ZOOM_STEPS.length - 1]!;
+  return (
+    <fieldset class="compare-settings compare-visual__controls">
+      <legend>{v.title}</legend>
+      <div class="compare-visual__nav">
+        <button
+          type="button"
+          class="button button--secondary"
+          aria-label={v.previous}
+          disabled={total === 0 || page <= 1}
+          onClick={() => setVisual({ page: page - 1 })}
+        >
+          ◀
+        </button>
+        <span>{total > 0 ? format(v.page, { n: page, total }) : v.noPages}</span>
+        <button
+          type="button"
+          class="button button--secondary"
+          aria-label={v.next}
+          disabled={page >= total}
+          onClick={() => setVisual({ page: page + 1 })}
+        >
+          ▶
+        </button>
+      </div>
+      <div class="compare-visual__offset">
+        <label for="compare-offset">{v.offset}</label>
+        <input
+          id="compare-offset"
+          type="number"
+          step={1}
+          value={visual.offset}
+          aria-describedby="compare-offset-hint"
+          onChange={(event) =>
+            setVisual({ offset: Number.parseInt(event.currentTarget.value, 10) || 0 })
+          }
+        />
+      </div>
+      <p id="compare-offset-hint" class="compare-settings__hint">
+        {v.offsetHint}
+      </p>
+      {visual.mode === 'diff' && (
+        <div class="compare-settings__range">
+          <label for="compare-threshold">{v.threshold}</label>
+          <input
+            id="compare-threshold"
+            type="range"
+            min={4}
+            max={120}
+            value={visual.threshold}
+            aria-describedby="compare-threshold-hint"
+            onInput={(event) => setVisual({ threshold: Number(event.currentTarget.value) })}
+          />
+          <output for="compare-threshold">{visual.threshold}</output>
+          <p id="compare-threshold-hint" class="compare-settings__hint">
+            {v.thresholdHint}
+          </p>
+        </div>
+      )}
+      {visual.mode === 'overlay' && (
+        <div class="compare-settings__range">
+          <label for="compare-alpha">{v.alpha}</label>
+          <input
+            id="compare-alpha"
+            type="range"
+            min={0}
+            max={100}
+            value={Math.round(visual.alpha * 100)}
+            aria-describedby="compare-alpha-hint"
+            onInput={(event) => setVisual({ alpha: Number(event.currentTarget.value) / 100 })}
+          />
+          <output for="compare-alpha">{`${Math.round(visual.alpha * 100)}%`}</output>
+          <p id="compare-alpha-hint" class="compare-settings__hint">
+            {v.alphaHint}
+          </p>
+        </div>
+      )}
+      <p id="compare-zoom-label" class="compare-settings__label">
+        {v.zoom}
+      </p>
+      <div class="compare-visual__zoom" role="group" aria-labelledby="compare-zoom-label">
+        <button
+          type="button"
+          class="button button--secondary"
+          aria-label={v.zoomOut}
+          disabled={visual.zoom <= ZOOM_STEPS[0]}
+          onClick={() => setVisual({ zoom: stepZoom(visual.zoom, -1) })}
+        >
+          −
+        </button>
+        <output class="compare-visual__zoom-value">{`${visual.zoom}%`}</output>
+        <button
+          type="button"
+          class="button button--secondary"
+          aria-label={v.zoomIn}
+          disabled={visual.zoom >= lastZoom}
+          onClick={() => setVisual({ zoom: stepZoom(visual.zoom, 1) })}
+        >
+          +
+        </button>
+        <button
+          type="button"
+          class="button button--secondary"
+          disabled={visual.zoom === 100}
+          onClick={() => setVisual({ zoom: 100 })}
+        >
+          {v.fit}
+        </button>
+      </div>
+      <p class="compare-settings__hint">{v.keys}</p>
+    </fieldset>
+  );
+}
+
+/** Wat er rechts te zien is bij het beeld. */
+type Drawn =
+  | { kind: 'missing'; side: Side; page: number; count: number }
+  | { kind: 'error' }
+  | {
+      kind: 'diff';
+      canvas: HTMLCanvasElement;
+      ratio: number;
+      diff: number;
+      ink: number;
+      total: number;
+    }
+  | { kind: 'overlay'; canvas: HTMLCanvasElement; ratio: number }
+  | { kind: 'side'; a: HTMLCanvasElement; b: HTMLCanvasElement; ratio: number };
+
+/** Rechts bij het beeld: de pagina's getekend, als verschil, naast elkaar of B over A. */
+function VisualView() {
+  const { t } = useI18n();
+  const v = t.compare.visual;
+  const { a, b } = useCompareState();
+  if (a.status !== 'ready' || b.status !== 'ready') {
+    return (
+      <>
+        <PaneHead title={v.title} />
+        <Waiting placeholder={v.placeholder} />
+      </>
+    );
+  }
+  return <VisualCanvas a={a.doc} b={b.doc} />;
+}
+
+/** De laatst getekende pagina's, om bij een andere drempel of weergave niet opnieuw te tekenen. */
+type Rendered = {
+  key: string;
+  pages: Promise<[HTMLCanvasElement | null, HTMLCanvasElement | null]>;
+};
+
+/** Elk bestand een eigen nummer, voor de sleutel van de getekende pagina's. */
+const fileIds = new WeakMap<File, number>();
+let lastFileId = 0;
+const fileId = (file: File) => {
+  if (!fileIds.has(file)) fileIds.set(file, ++lastFileId);
+  return fileIds.get(file)!;
+};
+
+function VisualCanvas({ a, b }: { a: CompareDoc; b: CompareDoc }) {
+  const { t, language } = useI18n();
+  const c = t.compare;
+  const v = c.visual;
+  const state = useCompareState();
+  const { visual } = state;
+  const total = pageTotal(state);
+  const pageA = Math.min(visual.page, total);
+  const pageB = pageA + visual.offset;
+  const wrap = useRef<HTMLDivElement>(null);
+  // De breedte van het vak; zonder meting (zoals in een test) een redelijke schatting.
+  const [available, setAvailable] = useState(0);
+  const [drawn, setDrawn] = useState<Drawn | null>(null);
+  const [busy, setBusy] = useState(false);
+  const rendered = useRef<Rendered | null>(null);
+
+  // Bij "passend" hangt de tekenbreedte aan de breedte van het vak: opnieuw meten als die verandert.
+  useLayoutEffect(() => {
+    const element = wrap.current;
+    if (!element) return;
+    const measure = () => setAvailable(element.clientWidth - 32);
+    measure();
+    if (typeof ResizeObserver === 'undefined') return;
+    const observer = new ResizeObserver(measure);
+    observer.observe(element);
+    return () => observer.disconnect();
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    const side = visual.mode === 'side';
+    const widths = targetWidths(
+      fitWidth(available > 0 ? available : 940, side),
+      visual.zoom,
+      window.devicePixelRatio,
+    );
+    const key = [fileId(a.file), pageA, fileId(b.file), pageB, widths.dev].join('|');
+    if (rendered.current?.key !== key) {
+      rendered.current = {
+        key,
+        pages: Promise.all([
+          renderPage(a.file, pageA, widths.dev),
+          renderPage(b.file, pageB, widths.dev),
+        ]),
+      };
+    }
+    setBusy(true);
+    rendered.current.pages
+      .then(([ca, cb]): Drawn => {
+        if (!ca) return { kind: 'missing', side: 'a', page: pageA, count: a.pageCount };
+        if (!cb) return { kind: 'missing', side: 'b', page: pageB, count: b.pageCount };
+        if (side) return { kind: 'side', a: ca, b: cb, ratio: widths.ratio };
+        if (visual.mode === 'overlay') {
+          return {
+            kind: 'overlay',
+            canvas: composeOverlay(ca, cb, visual.alpha),
+            ratio: widths.ratio,
+          };
+        }
+        return { kind: 'diff', ratio: widths.ratio, ...composeDiff(ca, cb, visual.threshold) };
+      })
+      .catch((): Drawn => {
+        // De volgende keer opnieuw proberen.
+        rendered.current = null;
+        return { kind: 'error' };
+      })
+      .then((next) => {
+        if (cancelled) return;
+        setDrawn(next);
+        setBusy(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [a, b, pageA, pageB, visual.mode, visual.threshold, visual.alpha, visual.zoom, available]);
+
+  // Toetsen: ← → bladeren, + − zoomen, 0 = passend (niet in een invoerveld, en niet met Ctrl).
+  useEffect(() => {
+    const target = document;
+    const onKey = (event: KeyboardEvent) => {
+      if (event.ctrlKey || event.metaKey || event.altKey) return;
+      const tag = (event.target as HTMLElement | null)?.tagName?.toLowerCase();
+      if (tag === 'input' || tag === 'select' || tag === 'textarea') return;
+      const now = getCompareState().visual;
+      const actions: Record<string, () => void> = {
+        ArrowLeft: () => setVisual({ page: Math.max(1, Math.min(now.page, total) - 1) }),
+        ArrowRight: () => setVisual({ page: Math.min(total, now.page + 1) }),
+        '+': () => setVisual({ zoom: stepZoom(now.zoom, 1) }),
+        '=': () => setVisual({ zoom: stepZoom(now.zoom, 1) }),
+        '-': () => setVisual({ zoom: stepZoom(now.zoom, -1) }),
+        _: () => setVisual({ zoom: stepZoom(now.zoom, -1) }),
+        '0': () => setVisual({ zoom: 100 }),
+      };
+      const action = actions[event.key];
+      if (!action) return;
+      event.preventDefault();
+      action();
+    };
+    target.addEventListener('keydown', onKey);
+    return () => target.removeEventListener('keydown', onKey);
+  }, [total]);
+
+  const stat =
+    drawn?.kind === 'diff'
+      ? format(v.stat.diff, {
+          page: decimals((drawn.diff / drawn.total) * 100, 2, language),
+          ink: decimals(drawn.ink ? (drawn.diff / drawn.ink) * 100 : 0, 1, language),
+          px: drawn.diff.toLocaleString(language),
+        })
+      : drawn?.kind === 'side'
+        ? format(v.stat.side, {
+            a: `${drawn.a.width}×${drawn.a.height}`,
+            b: `${drawn.b.width}×${drawn.b.height}`,
+          })
+        : drawn?.kind === 'overlay'
+          ? format(v.stat.overlay, { n: Math.round(visual.alpha * 100) })
+          : '';
+
+  return (
+    <>
+      <PaneHead title={v.title} meta={format(v.pages, { a: pageA, b: pageB })}>
+        <ModeToggle />
+      </PaneHead>
+      <p class="compare-visual__stat" aria-live="polite">
+        {busy ? v.drawing : stat}
+      </p>
+      {visual.mode === 'diff' && (
+        <ul class="compare-visual__legend">
+          <li class="compare-visual__legend-a">{v.legend.a}</li>
+          <li class="compare-visual__legend-b">{v.legend.b}</li>
+          <li class="compare-visual__legend-same">{v.legend.same}</li>
+        </ul>
+      )}
+
+      <div class="compare-visual__wrap" ref={wrap}>
+        {drawn?.kind === 'missing' && (
+          <p class="compare-visual__msg">
+            {format(v.missing, {
+              n: drawn.page,
+              side: LETTER[drawn.side],
+              pages: plural(drawn.count, c.pagesOne, c.pages),
+            })}
+          </p>
+        )}
+        {drawn?.kind === 'error' && <p class="compare-visual__msg">{v.error}</p>}
+        {drawn?.kind === 'diff' && (
+          <CanvasBox
+            canvas={drawn.canvas}
+            ratio={drawn.ratio}
+            label={format(v.labels.diff, { a: pageA, b: pageB })}
+          />
+        )}
+        {drawn?.kind === 'overlay' && (
+          <CanvasBox
+            canvas={drawn.canvas}
+            ratio={drawn.ratio}
+            label={format(v.labels.overlay, { a: pageA, b: pageB })}
+          />
+        )}
+        {drawn?.kind === 'side' && (
+          <div class="compare-visual__side">
+            <figure>
+              <figcaption>{format(v.labels.a, { n: pageA })}</figcaption>
+              <CanvasBox
+                canvas={drawn.a}
+                ratio={drawn.ratio}
+                label={format(v.labels.a, { n: pageA })}
+              />
+            </figure>
+            <figure>
+              <figcaption>{format(v.labels.b, { n: pageB })}</figcaption>
+              <CanvasBox
+                canvas={drawn.b}
+                ratio={drawn.ratio}
+                label={format(v.labels.b, { n: pageB })}
+              />
+            </figure>
+          </div>
+        )}
+      </div>
+    </>
+  );
+}
+
+/** De keuze tussen verschil, naast elkaar en overlay, in de kop van het rechtervak. */
+function ModeToggle() {
+  const { t } = useI18n();
+  const modes = t.compare.visual.modes;
+  const { visual } = useCompareState();
+  return (
+    <div class="segmented compare-view" role="group" aria-label={modes.label}>
+      {MODES.map((mode) => (
+        <button
+          key={mode}
+          type="button"
+          class="segmented__button"
+          aria-pressed={visual.mode === mode}
+          onClick={() => setVisual({ mode })}
+        >
+          {modes[mode]}
+        </button>
+      ))}
+    </div>
+  );
+}
+
+/**
+ * Een getekend canvas in het scherm zetten, op zijn weergavebreedte (getekend is fijner, zie
+ * `targetWidths`). Is het breder dan het vak, dan schuift het vak zelf.
+ */
+function CanvasBox({
+  canvas,
+  ratio,
+  label,
+}: {
+  canvas: HTMLCanvasElement;
+  ratio: number;
+  label: string;
+}) {
+  const box = useRef<HTMLDivElement>(null);
+  useLayoutEffect(() => {
+    canvas.className = 'compare-visual__canvas';
+    canvas.style.width = `${Math.round(canvas.width / ratio)}px`;
+    canvas.setAttribute('role', 'img');
+    canvas.setAttribute('aria-label', label);
+    box.current?.replaceChildren(canvas);
+  }, [canvas, ratio, label]);
+  return <div ref={box} />;
 }
 
 /** Zolang A en B er niet allebei zijn: wat er nog nodig is (of dat er gelezen wordt). */
