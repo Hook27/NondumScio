@@ -550,7 +550,7 @@ export const nl = {
     clear: 'Wissen',
     counts: { added: '{n} toegevoegd', removed: '{n} verwijderd', changed: '{n} gewijzigd' },
     colorsHint:
-      'Rood: alleen in A. Groen: alleen in B. Geel: gewijzigd, met de woorden die verschillen gemarkeerd. p3 = pagina 3 van de PDF.',
+      'Rood: alleen in A. Groen: alleen in B. Geel: gewijzigd, met de woorden die verschillen gemarkeerd; onder elkaar staat het als rood (A) boven groen (B). p3 = pagina 3 van de PDF.',
     settings: {
       title: 'Instellingen',
       level: 'Vergelijk per',
@@ -589,6 +589,8 @@ export const nl = {
     about:
       'De tekst uit een PDF is een reconstructie: geen tekstverschillen betekent niet dat de documenten gelijk zijn. Je bestanden blijven op je apparaat.',
     textTitle: 'Tekstverschillen',
+    views: { label: 'Weergave', split: 'Naast elkaar', unified: 'Onder elkaar' },
+    unifiedHead: 'A · {a} → B · {b}',
     placeholder: 'Kies twee PDF’s om hun tekst te vergelijken.',
     waitingFor: 'Kies nog PDF {side} om te vergelijken.',
     summary: 'A: {a} · B: {b}',

@@ -8,6 +8,9 @@ import { readPdf } from './readPdf';
 /** Welk document: A (het origineel) of B (de nieuwe versie). */
 export type Side = 'a' | 'b';
 
+/** Hoe de verschillen te zien zijn: A en B naast elkaar, of onder elkaar in één kolom. */
+export type CompareView = 'split' | 'unified';
+
 /** Een gelezen PDF. */
 export type CompareDoc = {
   file: File;
@@ -36,6 +39,8 @@ export type CompareState = {
   options: CompareOptions;
   /** Ongewijzigde stukken inklappen. */
   onlyDiff: boolean;
+  /** Naast elkaar of onder elkaar; blijft staan bij Wissen, zoals de instellingen. */
+  view: CompareView;
 };
 
 const EMPTY: Slot = { status: 'empty' };
@@ -48,6 +53,7 @@ const INITIAL: CompareState = {
   tooMany: false,
   options: DEFAULT_OPTIONS,
   onlyDiff: true,
+  view: 'split',
 };
 
 /**
@@ -173,6 +179,11 @@ export function setOptions(change: Partial<CompareOptions>): void {
 /** Ongewijzigde stukken wel of niet inklappen (wat je had opengeklikt, klapt weer in). */
 export function setOnlyDiff(onlyDiff: boolean): void {
   setState({ onlyDiff, expanded: new Set() });
+}
+
+/** De verschillen naast elkaar of onder elkaar tonen. */
+export function setView(view: CompareView): void {
+  setState({ view });
 }
 
 /** Ingeklapte stukken (rijen `from` tot en met `to`) openklikken. */
