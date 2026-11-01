@@ -1,10 +1,11 @@
 // @vitest-environment jsdom
 import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/preact';
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { messages } from '../i18n';
 import { LanguageProvider } from '../i18n/LanguageContext';
 import { format } from '../i18n/format';
 import { PdfLoadError } from '../pdf/loader';
+import { downloadFile } from '../pdf/save';
 import { CompareTool } from './CompareTool';
 import { compareTexts } from './diff';
 import type { PageText, Piece } from './layout';
@@ -158,6 +159,12 @@ vi.mock('./visual', async (importOriginal) => {
   };
 });
 
+// Downloaden: alleen onthouden wat er gedownload zou worden.
+vi.mock('../pdf/save', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../pdf/save')>()),
+  downloadFile: vi.fn(),
+}));
+
 // De echte vergelijking, maar zo dat een test kan doen alsof de documenten te groot waren.
 vi.mock('./diff', async (importOriginal) => {
   const real = await importOriginal<typeof import('./diff')>();
@@ -191,6 +198,7 @@ afterEach(() => {
   resetCompareState();
   for (const name of Object.keys(gates)) delete gates[name];
   vi.mocked(readPdf).mockClear();
+  vi.mocked(downloadFile).mockClear();
   for (const mock of [renderPage, composeDiff, composeOverlay, closeVisual])
     vi.mocked(mock).mockClear();
 });
@@ -839,5 +847,94 @@ describe('beeld', () => {
     choose('a', 'scan.pdf', 'oud.pdf');
     await screen.findByText(format(v.page, { n: 1, total: 2 }));
     expect(mode(v.modes.overlay).getAttribute('aria-pressed')).toBe('true');
+  });
+});
+
+describe('rapport', () => {
+  const r = c.report;
+  const button = (name: string) => screen.getByRole<HTMLButtonElement>('button', { name });
+  const writeText = vi.fn<(text: string) => Promise<void>>();
+
+  beforeEach(() => {
+    writeText.mockReset();
+    writeText.mockResolvedValue(undefined);
+    Object.defineProperty(navigator, 'clipboard', { value: { writeText }, configurable: true });
+  });
+  afterEach(() => {
+    Reflect.deleteProperty(navigator, 'clipboard');
+    Reflect.deleteProperty(document, 'execCommand');
+  });
+
+  it('kan pas als A en B vergeleken zijn', async () => {
+    setup();
+    expect(button(r.copy).disabled).toBe(true);
+    expect(button(r.download).disabled).toBe(true);
+    choose('a', 'oud.pdf');
+    await screen.findByText(format(c.waitingFor, { side: 'B' }));
+    expect(button(r.copy).disabled).toBe(true);
+    choose('b', 'nieuw.pdf');
+    await screen.findByRole('table');
+    expect(button(r.copy).disabled).toBe(false);
+    expect(button(r.download).disabled).toBe(false);
+  });
+
+  it('kopiëren zet het rapport op het klembord, met profiel en tekstverschillen', async () => {
+    setup();
+    choose('a', 'oud.pdf', 'nieuw.pdf');
+    await screen.findByRole('table');
+    fireEvent.click(button(r.copy));
+    await screen.findByText(r.copied);
+    const text = writeText.mock.calls[0]![0];
+    expect(text.startsWith('PDF-VERGELIJKING\nGemaakt: ')).toBe(true);
+    expect(text).toContain('A: oud.pdf (1 pagina, ');
+    expect(text).toContain('≠ Bestandsnaam:\n    A: oud.pdf\n    B: nieuw.pdf');
+    expect(text).toContain('0 toegevoegd, 1 verwijderd, 1 gewijzigd');
+    expect(text).toContain(
+      '- De huur is 500 euro per maand.\n+ De huur is 550 euro per maand.\n- Deze alinea vervalt straks.',
+    );
+  });
+
+  it('lukt het klembord niet, dan de oude manier; lukt ook die niet, dan een melding', async () => {
+    writeText.mockRejectedValue(new Error('geen toestemming'));
+    const execCommand = vi.fn(() => true);
+    Object.defineProperty(document, 'execCommand', { value: execCommand, configurable: true });
+    setup();
+    choose('a', 'oud.pdf', 'nieuw.pdf');
+    await screen.findByRole('table');
+    fireEvent.click(button(r.copy));
+    await screen.findByText(r.copied);
+    expect(execCommand).toHaveBeenCalledWith('copy');
+    // Het hulpveld is weer weg.
+    expect(document.querySelector('textarea')).toBeNull();
+    execCommand.mockReturnValue(false);
+    fireEvent.click(button(r.copy));
+    await screen.findByText(r.copyFailed);
+  });
+
+  it('downloaden geeft een tekstbestand met datum en tijd in de naam', async () => {
+    setup();
+    choose('a', 'oud.pdf', 'nieuw.pdf');
+    await screen.findByRole('table');
+    fireEvent.click(button(c.tabs.profile));
+    fireEvent.click(button(r.download));
+    const [data, name, type] = vi.mocked(downloadFile).mock.calls[0]!;
+    expect(name).toMatch(/^pdf-vergelijking_\d{8}_\d{4}\.txt$/);
+    expect(type).toBe('text/plain;charset=utf-8');
+    const text = new TextDecoder().decode(data as Uint8Array);
+    expect(text).toContain('=== DOCUMENTPROFIEL ===');
+    expect(text).toContain('@@ A pagina 1 | B pagina 1 @@');
+    expect(screen.getByText(format(r.downloaded, { name }))).toBeTruthy();
+  });
+
+  it('volgt de instellingen, en de melding verdwijnt bij een nieuwe vergelijking', async () => {
+    setup();
+    choose('a', 'oud.pdf', 'nieuw.pdf');
+    await screen.findByRole('table');
+    fireEvent.click(screen.getByRole('button', { name: c.levels.line.label }));
+    fireEvent.click(button(r.copy));
+    await screen.findByText(r.copied);
+    expect(writeText.mock.calls[0]![0]).toContain('Instellingen: per regel, ');
+    fireEvent.click(screen.getByRole('button', { name: c.levels.sentence.label }));
+    await waitFor(() => expect(screen.queryByText(r.copied)).toBeNull());
   });
 });

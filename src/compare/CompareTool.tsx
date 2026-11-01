@@ -4,6 +4,8 @@ import { PaneHead } from '../components/WorkspaceParts';
 import { useI18n } from '../i18n/LanguageContext';
 import { format, plural } from '../i18n/format';
 import { formatFileSize } from '../lib/format';
+import { downloadFile } from '../pdf/save';
+import { stamp } from '../rename/stamp';
 import {
   GAP_FACTOR,
   countRows,
@@ -12,9 +14,11 @@ import {
   type CompareOptions,
   type Row,
   type Segment,
+  type TextComparison,
   type Unit,
 } from './diff';
 import { pageRows, pageSize, profileRows, type PageNote, type ProfileDoc } from './profile';
+import { buildReport, copyText, type ReportDoc } from './report';
 import {
   ZOOM_STEPS,
   composeDiff,
@@ -68,6 +72,13 @@ export function CompareTool() {
   const { result, tooMany, tab } = state;
   const reading = isReading(state);
   const empty = state.a.status === 'empty' && state.b.status === 'empty';
+  // Wat er met het rapport gebeurd is, bij welke vergelijking: bij een nieuwe vergelijking hoort de
+  // melding er niet meer bij. (Geen effect om hem te wissen: dat loopt pas na een timer en zou een
+  // melding van vlak na het vergelijken weer weghalen.)
+  const [report, setReport] = useState<{ result: TextComparison | null; text: string } | null>(
+    null,
+  );
+  const reportStatus = report?.result === result ? report.text : null;
 
   return (
     <>
@@ -104,7 +115,13 @@ export function CompareTool() {
                 {c.clear}
               </button>
             </div>
+            <ReportButtons onStatus={(text) => setReport({ result, text })} />
           </div>
+          {reportStatus && (
+            <p class="page-editor__saved" role="status">
+              {reportStatus}
+            </p>
+          )}
           {/* De tellers en instellingen horen bij de tekst. */}
           {tab === 'text' && (
             <>
@@ -121,6 +138,69 @@ export function CompareTool() {
         </div>
       </section>
     </>
+  );
+}
+
+/** De gegevens van een document die het rapport noemt. */
+const reportDoc = (doc: CompareDoc): ReportDoc => ({
+  name: doc.file.name,
+  size: doc.file.size,
+  pageCount: doc.pageCount,
+  noText: doc.pages.filter((page) => page.items.length === 0).length,
+});
+
+/**
+ * Het rapport (profiel en tekstverschillen, met de instellingen) kopiëren of downloaden, zodra A en
+ * B vergeleken zijn. Downloaden gaat meteen, met datum en tijd in de naam, zoals de export van de
+ * database bij Slim hernoemen.
+ */
+function ReportButtons({ onStatus }: { onStatus: (status: string) => void }) {
+  const { t, language } = useI18n();
+  const c = t.compare;
+  const r = c.report;
+  const state = useCompareState();
+  const { a, b, result } = state;
+  const ready = result !== null && a.status === 'ready' && b.status === 'ready';
+  const report = () => {
+    if (!result || a.status !== 'ready' || b.status !== 'ready') return '';
+    return buildReport({
+      a: reportDoc(a.doc),
+      b: reportDoc(b.doc),
+      options: state.options,
+      rows: result.rows,
+      fallback: result.fallback,
+      profile: profileRows(toProfile(a.doc), toProfile(b.doc), language, {
+        yes: c.profile.yes,
+        no: c.profile.no,
+      }),
+      texts: c,
+      language,
+      now: new Date(),
+    });
+  };
+  return (
+    <div class="toolbar__group toolbar__group--wide">
+      <button
+        type="button"
+        class="button button--secondary"
+        disabled={!ready}
+        onClick={() => void copyText(report()).then((ok) => onStatus(ok ? r.copied : r.copyFailed))}
+      >
+        {r.copy}
+      </button>
+      <button
+        type="button"
+        class="button button--secondary"
+        disabled={!ready}
+        onClick={() => {
+          const name = `${r.fileName}_${stamp()}.txt`;
+          downloadFile(new TextEncoder().encode(report()), name, 'text/plain;charset=utf-8');
+          onStatus(format(r.downloaded, { name }));
+        }}
+      >
+        {r.download}
+      </button>
+    </div>
   );
 }
 
