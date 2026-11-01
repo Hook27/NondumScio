@@ -8,6 +8,7 @@ import { PdfLoadError } from '../pdf/loader';
 import { CompareTool } from './CompareTool';
 import { compareTexts } from './diff';
 import type { PageText, Piece } from './layout';
+import type { DocInfo } from './profile';
 import { readPdf } from './readPdf';
 import { resetCompareState } from './store';
 
@@ -76,6 +77,8 @@ const SAME = Array.from({ length: 6 }, (_, i) => `Ongewijzigde alinea nummer ${i
 const DOCS: Record<string, PageText[] | Error> = {
   'oud.pdf': [page(1, [...SAME, 'De huur is 500 euro per maand.', 'Deze alinea vervalt straks.'])],
   'nieuw.pdf': [page(1, [...SAME, 'De huur is 550 euro per maand.'])],
+  // Even lange naam als oud.pdf (dus even groot), met dezelfde inhoud: alleen de naam verschilt.
+  'odu.pdf': [page(1, [...SAME, 'De huur is 500 euro per maand.', 'Deze alinea vervalt straks.'])],
   'kopie.pdf': [
     page(1, [...SAME, 'De huur is 500 euro per maand.', 'Deze alinea vervalt straks.']),
   ],
@@ -93,6 +96,23 @@ const DOCS: Record<string, PageText[] | Error> = {
   'kapot.pdf': new Error('kapot'),
 };
 
+/** De gegevens uit het document (metadata), per bestand; anders leeg. */
+const INFO: Record<string, DocInfo> = {
+  'oud.pdf': {
+    PDFFormatVersion: '1.7',
+    Title: 'Huur',
+    Author: 'Jansen',
+    CreationDate: 'D:20260101',
+  },
+  'nieuw.pdf': { PDFFormatVersion: '1.7', Title: 'Huur', CreationDate: 'D:20260301' },
+  'odu.pdf': {
+    PDFFormatVersion: '1.7',
+    Title: 'Huur',
+    Author: 'Jansen',
+    CreationDate: 'D:20260101',
+  },
+};
+
 /** Een "poortje" om het lezen van een bestand even vast te houden (ook als het daarna mislukt). */
 const gates: Record<string, Promise<void>> = {};
 
@@ -103,7 +123,7 @@ vi.mock('./readPdf', () => ({
     if (gates[file.name]) await gates[file.name];
     if (pages instanceof Error) throw pages;
     onProgress?.(pages.length, pages.length);
-    return { pageCount: pages.length, pages, thumb: null };
+    return { pageCount: pages.length, pages, info: INFO[file.name] ?? {}, thumb: null };
   }),
 }));
 
@@ -516,5 +536,103 @@ describe('onder elkaar', () => {
     fireEvent.click(view(v.split));
     expect(within(table).getAllByRole('columnheader')).toHaveLength(2);
     expect(table.querySelector('.compare-diff__sign')).toBeNull();
+  });
+});
+
+describe('documentprofiel', () => {
+  const p = c.profile;
+  const tab = (name: string) => screen.getByRole('button', { name });
+
+  it('de schakelaar staat op Tekst; Profiel zonder PDF’s zegt wat er nodig is', () => {
+    setup();
+    expect(screen.getByRole('group', { name: c.tabs.label })).toBeTruthy();
+    expect(tab(c.tabs.text).getAttribute('aria-pressed')).toBe('true');
+    fireEvent.click(tab(c.tabs.profile));
+    expect(tab(c.tabs.profile).getAttribute('aria-pressed')).toBe('true');
+    expect(screen.getByRole('heading', { name: p.title })).toBeTruthy();
+    expect(screen.getByText(p.placeholder)).toBeTruthy();
+    // De instellingen horen bij de tekst.
+    expect(screen.queryByRole('group', { name: c.settings.title })).toBeNull();
+  });
+
+  it('zet de velden van A en B naast elkaar, met ≠ bij wat verschilt', async () => {
+    setup();
+    choose('a', 'oud.pdf', 'nieuw.pdf');
+    await screen.findByRole('table');
+    fireEvent.click(tab(c.tabs.profile));
+    // Naam, grootte, auteur, aangemaakt en het aantal tekens.
+    expect(screen.getByText('5 van 16 velden wijken af')).toBeTruthy();
+    const fields = screen.getByRole('table', { name: p.fieldsCaption });
+    const row = (field: string) => within(fields).getByText(field).closest('tr')!;
+    expect(within(fields).getByRole('columnheader', { name: 'A · oud.pdf' })).toBeTruthy();
+    expect(within(fields).getAllByRole('row')).toHaveLength(17);
+    // Verschillend: geel, met ≠ en voor schermlezers "wijkt af".
+    const author = row(p.fields.author);
+    expect(author.classList.contains('compare-profile__differs')).toBe(true);
+    expect(within(author).getByText('≠')).toBeTruthy();
+    expect(within(author).getByText(`(${p.differs})`, { exact: false })).toBeTruthy();
+    expect(within(author).getByText('Jansen')).toBeTruthy();
+    expect(within(author).getByText(p.empty)).toBeTruthy();
+    expect(within(row(p.fields.created)).getByText('1 januari 2026')).toBeTruthy();
+    expect(within(row(p.fields.created)).getByText('1 maart 2026')).toBeTruthy();
+    // Gelijk: geen markering.
+    const title = row(p.fields.title);
+    expect(title.classList.contains('compare-profile__differs')).toBe(false);
+    expect(within(title).queryByText('≠')).toBeNull();
+    expect(within(row(p.fields.encrypted)).getAllByText(p.no)).toHaveLength(2);
+  });
+
+  it('één veld dat verschilt: enkelvoud', async () => {
+    setup();
+    choose('a', 'oud.pdf', 'odu.pdf');
+    await screen.findByText(c.noDiff);
+    fireEvent.click(tab(c.tabs.profile));
+    expect(screen.getByText('1 van 16 velden wijkt af')).toBeTruthy();
+  });
+
+  it('per pagina: formaat, tekens en wat opvalt', async () => {
+    setup();
+    choose('a', 'scan.pdf', 'oud.pdf');
+    await screen.findByRole('table');
+    fireEvent.click(tab(c.tabs.profile));
+    const pages = screen.getByRole('table', { name: p.pagesCaption });
+    const rows = within(pages).getAllByRole('row').slice(1);
+    expect(rows).toHaveLength(2);
+    expect(within(rows[0]!).getByText(p.notes.noTextA)).toBeTruthy();
+    expect(within(rows[0]!).getAllByText('595×842')).toHaveLength(2);
+    expect(within(rows[0]!).getByText('0')).toBeTruthy();
+    expect(within(rows[1]!).getByText(p.notes.onlyA)).toBeTruthy();
+    expect(within(rows[1]!).getAllByText('—')).toHaveLength(2);
+    expect(rows.every((r) => r.classList.contains('compare-profile__differs'))).toBe(true);
+  });
+
+  it('meldt een duidelijk verschil in tekens met + of −', async () => {
+    setup();
+    choose('a', 'oud.pdf', 'scan.pdf');
+    await screen.findByRole('table');
+    fireEvent.click(tab(c.tabs.profile));
+    const pages = screen.getByRole('table', { name: p.pagesCaption });
+    expect(within(pages).getByText(p.notes.noTextB)).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: c.clear }));
+    fireEvent.click(tab(c.tabs.profile));
+    choose('a', 'oud.pdf', 'nieuw.pdf');
+    const table = await screen.findByRole('table', { name: p.pagesCaption });
+    // oud.pdf heeft een alinea meer: 26 tekens (meer dan 20 en meer dan 10 %).
+    expect(within(table).getByText(format(p.notes.chars, { n: '−26' }))).toBeTruthy();
+  });
+
+  it('terug naar Tekst toont de tellers en instellingen weer; Wissen gaat terug naar Tekst', async () => {
+    setup();
+    choose('a', 'oud.pdf', 'nieuw.pdf');
+    await screen.findByRole('table');
+    fireEvent.click(tab(c.tabs.profile));
+    expect(screen.queryByText('1 gewijzigd')).toBeNull();
+    fireEvent.click(tab(c.tabs.text));
+    expect(screen.getByText('1 gewijzigd')).toBeTruthy();
+    expect(screen.getByRole('group', { name: c.settings.title })).toBeTruthy();
+    fireEvent.click(tab(c.tabs.profile));
+    fireEvent.click(screen.getByRole('button', { name: c.clear }));
+    expect(tab(c.tabs.text).getAttribute('aria-pressed')).toBe('true');
+    expect(screen.getByRole('heading', { name: c.textTitle })).toBeTruthy();
   });
 });

@@ -105,6 +105,27 @@ const WORD_A = [
 ];
 const WORD_B = [WORD_A[0]!, [WORD_A[1]![0]!, 'een witregel van 6 pt ertussen.'], WORD_A[2]!];
 
+/** Een PDF met eigen gegevens (metadata) en paginaformaten, met op elke pagina één regel tekst. */
+async function profiled(
+  name: string,
+  meta: { author?: string; modified: Date },
+  sizes: [number, number][],
+) {
+  const doc = await PDFDocument.create();
+  const font = await doc.embedFont(StandardFonts.Helvetica);
+  doc.setTitle('Huurovereenkomst');
+  if (meta.author) doc.setAuthor(meta.author);
+  doc.setCreator('Tekstverwerker');
+  doc.setProducer('Testprinter');
+  doc.setCreationDate(new Date(Date.UTC(2026, 0, 1, 12, 0)));
+  doc.setModificationDate(meta.modified);
+  for (const [width, height] of sizes) {
+    const page = doc.addPage([width, height]);
+    page.drawText('Een regel tekst op deze pagina.', { x: 60, y: height - 80, size: 11, font });
+  }
+  return { name, mimeType: 'application/pdf', buffer: Buffer.from(await doc.save()) };
+}
+
 const slot = (page: Page, side: 'a' | 'b') =>
   page.locator('section.compare-slot').filter({
     has: page.getByRole('heading', { name: c.sides[side].title }),
@@ -256,6 +277,66 @@ test.describe('PDF’s vergelijken: instellingen', () => {
       .analyze();
     expect(result.violations).toEqual([]);
   });
+});
+
+test.describe('PDF’s vergelijken: documentprofiel', () => {
+  test.skip(({ isMobile }) => isMobile, 'Geavanceerd is er alleen op de computer');
+
+  for (const theme of ['light', 'dark'] as Theme[]) {
+    test(`zet de gegevens van A en B naast elkaar, en per pagina (thema ${theme})`, async ({
+      page,
+    }) => {
+      const p = c.profile;
+      await openPage(page, '/#/advanced/compare', { lang: 'nl', theme });
+      await page.locator('#compare-file-a').setInputFiles([
+        await profiled(
+          'contract-a.pdf',
+          { author: 'Jansen', modified: new Date(Date.UTC(2026, 0, 2, 12, 0)) },
+          [
+            [595, 842],
+            [595, 842],
+          ],
+        ),
+        await profiled('contract-b.pdf', { modified: new Date(Date.UTC(2026, 2, 1, 9, 30)) }, [
+          [595, 842],
+          [842, 595],
+          [595, 842],
+        ]),
+      ]);
+      await expect(page.getByRole('table')).toBeVisible();
+      await page.getByRole('button', { name: c.tabs.profile }).click();
+      await expect(page.getByRole('heading', { name: p.title })).toBeVisible();
+      // De instellingen horen bij de tekst.
+      await expect(page.getByRole('group', { name: c.settings.title })).toHaveCount(0);
+
+      const fields = page.getByRole('table', { name: p.fieldsCaption });
+      const row = (field: string) => fields.getByRole('row').filter({ hasText: field });
+      await expect(row(p.fields.title)).toContainText('Huurovereenkomst');
+      await expect(row(p.fields.title)).not.toHaveClass(/compare-profile__differs/);
+      await expect(row(p.fields.author)).toHaveClass(/compare-profile__differs/);
+      await expect(row(p.fields.author)).toContainText('Jansen');
+      await expect(row(p.fields.author)).toContainText(p.empty);
+      await expect(row(p.fields.created)).toContainText('1 januari 2026, 12:00');
+      await expect(row(p.fields.created)).not.toHaveClass(/compare-profile__differs/);
+      await expect(row(p.fields.modified)).toContainText('2 januari 2026, 12:00');
+      await expect(row(p.fields.modified)).toContainText('1 maart 2026, 09:30');
+      await expect(row(p.fields.sizes)).toContainText('595×842 pt (2), 842×595 pt (1)');
+      await expect(row(p.fields.creator)).toContainText('Tekstverwerker');
+      await expect(row(p.fields.producer)).toContainText('Testprinter');
+      // Naam, grootte, pagina's, formaten, auteur, gewijzigd en tekens.
+      await expect(page.getByText('7 van 16 velden wijken af')).toBeVisible();
+
+      const pages = page.getByRole('table', { name: p.pagesCaption });
+      await expect(pages.getByRole('row')).toHaveCount(4);
+      await expect(pages.getByRole('row').nth(2)).toContainText(p.notes.size);
+      await expect(pages.getByRole('row').nth(3)).toContainText(p.notes.onlyB);
+
+      const result = await new AxeBuilder({ page })
+        .withTags(['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa'])
+        .analyze();
+      expect(result.violations).toEqual([]);
+    });
+  }
 });
 
 test.describe('PDF’s vergelijken op een scherm met schaal 150 %', () => {

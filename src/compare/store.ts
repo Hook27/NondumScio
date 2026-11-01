@@ -3,10 +3,14 @@ import { PdfLoadError } from '../pdf/loader';
 import type { LoadErrorCode } from '../pdf/detect';
 import { DEFAULT_OPTIONS, compareTexts, type CompareOptions, type TextComparison } from './diff';
 import type { PageText } from './layout';
+import type { DocInfo } from './profile';
 import { readPdf } from './readPdf';
 
 /** Welk document: A (het origineel) of B (de nieuwe versie). */
 export type Side = 'a' | 'b';
+
+/** Wat je vergelijkt: de tekst of het documentprofiel. */
+export type CompareTab = 'text' | 'profile';
 
 /** Hoe de verschillen te zien zijn: A en B naast elkaar, of onder elkaar in één kolom. */
 export type CompareView = 'split' | 'unified';
@@ -16,6 +20,8 @@ export type CompareDoc = {
   file: File;
   pageCount: number;
   pages: PageText[];
+  /** De gegevens uit het document (titel, auteur, datums…). */
+  info: DocInfo;
   /** Een klein plaatje van de eerste pagina (een blob-adres), of null. */
   thumb: string | null;
 };
@@ -41,6 +47,8 @@ export type CompareState = {
   onlyDiff: boolean;
   /** Naast elkaar of onder elkaar; blijft staan bij Wissen, zoals de instellingen. */
   view: CompareView;
+  /** Tekst of profiel; na Wissen weer de tekst, zoals in de losse pdf-vergelijker. */
+  tab: CompareTab;
 };
 
 const EMPTY: Slot = { status: 'empty' };
@@ -54,6 +62,7 @@ const INITIAL: CompareState = {
   options: DEFAULT_OPTIONS,
   onlyDiff: true,
   view: 'split',
+  tab: 'text',
 };
 
 /**
@@ -118,7 +127,7 @@ async function load(side: Side, file: File) {
   };
   put({ status: 'reading', name: file.name, done: 0, total: 0 });
   try {
-    const { pageCount, pages, thumb } = await readPdf(file, (done, total) => {
+    const { pageCount, pages, info, thumb } = await readPdf(file, (done, total) => {
       // Alleen de voortgang: de vergelijking hoeft daarvoor niet opnieuw.
       if (current()) setState({ [side]: { status: 'reading', name: file.name, done, total } });
     });
@@ -129,7 +138,7 @@ async function load(side: Side, file: File) {
       if (url) URL.revokeObjectURL(url);
       return;
     }
-    put({ status: 'ready', doc: { file, pageCount, pages, thumb: url } });
+    put({ status: 'ready', doc: { file, pageCount, pages, info, thumb: url } });
   } catch (error) {
     put({
       status: 'error',
@@ -168,7 +177,7 @@ export function clearCompare(): void {
   reads.b = ++lastRead;
   release(state.a);
   release(state.b);
-  setSlots(EMPTY, EMPTY, { tooMany: false });
+  setSlots(EMPTY, EMPTY, { tooMany: false, tab: 'text' });
 }
 
 /** Een instelling veranderen; er wordt meteen opnieuw vergeleken. */
@@ -179,6 +188,11 @@ export function setOptions(change: Partial<CompareOptions>): void {
 /** Ongewijzigde stukken wel of niet inklappen (wat je had opengeklikt, klapt weer in). */
 export function setOnlyDiff(onlyDiff: boolean): void {
   setState({ onlyDiff, expanded: new Set() });
+}
+
+/** De tekst of het documentprofiel vergelijken. */
+export function setTab(tab: CompareTab): void {
+  setState({ tab });
 }
 
 /** De verschillen naast elkaar of onder elkaar tonen. */
