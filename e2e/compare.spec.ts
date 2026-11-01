@@ -1,5 +1,5 @@
 import AxeBuilder from '@axe-core/playwright';
-import { expect, test, type Page } from '@playwright/test';
+import { expect, test, type Locator, type Page } from '@playwright/test';
 import { PDFDocument, StandardFonts, rgb } from 'pdf-lib';
 import { messages, openPage, type Theme } from './helpers';
 
@@ -169,6 +169,22 @@ test.describe('PDF’s vergelijken', () => {
       await table.getByRole('button', { name: '2 ongewijzigde alinea’s tonen' }).click();
       await expect(table.getByText('Partijen komen het volgende overeen.')).toHaveCount(2);
       await expect(table.locator('tr', { hasText: 'Partijen komen' })).toBeFocused();
+
+      // Onder elkaar: één kolom; het gewijzigde bedrag als − (A) boven + (B).
+      await page.getByRole('button', { name: c.views.unified }).click();
+      await expect(table.getByRole('columnheader')).toHaveText([
+        'A · huur-oud.pdf → B · huur-nieuw.pdf',
+      ]);
+      const minus = table.locator('tr', { has: page.locator('del') });
+      const plus = table.locator('tr', { has: page.locator('ins') });
+      await expect(minus.locator('.compare-diff__sign')).toHaveText('−');
+      await expect(plus.locator('.compare-diff__sign')).toHaveText('+');
+      await expect(minus.locator('del')).toHaveText('500');
+      await expect(plus.locator('ins')).toHaveText('550');
+      const unified = await new AxeBuilder({ page })
+        .withTags(['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa'])
+        .analyze();
+      expect(unified.violations).toEqual([]);
     });
   }
 
@@ -247,7 +263,7 @@ test.describe('PDF’s vergelijken op een scherm met schaal 150 %', () => {
   // Zoals een laptop met Windows-schaal 150 %: de letters vallen daar net iets breder uit.
   test.use({ viewport: { width: 1366, height: 768 }, deviceScaleFactor: 1.5 });
 
-  test('de knop om een andere PDF te kiezen past op één regel', async ({ page }) => {
+  test('de knoppen passen op één regel', async ({ page }) => {
     await openPage(page, '/#/advanced/compare', { lang: 'nl' });
     // Een gewone schuifbalk in het linkervak (17 px op Windows) kost breedte. De testbrowser toont
     // geen schuifbalken, dus die ruimte halen we hier zelf weg.
@@ -255,17 +271,21 @@ test.describe('PDF’s vergelijken op een scherm met schaal 150 %', () => {
     await page
       .locator('#compare-file-a')
       .setInputFiles([await file('huur-oud.pdf', OLD), await file('huur-nieuw.pdf', NEW)]);
-    for (const side of ['a', 'b'] as const) {
-      // Pas met het plaatje van pagina 1 erbij staat het vak er helemaal.
-      await expect(slot(page, side).locator('img.compare-slot__thumb')).toBeVisible();
-      const button = slot(page, side).getByText(c.sides[side].replace);
-      // Het aantal regels van de tekst op de knop.
-      const lines = await button.evaluate((element) => {
+    // Het aantal regels van de tekst op een knop.
+    const lines = (button: Locator) =>
+      button.evaluate((element) => {
         const range = document.createRange();
         range.selectNodeContents(element);
         return range.getClientRects().length;
       });
-      expect(lines, side).toBe(1);
+    for (const side of ['a', 'b'] as const) {
+      // Pas met het plaatje van pagina 1 erbij staat het vak er helemaal.
+      await expect(slot(page, side).locator('img.compare-slot__thumb')).toBeVisible();
+      expect(await lines(slot(page, side).getByText(c.sides[side].replace)), side).toBe(1);
+    }
+    // De keuze naast elkaar of onder elkaar, in de kop van het rechtervak.
+    for (const name of [c.views.split, c.views.unified]) {
+      expect(await lines(page.getByRole('button', { name })), name).toBe(1);
     }
   });
 });

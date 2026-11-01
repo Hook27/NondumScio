@@ -542,7 +542,7 @@ export const en: Messages = {
     clear: 'Clear',
     counts: { added: '{n} added', removed: '{n} removed', changed: '{n} changed' },
     colorsHint:
-      'Red: only in A. Green: only in B. Yellow: changed, with the words that differ highlighted. p3 = page 3 of the PDF.',
+      'Red: only in A. Green: only in B. Yellow: changed, with the words that differ highlighted; one below the other, it shows as red (A) above green (B). p3 = page 3 of the PDF.',
     settings: {
       title: 'Settings',
       level: 'Compare by',
@@ -581,6 +581,8 @@ export const en: Messages = {
     about:
       'The text from a PDF is a reconstruction: no text differences does not mean the documents are the same. Your files stay on your device.',
     textTitle: 'Text differences',
+    views: { label: 'View', split: 'Side by side', unified: 'One below the other' },
+    unifiedHead: 'A · {a} → B · {b}',
     placeholder: 'Choose two PDFs to compare their text.',
     waitingFor: 'Choose PDF {side} as well to compare.',
     summary: 'A: {a} · B: {b}',

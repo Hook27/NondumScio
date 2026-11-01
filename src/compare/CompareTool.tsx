@@ -21,15 +21,18 @@ import {
   openFiles,
   setOnlyDiff,
   setOptions,
+  setView,
   swapSides,
   useCompareState,
   type CompareDoc,
+  type CompareView,
   type Side,
   type Slot,
 } from './store';
 
 const SIDES: readonly Side[] = ['a', 'b'];
 const LEVELS: readonly CompareLevel[] = ['paragraph', 'sentence', 'line'];
+const VIEWS: readonly CompareView[] = ['split', 'unified'];
 const LETTER: Record<Side, string> = { a: 'A', b: 'B' };
 
 /**
@@ -278,7 +281,9 @@ function Results() {
 
   return (
     <>
-      <PaneHead title={c.textTitle} meta={summary} />
+      <PaneHead title={c.textTitle} meta={summary}>
+        {differs && <ViewToggle />}
+      </PaneHead>
       {result.fallback && (
         <p class="compare__warning">
           {c.fallback}
@@ -295,6 +300,28 @@ function Results() {
         </div>
       )}
     </>
+  );
+}
+
+/** De keuze tussen naast elkaar en onder elkaar, met dezelfde knoppen als bij het niveau. */
+function ViewToggle() {
+  const { t } = useI18n();
+  const v = t.compare.views;
+  const { view } = useCompareState();
+  return (
+    <div class="segmented compare-view" role="group" aria-label={v.label}>
+      {VIEWS.map((option) => (
+        <button
+          key={option}
+          type="button"
+          class="segmented__button"
+          aria-pressed={view === option}
+          onClick={() => setView(option)}
+        >
+          {v[option]}
+        </button>
+      ))}
+    </div>
   );
 }
 
@@ -321,11 +348,15 @@ function NoTextWarning({ a, b }: { a: CompareDoc; b: CompareDoc }) {
   );
 }
 
-/** De verschillen naast elkaar: links A, rechts B, elk stuk op een eigen rij. */
+/**
+ * De verschillen naast elkaar (links A, rechts B, elk stuk op een eigen rij) of onder elkaar (één
+ * kolom: wat alleen in A staat met −, wat alleen in B staat met +).
+ */
 function DiffTable({ rows, nameA, nameB }: { rows: readonly Row[]; nameA: string; nameB: string }) {
   const { t } = useI18n();
   const c = t.compare;
-  const { expanded, onlyDiff, options } = useCompareState();
+  const { expanded, onlyDiff, options, view } = useCompareState();
+  const unified = view === 'unified';
   const level = c.levels[options.level];
   const table = useRef<HTMLTableElement>(null);
   // Na het openklikken van ingeklapte stukken: de focus naar het eerste stuk dat erbij kwam (de
@@ -338,18 +369,24 @@ function DiffTable({ rows, nameA, nameB }: { rows: readonly Row[]; nameA: string
   });
 
   return (
-    <table class="compare-diff" ref={table}>
+    <table class={`compare-diff${unified ? ' compare-diff--unified' : ''}`} ref={table}>
       <thead>
         <tr>
-          <th scope="col">{`A · ${nameA}`}</th>
-          <th scope="col">{`B · ${nameB}`}</th>
+          {unified ? (
+            <th scope="col">{format(c.unifiedHead, { a: nameA, b: nameB })}</th>
+          ) : (
+            <>
+              <th scope="col">{`A · ${nameA}`}</th>
+              <th scope="col">{`B · ${nameB}`}</th>
+            </>
+          )}
         </tr>
       </thead>
       <tbody>
         {displayList(rows, onlyDiff, expanded).map((entry) =>
           entry.t === 'gap' ? (
             <tr key={`gap-${entry.from}`} class="compare-diff__gap">
-              <td colSpan={2}>
+              <td colSpan={unified ? 1 : 2}>
                 <button
                   type="button"
                   class="compare-diff__expand"
@@ -362,6 +399,8 @@ function DiffTable({ rows, nameA, nameB }: { rows: readonly Row[]; nameA: string
                 </button>
               </td>
             </tr>
+          ) : unified ? (
+            <UnifiedRows key={entry.index} row={entry.row} index={entry.index} />
           ) : (
             <DiffRow key={entry.index} row={entry.row} index={entry.index} />
           ),
@@ -382,16 +421,63 @@ function DiffRow({ row, index }: { row: Row; index: number }) {
   );
 }
 
+/**
+ * Eén stuk onder elkaar: gelijk als één regel, verwijderd met −, toegevoegd met +, en gewijzigd als
+ * twee regels (eerst A met −, dan B met +), zoals in de losse pdf-vergelijker.
+ */
+function UnifiedRows({ row, index }: { row: Row; index: number }) {
+  // De eerste regel van een stuk krijgt het nummer, voor de focus na het openklikken.
+  const line = (
+    kind: Row['kind'],
+    unit: Unit,
+    parts: Segment[] | null,
+    side: Side,
+    first = true,
+  ) => (
+    <tr
+      class={`compare-diff__row compare-diff__row--${kind}`}
+      data-row={first ? index : undefined}
+      tabIndex={first ? -1 : undefined}
+    >
+      <Cell
+        unit={unit}
+        kind={kind}
+        parts={parts}
+        side={side}
+        sign={kind === 'removed' ? '−' : kind === 'added' ? '+' : ' '}
+      />
+    </tr>
+  );
+  switch (row.kind) {
+    case 'equal':
+      return line('equal', row.a, null, 'a');
+    case 'removed':
+      return line('removed', row.a, null, 'a');
+    case 'added':
+      return line('added', row.b, null, 'b');
+    case 'changed':
+      return (
+        <>
+          {line('removed', row.a, row.partsA, 'a')}
+          {line('added', row.b, row.partsB, 'b', false)}
+        </>
+      );
+  }
+}
+
 function Cell({
   unit,
   kind,
   parts,
   side,
+  sign,
 }: {
   unit: Unit | null;
   kind: Row['kind'];
   parts: Segment[] | null;
   side: Side;
+  /** Onder elkaar: −, + of een spatie voor de tekst (alleen om te zien; schermlezers krijgen de soort). */
+  sign?: string;
 }) {
   const { t } = useI18n();
   const c = t.compare;
@@ -404,6 +490,11 @@ function Cell({
         <span aria-hidden="true">{format(c.page, { n: unit.page })}</span>
         <span class="visually-hidden">{format(c.pageLabel, { n: unit.page })}</span>
       </span>
+      {sign !== undefined && (
+        <span class="compare-diff__sign" aria-hidden="true">
+          {sign}
+        </span>
+      )}
       {kind !== 'equal' && <span class="visually-hidden">{`${c.kinds[kind]}: `}</span>}
       {parts
         ? parts.map((part, i) => (part.mark ? <Mark key={i}>{part.text}</Mark> : part.text))

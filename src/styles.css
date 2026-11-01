@@ -1279,6 +1279,26 @@ h1 {
   background: var(--added-mark);
 }
 
+/* Onder elkaar: −, + of een spatie voor de tekst. */
+.compare-diff__sign {
+  display: inline-block;
+  width: 1rem;
+  font-weight: 700;
+  user-select: none;
+}
+
+/* De keuze naast elkaar of onder elkaar staat in de kop van het rechtervak. */
+.pane-head .compare-view {
+  flex-shrink: 0;
+  margin: 0;
+}
+
+/* Elke knop zo breed als zijn tekst: anders breekt "Onder elkaar" af naast het kortere "Naast elkaar". */
+.compare-view .segmented__button {
+  flex: 0 0 auto;
+  white-space: nowrap;
+}
+
 .compare-diff__page {
   display: inline-block;
   min-width: 2.25rem;

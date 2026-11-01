@@ -442,3 +442,79 @@ describe('instellingen', () => {
     await summary('1 pagina, 16 regels', '1 pagina, 14 regels');
   });
 });
+
+describe('onder elkaar', () => {
+  const v = c.views;
+  const view = (name: string) => screen.getByRole('button', { name });
+
+  it('alleen te kiezen als er verschillen zijn; standaard naast elkaar', async () => {
+    setup();
+    choose('a', 'oud.pdf', 'kopie.pdf');
+    await screen.findByText(c.noDiff);
+    expect(screen.queryByRole('group', { name: v.label })).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: c.clear }));
+    choose('a', 'oud.pdf', 'nieuw.pdf');
+    await screen.findByRole('table');
+    expect(screen.getByRole('group', { name: v.label })).toBeTruthy();
+    expect(view(v.split).getAttribute('aria-pressed')).toBe('true');
+    expect(view(v.unified).getAttribute('aria-pressed')).toBe('false');
+  });
+
+  it('één kolom: gewijzigd als − (A) boven + (B), met de woorden; verwijderd met −', async () => {
+    setup();
+    choose('a', 'oud.pdf', 'nieuw.pdf');
+    const table = await screen.findByRole('table');
+    fireEvent.click(view(v.unified));
+    expect(view(v.unified).getAttribute('aria-pressed')).toBe('true');
+    const headers = within(table).getAllByRole('columnheader');
+    expect(headers.map((th) => th.textContent)).toEqual(['A · oud.pdf → B · nieuw.pdf']);
+
+    const minus = table.querySelector('del')!.closest('tr')!;
+    const plus = table.querySelector('ins')!.closest('tr')!;
+    expect(table.querySelector('del')!.textContent).toBe('500');
+    expect(table.querySelector('ins')!.textContent).toBe('550');
+    expect(minus.nextElementSibling).toBe(plus);
+    expect(minus.classList.contains('compare-diff__row--removed')).toBe(true);
+    expect(plus.classList.contains('compare-diff__row--added')).toBe(true);
+    expect(minus.querySelector('.compare-diff__sign')!.textContent).toBe('−');
+    expect(plus.querySelector('.compare-diff__sign')!.textContent).toBe('+');
+    // Voor schermlezers: de soort, niet het teken.
+    expect(within(minus).getByText('Verwijderd:', { exact: false })).toBeTruthy();
+    expect(within(plus).getByText('Toegevoegd:', { exact: false })).toBeTruthy();
+
+    const removed = within(table).getByText('Deze alinea vervalt straks.').closest('tr')!;
+    expect(removed.classList.contains('compare-diff__row--removed')).toBe(true);
+    expect(removed.querySelectorAll('td')).toHaveLength(1);
+    expect(removed.querySelector('.compare-diff__sign')!.textContent).toBe('−');
+    // Een gelijk stuk staat er één keer, zonder teken.
+    const same = within(table).getByText('Ongewijzigde alinea nummer 6.').closest('tr')!;
+    expect(same.querySelector('.compare-diff__sign')!.textContent).toBe(' ');
+    expect(within(table).getAllByText('Ongewijzigde alinea nummer 6.')).toHaveLength(1);
+  });
+
+  it('ook onder elkaar klappen ongewijzigde stukken in, en gaat de focus mee bij openklikken', async () => {
+    setup();
+    choose('a', 'oud.pdf', 'nieuw.pdf');
+    const table = await screen.findByRole('table');
+    fireEvent.click(view(v.unified));
+    const expand = within(table).getByRole('button', { name: '5 ongewijzigde alinea’s tonen' });
+    expect(expand.closest('td')!.colSpan).toBe(1);
+    fireEvent.click(expand);
+    const first = within(table).getByText('Ongewijzigde alinea nummer 1.').closest('tr');
+    await waitFor(() => expect(document.activeElement).toBe(first));
+  });
+
+  it('blijft staan bij Wissen, en terug naar naast elkaar', async () => {
+    setup();
+    choose('a', 'oud.pdf', 'nieuw.pdf');
+    await screen.findByRole('table');
+    fireEvent.click(view(v.unified));
+    fireEvent.click(screen.getByRole('button', { name: c.clear }));
+    choose('a', 'oud.pdf', 'nieuw.pdf');
+    const table = await screen.findByRole('table');
+    expect(within(table).getAllByRole('columnheader')).toHaveLength(1);
+    fireEvent.click(view(v.split));
+    expect(within(table).getAllByRole('columnheader')).toHaveLength(2);
+    expect(table.querySelector('.compare-diff__sign')).toBeNull();
+  });
+});
