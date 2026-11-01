@@ -1,6 +1,7 @@
 import AxeBuilder from '@axe-core/playwright';
 import { expect, test, type Locator, type Page } from '@playwright/test';
 import { PDFDocument, StandardFonts, rgb } from 'pdf-lib';
+import { format } from '../src/i18n/format';
 import { messages, openPage, type Theme } from './helpers';
 
 /**
@@ -8,6 +9,12 @@ import { messages, openPage, type Theme } from './helpers';
  * openen en de tekstverschillen zien. De PDF's worden hier gemaakt en in de browser door pdf.js
  * gelezen, zoals bij een echte PDF.
  */
+
+/**
+ * Openen en tekenen met pdf.js kan onder belasting (alle tests tegelijk) even duren: de eerste
+ * controle daarna wacht langer, zoals in de andere specs (OPEN_TIMEOUT).
+ */
+const SLOW = { timeout: 15_000 };
 
 const nl = messages.nl;
 const c = nl.compare;
@@ -153,7 +160,7 @@ test.describe('PDF’s vergelijken', () => {
         .setInputFiles([await file('huur-oud.pdf', OLD), await file('huur-nieuw.pdf', NEW)]);
 
       const table = page.getByRole('table');
-      await expect(table.getByRole('columnheader', { name: 'A · huur-oud.pdf' })).toBeVisible();
+      await expect(table.getByRole('columnheader', { name: 'A · huur-oud.pdf' })).toBeVisible(SLOW);
       await expect(table.getByRole('columnheader', { name: 'B · huur-nieuw.pdf' })).toBeVisible();
       await expect(page.getByText('1 toegevoegd')).toBeVisible();
       await expect(page.getByText('1 verwijderd')).toBeVisible();
@@ -214,11 +221,11 @@ test.describe('PDF’s vergelijken', () => {
     await page
       .locator('#compare-file-a')
       .setInputFiles(await file('scan.pdf', OLD, { scan: true }));
-    await expect(page.getByText('Kies nog PDF B om te vergelijken.')).toBeVisible();
+    await expect(page.getByText('Kies nog PDF B om te vergelijken.')).toBeVisible(SLOW);
     await expect(slot(page, 'a').getByText(/· 1 pagina zonder tekstlaag$/)).toBeVisible();
     await page.locator('#compare-file-b').setInputFiles(await file('kopie.pdf', OLD));
 
-    await expect(page.getByText(c.noDiff)).toBeVisible();
+    await expect(page.getByText(c.noDiff)).toBeVisible(SLOW);
     await expect(page.getByText(/^Pagina’s zonder tekstlaag: 1 van 3 in A\./)).toBeVisible();
 
     await page.getByRole('button', { name: c.swap }).click();
@@ -243,7 +250,7 @@ test.describe('PDF’s vergelijken: instellingen', () => {
         await wordLetter('brief-b.pdf', WORD_B),
       ]);
     const both = (units: string) => page.getByText(`A: 1 pagina, ${units} · B: 1 pagina, ${units}`);
-    await expect(both('3 alinea’s')).toBeVisible();
+    await expect(both('3 alinea’s')).toBeVisible(SLOW);
     // Alleen de tweede alinea is gewijzigd, met alleen het getal gemarkeerd.
     await expect(page.getByText('1 gewijzigd')).toBeVisible();
     await expect(page.getByRole('table').locator('del')).toHaveText('8');
@@ -258,7 +265,7 @@ test.describe('PDF’s vergelijken: instellingen', () => {
     await expect(both('1 alinea')).toBeVisible();
     await page.keyboard.press('Home');
     await expect(settings.getByText('1,1')).toBeVisible();
-    await expect(both('3 alinea’s')).toBeVisible();
+    await expect(both('3 alinea’s')).toBeVisible(SLOW);
 
     await settings.getByRole('button', { name: c.levels.sentence.label }).click();
     await expect(both('4 zinnen')).toBeVisible();
@@ -303,7 +310,7 @@ test.describe('PDF’s vergelijken: documentprofiel', () => {
           [595, 842],
         ]),
       ]);
-      await expect(page.getByRole('table')).toBeVisible();
+      await expect(page.getByRole('table')).toBeVisible(SLOW);
       await page.getByRole('button', { name: c.tabs.profile }).click();
       await expect(page.getByRole('heading', { name: p.title })).toBeVisible();
       // De instellingen horen bij de tekst.
@@ -339,6 +346,101 @@ test.describe('PDF’s vergelijken: documentprofiel', () => {
   }
 });
 
+/** Telt in het getekende pixelverschil de rode (alleen in A) en groene (alleen in B) pixels. */
+function countColours(page: Page) {
+  return page.locator('canvas.compare-visual__canvas').evaluate((canvas: HTMLCanvasElement) => {
+    const data = canvas.getContext('2d')!.getImageData(0, 0, canvas.width, canvas.height).data;
+    let red = 0;
+    let green = 0;
+    for (let i = 0; i < data.length; i += 4) {
+      if (data[i]! > 200 && data[i + 1]! < 100) red++;
+      if (data[i + 1]! > 200 && data[i]! < 100) green++;
+    }
+    return { red, green };
+  });
+}
+
+test.describe('PDF’s vergelijken: beeld', () => {
+  test.skip(({ isMobile }) => isMobile, 'Geavanceerd is er alleen op de computer');
+
+  for (const theme of ['light', 'dark'] as Theme[]) {
+    test(`tekent het verschil, naast elkaar en als overlay (thema ${theme})`, async ({ page }) => {
+      const v = c.visual;
+      await openPage(page, '/#/advanced/compare', { lang: 'nl', theme });
+      await page
+        .locator('#compare-file-a')
+        .setInputFiles([await file('huur-oud.pdf', OLD), await file('huur-nieuw.pdf', NEW)]);
+      await expect(page.getByRole('table')).toBeVisible(SLOW);
+      await page.getByRole('button', { name: c.tabs.visual }).click();
+
+      // Het pixelverschil: rood voor de alinea die alleen in A staat, groen voor "550".
+      const stat = page.locator('.compare-visual__stat');
+      await expect(stat).toHaveText(/^Verschil: \d+,\d\d% van de pagina · /, SLOW);
+      await expect(stat).not.toHaveText(/^Verschil: 0,00%/);
+      await expect(
+        page.getByRole('img', { name: format(v.labels.diff, { a: 1, b: 1 }) }),
+      ).toBeVisible();
+      const colours = await countColours(page);
+      expect(colours.red).toBeGreaterThan(100);
+      expect(colours.green).toBeGreaterThan(0);
+      expect(colours.red).toBeGreaterThan(colours.green);
+
+      const result = await new AxeBuilder({ page })
+        .withTags(['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa'])
+        .analyze();
+      expect(result.violations).toEqual([]);
+
+      const modes = page.getByRole('group', { name: v.modes.label });
+      await modes.getByRole('button', { name: v.modes.side }).click();
+      await expect(stat).toHaveText(/^A: \d+×\d+ px · B: \d+×\d+ px$/, SLOW);
+      await expect(page.locator('.compare-visual__side canvas')).toHaveCount(2);
+      await modes.getByRole('button', { name: v.modes.overlay }).click();
+      await expect(stat).toHaveText('Overlay: B voor 50% over A', SLOW);
+      await modes.getByRole('button', { name: v.modes.diff }).click();
+      await expect(stat).toHaveText(/^Verschil: /, SLOW);
+
+      // Bladeren met de toetsen, en B verschuiven tot voorbij het einde.
+      await page.getByRole('heading', { name: v.title }).focus();
+      await page.keyboard.press('ArrowRight');
+      await expect(page.getByText('A: pagina 2 · B: pagina 2')).toBeVisible();
+      await expect(stat).toHaveText(/^Verschil: /, SLOW);
+      await page.getByRole('spinbutton', { name: v.offset }).fill('1');
+      await page.getByRole('spinbutton', { name: v.offset }).press('Tab');
+      await expect(page.getByText('Pagina 3 bestaat niet in B (B heeft 2 pagina’s).')).toBeVisible(
+        SLOW,
+      );
+      await page.getByRole('spinbutton', { name: v.offset }).fill('0');
+      await page.getByRole('spinbutton', { name: v.offset }).press('Tab');
+      await expect(stat).toHaveText(/^Verschil: /, SLOW);
+
+      // Inzoomen tekent groter (en scherp: opnieuw door pdf.js), passend weer kleiner.
+      const canvas = page.locator('canvas.compare-visual__canvas');
+      // Tijdens het vervangen door een nieuw getekend canvas is er heel even geen maat.
+      const width = async () => (await canvas.boundingBox())?.width ?? Number.NaN;
+      const before = await width();
+      await page.getByRole('button', { name: v.zoomIn }).click();
+      await expect(page.getByText('125%')).toBeVisible();
+      await expect.poll(width, SLOW).toBeGreaterThan(before * 1.2);
+      await page.getByRole('button', { name: v.fit }).click();
+      await expect.poll(width, SLOW).toBeLessThan(before + 2);
+    });
+  }
+
+  test('twee gelijke PDF’s: geen verschil in beeld', async ({ page }) => {
+    await openPage(page, '/#/advanced/compare', { lang: 'nl' });
+    await page
+      .locator('#compare-file-a')
+      .setInputFiles([await file('kopie-1.pdf', OLD), await file('kopie-2.pdf', OLD)]);
+    await expect(page.getByText(c.noDiff)).toBeVisible(SLOW);
+    await page.getByRole('button', { name: c.tabs.visual }).click();
+    await expect(page.locator('.compare-visual__stat')).toHaveText(
+      /^Verschil: 0,00% van de pagina · 0,0% van de inkt · 0 px$/,
+      SLOW,
+    );
+    expect(await countColours(page)).toEqual({ red: 0, green: 0 });
+  });
+});
+
 test.describe('PDF’s vergelijken op een scherm met schaal 150 %', () => {
   test.skip(({ isMobile }) => isMobile, 'Geavanceerd is er alleen op de computer');
   // Zoals een laptop met Windows-schaal 150 %: de letters vallen daar net iets breder uit.
@@ -361,12 +463,18 @@ test.describe('PDF’s vergelijken op een scherm met schaal 150 %', () => {
       });
     for (const side of ['a', 'b'] as const) {
       // Pas met het plaatje van pagina 1 erbij staat het vak er helemaal.
-      await expect(slot(page, side).locator('img.compare-slot__thumb')).toBeVisible();
+      await expect(slot(page, side).locator('img.compare-slot__thumb')).toBeVisible(SLOW);
       expect(await lines(slot(page, side).getByText(c.sides[side].replace)), side).toBe(1);
     }
     // De keuze naast elkaar of onder elkaar, in de kop van het rechtervak.
     for (const name of [c.views.split, c.views.unified]) {
       expect(await lines(page.getByRole('button', { name })), name).toBe(1);
+    }
+    // Bij het beeld: verschil, naast elkaar of overlay.
+    await page.getByRole('button', { name: c.tabs.visual }).click();
+    const modes = page.getByRole('group', { name: c.visual.modes.label });
+    for (const name of [c.visual.modes.diff, c.visual.modes.side, c.visual.modes.overlay]) {
+      expect(await lines(modes.getByRole('button', { name })), name).toBe(1);
     }
   });
 });

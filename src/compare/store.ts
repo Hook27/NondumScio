@@ -5,12 +5,31 @@ import { DEFAULT_OPTIONS, compareTexts, type CompareOptions, type TextComparison
 import type { PageText } from './layout';
 import type { DocInfo } from './profile';
 import { readPdf } from './readPdf';
+import { closeVisual } from './visual';
 
 /** Welk document: A (het origineel) of B (de nieuwe versie). */
 export type Side = 'a' | 'b';
 
 /** Wat je vergelijkt: de tekst of het documentprofiel. */
-export type CompareTab = 'text' | 'profile';
+export type CompareTab = 'text' | 'profile' | 'visual';
+
+/** Hoe het beeld te zien is: het pixelverschil, A en B naast elkaar, of B over A. */
+export type VisualMode = 'diff' | 'side' | 'overlay';
+
+/** Het beeld: welke pagina, hoe B verschoven is, hoe het te zien is, en de zoom. */
+export type VisualState = {
+  /** De pagina van A (vanaf 1). */
+  page: number;
+  /** B verschoven ten opzichte van A: bij 1 staat pagina 2 van B naast pagina 1 van A. */
+  offset: number;
+  mode: VisualMode;
+  /** Het verschil in helderheid dat nog als gelijk telt (4 tot 120). */
+  threshold: number;
+  /** Bij de overlay: hoeveel van B je over A ziet (0 tot 1). */
+  alpha: number;
+  /** In procenten van "passend in het vak". */
+  zoom: number;
+};
 
 /** Hoe de verschillen te zien zijn: A en B naast elkaar, of onder elkaar in één kolom. */
 export type CompareView = 'split' | 'unified';
@@ -47,8 +66,9 @@ export type CompareState = {
   onlyDiff: boolean;
   /** Naast elkaar of onder elkaar; blijft staan bij Wissen, zoals de instellingen. */
   view: CompareView;
-  /** Tekst of profiel; na Wissen weer de tekst, zoals in de losse pdf-vergelijker. */
+  /** Tekst, profiel of beeld; na Wissen weer de tekst, zoals in de losse pdf-vergelijker. */
   tab: CompareTab;
+  visual: VisualState;
 };
 
 const EMPTY: Slot = { status: 'empty' };
@@ -63,6 +83,7 @@ const INITIAL: CompareState = {
   onlyDiff: true,
   view: 'split',
   tab: 'text',
+  visual: { page: 1, offset: 0, mode: 'diff', threshold: 30, alpha: 0.5, zoom: 100 },
 };
 
 /**
@@ -94,9 +115,11 @@ export function useCompareState(): CompareState {
   return state;
 }
 
-/** Het plaatje van een document niet langer vasthouden. */
+/** Het plaatje van een document niet langer vasthouden, en de PDF sluiten als die open was. */
 function release(slot: Slot) {
-  if (slot.status === 'ready' && slot.doc.thumb) URL.revokeObjectURL(slot.doc.thumb);
+  if (slot.status !== 'ready') return;
+  if (slot.doc.thumb) URL.revokeObjectURL(slot.doc.thumb);
+  closeVisual(slot.doc.file);
 }
 
 /** Zet de documenten neer en vergelijkt opnieuw als ze er allebei zijn. */
@@ -177,7 +200,12 @@ export function clearCompare(): void {
   reads.b = ++lastRead;
   release(state.a);
   release(state.b);
-  setSlots(EMPTY, EMPTY, { tooMany: false, tab: 'text' });
+  // Zoals in de losse pdf-vergelijker: terug naar pagina 1, zonder verschuiving, passend.
+  setSlots(EMPTY, EMPTY, {
+    tooMany: false,
+    tab: 'text',
+    visual: { ...state.visual, page: 1, offset: 0, zoom: 100 },
+  });
 }
 
 /** Een instelling veranderen; er wordt meteen opnieuw vergeleken. */
@@ -190,7 +218,12 @@ export function setOnlyDiff(onlyDiff: boolean): void {
   setState({ onlyDiff, expanded: new Set() });
 }
 
-/** De tekst of het documentprofiel vergelijken. */
+/** Iets aan het beeld veranderen (pagina, verschuiving, weergave, drempel, zoom). */
+export function setVisual(change: Partial<VisualState>): void {
+  setState({ visual: { ...state.visual, ...change } });
+}
+
+/** De tekst, het documentprofiel of het beeld vergelijken. */
 export function setTab(tab: CompareTab): void {
   setState({ tab });
 }

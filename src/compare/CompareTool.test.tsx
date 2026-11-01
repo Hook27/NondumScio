@@ -11,6 +11,7 @@ import type { PageText, Piece } from './layout';
 import type { DocInfo } from './profile';
 import { readPdf } from './readPdf';
 import { resetCompareState } from './store';
+import { closeVisual, composeDiff, composeOverlay, renderPage } from './visual';
 
 /**
  * Een pagina met alinea's van elk twee regels (de woorden half om half, of de regels zoals
@@ -127,6 +128,36 @@ vi.mock('./readPdf', () => ({
   }),
 }));
 
+/** Een leeg canvas met een maat (jsdom kan niet echt tekenen). */
+function blank(width: number, height: number) {
+  const canvas = document.createElement('canvas');
+  canvas.width = width;
+  canvas.height = height;
+  return canvas;
+}
+
+// Het tekenen nagebootst: een pagina is een leeg canvas van A4-verhouding, of null als hij niet
+// bestaat; het pixelverschil telt vaste aantallen. De rekenregels (zoom, breedtes) blijven echt.
+vi.mock('./visual', async (importOriginal) => {
+  const real = await importOriginal<typeof import('./visual')>();
+  return {
+    ...real,
+    renderPage: vi.fn(async (file: File, page: number, width: number) => {
+      const pages = DOCS[file.name];
+      if (!Array.isArray(pages) || page < 1 || page > pages.length) return null;
+      return blank(width, Math.round(width * 1.414));
+    }),
+    composeDiff: vi.fn((a: HTMLCanvasElement) => ({
+      canvas: blank(a.width, a.height),
+      diff: 1234,
+      ink: 5000,
+      total: 100_000,
+    })),
+    composeOverlay: vi.fn((a: HTMLCanvasElement) => blank(a.width, a.height)),
+    closeVisual: vi.fn(),
+  };
+});
+
 // De echte vergelijking, maar zo dat een test kan doen alsof de documenten te groot waren.
 vi.mock('./diff', async (importOriginal) => {
   const real = await importOriginal<typeof import('./diff')>();
@@ -160,6 +191,8 @@ afterEach(() => {
   resetCompareState();
   for (const name of Object.keys(gates)) delete gates[name];
   vi.mocked(readPdf).mockClear();
+  for (const mock of [renderPage, composeDiff, composeOverlay, closeVisual])
+    vi.mocked(mock).mockClear();
 });
 
 describe('PDF’s vergelijken', () => {
@@ -634,5 +667,177 @@ describe('documentprofiel', () => {
     fireEvent.click(screen.getByRole('button', { name: c.clear }));
     expect(tab(c.tabs.text).getAttribute('aria-pressed')).toBe('true');
     expect(screen.getByRole('heading', { name: c.textTitle })).toBeTruthy();
+  });
+});
+
+describe('beeld', () => {
+  const v = c.visual;
+  const button = (name: string) => screen.getByRole('button', { name });
+  const mode = (name: string) =>
+    within(screen.getByRole('group', { name: v.modes.label })).getByRole('button', { name });
+  /** Opent twee PDF's en gaat naar Beeld; wacht tot er getekend is. */
+  async function openVisual(a: string, b: string) {
+    setup();
+    choose('a', a, b);
+    await screen.findByText(/^A: \d+ pagina/);
+    fireEvent.click(button(c.tabs.visual));
+    await screen.findByText(/^(Verschil|Pagina \d+ bestaat)/);
+  }
+
+  it('zonder PDF’s: zegt wat er nodig is, en bladeren kan nog niet', () => {
+    setup();
+    fireEvent.click(button(c.tabs.visual));
+    expect(screen.getByRole('heading', { name: v.title })).toBeTruthy();
+    expect(screen.getByText(v.placeholder)).toBeTruthy();
+    expect(screen.getByText(v.noPages)).toBeTruthy();
+    expect(button(v.previous).hasAttribute('disabled')).toBe(true);
+    expect(button(v.next).hasAttribute('disabled')).toBe(true);
+    // De instellingen en tellers horen bij de tekst.
+    expect(screen.queryByRole('group', { name: c.settings.title })).toBeNull();
+  });
+
+  it('tekent het verschil van pagina 1, met de tellingen, de legenda en een beschrijving', async () => {
+    await openVisual('oud.pdf', 'nieuw.pdf');
+    expect(
+      screen.getByText('Verschil: 1,23% van de pagina · 24,7% van de inkt · 1.234 px'),
+    ).toBeTruthy();
+    expect(screen.getByText('A: pagina 1 · B: pagina 1')).toBeTruthy();
+    expect(screen.getByRole('img', { name: format(v.labels.diff, { a: 1, b: 1 }) })).toBeTruthy();
+    expect(screen.getByText(v.legend.a)).toBeTruthy();
+    // Passend in een vak van (bij gebrek aan meting) 940 breed, op 1× pixeldichtheid.
+    expect(
+      vi.mocked(renderPage).mock.calls.map(([file, page, width]) => [file.name, page, width]),
+    ).toEqual([
+      ['oud.pdf', 1, 940],
+      ['nieuw.pdf', 1, 940],
+    ]);
+    expect(vi.mocked(composeDiff).mock.calls[0]![2]).toBe(30);
+  });
+
+  it('een andere drempel rekent opnieuw, zonder de pagina’s opnieuw te tekenen', async () => {
+    await openVisual('oud.pdf', 'nieuw.pdf');
+    fireEvent.input(screen.getByRole('slider', { name: v.threshold }), { target: { value: '60' } });
+    await waitFor(() => expect(vi.mocked(composeDiff).mock.lastCall![2]).toBe(60));
+    expect(screen.getByText('60')).toBeTruthy();
+    expect(renderPage).toHaveBeenCalledTimes(2);
+  });
+
+  it('naast elkaar en overlay', async () => {
+    await openVisual('oud.pdf', 'nieuw.pdf');
+    fireEvent.click(mode(v.modes.side));
+    await screen.findByText('A: 462×653 px · B: 462×653 px');
+    expect(screen.getByRole('img', { name: format(v.labels.a, { n: 1 }) })).toBeTruthy();
+    expect(screen.getByRole('img', { name: format(v.labels.b, { n: 1 }) })).toBeTruthy();
+    expect(screen.queryByText(v.legend.a)).toBeNull();
+    expect(screen.queryByRole('slider', { name: v.threshold })).toBeNull();
+
+    fireEvent.click(mode(v.modes.overlay));
+    await screen.findByText('Overlay: B voor 50% over A');
+    expect(mode(v.modes.overlay).getAttribute('aria-pressed')).toBe('true');
+    fireEvent.input(screen.getByRole('slider', { name: v.alpha }), { target: { value: '80' } });
+    await screen.findByText('Overlay: B voor 80% over A');
+    expect(vi.mocked(composeOverlay).mock.lastCall![2]).toBe(0.8);
+    expect(screen.getByText('80%')).toBeTruthy();
+  });
+
+  it('bladeren, en een pagina die in B niet bestaat', async () => {
+    await openVisual('scan.pdf', 'oud.pdf');
+    expect(screen.getByText(format(v.page, { n: 1, total: 2 }))).toBeTruthy();
+    expect(button(v.previous).hasAttribute('disabled')).toBe(true);
+    fireEvent.click(button(v.next));
+    await screen.findByText('Pagina 2 bestaat niet in B (B heeft 1 pagina).');
+    expect(screen.getByText(format(v.page, { n: 2, total: 2 }))).toBeTruthy();
+    expect(button(v.next).hasAttribute('disabled')).toBe(true);
+    fireEvent.click(button(v.previous));
+    await screen.findByText(/^Verschil: /);
+  });
+
+  it('B verschuiven: pagina 1 van A naast pagina 2 van B', async () => {
+    await openVisual('oud.pdf', 'scan.pdf');
+    fireEvent.change(screen.getByRole('spinbutton', { name: v.offset }), {
+      target: { value: '1' },
+    });
+    await screen.findByText('A: pagina 1 · B: pagina 2');
+    await waitFor(() =>
+      expect(vi.mocked(renderPage).mock.lastCall!.slice(0, 2)).toEqual([
+        expect.objectContaining({ name: 'scan.pdf' }),
+        2,
+      ]),
+    );
+    fireEvent.change(screen.getByRole('spinbutton', { name: v.offset }), {
+      target: { value: '5' },
+    });
+    await screen.findByText('Pagina 6 bestaat niet in B (B heeft 2 pagina’s).');
+    fireEvent.change(screen.getByRole('spinbutton', { name: v.offset }), {
+      target: { value: 'x' },
+    });
+    await screen.findByText('A: pagina 1 · B: pagina 1');
+  });
+
+  it('zoomen tekent op een andere breedte; Passend gaat terug', async () => {
+    await openVisual('oud.pdf', 'nieuw.pdf');
+    expect(button(v.fit).hasAttribute('disabled')).toBe(true);
+    fireEvent.click(button(v.zoomIn));
+    expect(screen.getByText('125%')).toBeTruthy();
+    await waitFor(() => expect(vi.mocked(renderPage).mock.lastCall![2]).toBe(1175));
+    fireEvent.click(button(v.fit));
+    expect(screen.getByText('100%')).toBeTruthy();
+    for (let i = 0; i < 3; i++) fireEvent.click(button(v.zoomOut));
+    expect(screen.getByText('50%')).toBeTruthy();
+    expect(button(v.zoomOut).hasAttribute('disabled')).toBe(true);
+  });
+
+  it('toetsen: ← → bladeren, + − zoomen, 0 passend; niet in een invoerveld en niet met Ctrl', async () => {
+    await openVisual('scan.pdf', 'oud.pdf');
+    const key = (k: string, target: Element = document.body, init: KeyboardEventInit = {}) =>
+      fireEvent.keyDown(target, { key: k, ...init });
+    key('ArrowRight');
+    expect(screen.getByText(format(v.page, { n: 2, total: 2 }))).toBeTruthy();
+    key('ArrowRight');
+    expect(screen.getByText(format(v.page, { n: 2, total: 2 }))).toBeTruthy();
+    key('ArrowLeft');
+    expect(screen.getByText(format(v.page, { n: 1, total: 2 }))).toBeTruthy();
+    key('+');
+    expect(screen.getByText('125%')).toBeTruthy();
+    key('=', document.body, { ctrlKey: true });
+    expect(screen.getByText('125%')).toBeTruthy();
+    key('-');
+    key('-');
+    expect(screen.getByText('75%')).toBeTruthy();
+    key('0');
+    expect(screen.getByText('100%')).toBeTruthy();
+    key('ArrowRight', screen.getByRole('spinbutton', { name: v.offset }));
+    expect(screen.getByText(format(v.page, { n: 1, total: 2 }))).toBeTruthy();
+  });
+
+  it('meldt het als een pagina niet getekend kon worden', async () => {
+    vi.mocked(renderPage).mockRejectedValueOnce(new Error('kapot'));
+    await openVisual('oud.pdf', 'nieuw.pdf').catch(() => undefined);
+    await screen.findByText(v.error);
+  });
+
+  it('Wissen: terug naar Tekst, pagina 1, geen verschuiving, passend; de PDF’s gaan dicht', async () => {
+    await openVisual('scan.pdf', 'oud.pdf');
+    fireEvent.click(button(v.next));
+    fireEvent.change(screen.getByRole('spinbutton', { name: v.offset }), {
+      target: { value: '1' },
+    });
+    fireEvent.click(button(v.zoomIn));
+    fireEvent.click(mode(v.modes.overlay));
+    fireEvent.click(button(c.clear));
+    expect(
+      vi
+        .mocked(closeVisual)
+        .mock.calls.map(([file]) => file.name)
+        .sort(),
+    ).toEqual(['oud.pdf', 'scan.pdf']);
+    expect(button(c.tabs.text).getAttribute('aria-pressed')).toBe('true');
+    fireEvent.click(button(c.tabs.visual));
+    expect(screen.getByRole<HTMLInputElement>('spinbutton', { name: v.offset }).value).toBe('0');
+    expect(screen.getByText('100%')).toBeTruthy();
+    // De weergave blijft staan, zoals de instellingen bij de tekst.
+    choose('a', 'scan.pdf', 'oud.pdf');
+    await screen.findByText(format(v.page, { n: 1, total: 2 }));
+    expect(mode(v.modes.overlay).getAttribute('aria-pressed')).toBe('true');
   });
 });
