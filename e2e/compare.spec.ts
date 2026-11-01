@@ -1,4 +1,5 @@
 import AxeBuilder from '@axe-core/playwright';
+import { readFileSync } from 'node:fs';
 import { expect, test, type Locator, type Page } from '@playwright/test';
 import { PDFDocument, StandardFonts, rgb } from 'pdf-lib';
 import { format } from '../src/i18n/format';
@@ -234,6 +235,62 @@ test.describe('PDF’s vergelijken', () => {
 
     await page.getByRole('button', { name: c.clear }).click();
     await expect(page.getByText(c.placeholder)).toBeVisible();
+  });
+});
+
+test.describe('PDF’s vergelijken: rapport', () => {
+  test.skip(({ isMobile }) => isMobile, 'Geavanceerd is er alleen op de computer');
+
+  test('downloaden als tekstbestand en kopiëren naar het klembord', async ({ page, context }) => {
+    const r = c.report;
+    await context.grantPermissions(['clipboard-read', 'clipboard-write']);
+    await openPage(page, '/#/advanced/compare', { lang: 'nl' });
+    await page
+      .locator('#compare-file-a')
+      .setInputFiles([await file('huur-oud.pdf', OLD), await file('huur-nieuw.pdf', NEW)]);
+    await expect(page.getByRole('table')).toBeVisible(SLOW);
+
+    const [download] = await Promise.all([
+      page.waitForEvent('download'),
+      page.getByRole('button', { name: r.download }).click(),
+    ]);
+    expect(download.suggestedFilename()).toMatch(/^pdf-vergelijking_\d{8}_\d{4}\.txt$/);
+    await expect(
+      page.getByText(format(r.downloaded, { name: download.suggestedFilename() })),
+    ).toBeVisible();
+    const text = readFileSync((await download.path())!, 'utf-8');
+    expect(text.startsWith('PDF-VERGELIJKING\nGemaakt: ')).toBe(true);
+    expect(text).toContain('A: huur-oud.pdf (2 pagina’s, ');
+    expect(text).toContain(
+      'Instellingen: per alinea, alinea-gevoeligheid 1,3, kop- en voetteksten weggelaten, twee kolommen herkend, afgebroken woorden hersteld',
+    );
+    expect(text).toContain(
+      '=== DOCUMENTPROFIEL ===\n≠ Bestandsnaam:\n    A: huur-oud.pdf\n    B: huur-nieuw.pdf',
+    );
+    expect(text).toContain('=== TEKSTVERSCHILLEN ===\n1 toegevoegd, 1 verwijderd, 1 gewijzigd\n');
+    expect(text).toContain(
+      [
+        '@@ A pagina 1 | B pagina 1 @@',
+        '  Deze overeenkomst gaat in op 1 januari 2026.',
+        '- De huur bedraagt 500 euro per maand.',
+        '+ De huur bedraagt 550 euro per maand.',
+        '- De huurder betaalt ook de servicekosten.',
+        // De ongewijzigde stukken ertussen horen bij beide verschillen: één blok.
+        '  De opzegtermijn is een maand.',
+        '  Huisdieren zijn niet toegestaan.',
+        '+ De woning wordt schoon opgeleverd.',
+        '',
+      ].join('\n'),
+    );
+
+    // Kopiëren geeft hetzelfde rapport (op het tijdstip na).
+    await page.getByRole('button', { name: r.copy }).click();
+    await expect(page.getByText(r.copied)).toBeVisible();
+    const copied = await page.evaluate(() => navigator.clipboard.readText());
+    // Windows zet op het klembord CRLF in plaats van LF.
+    const withoutTime = (report: string) =>
+      report.replace(/\r\n/g, '\n').replace(/^Gemaakt: .*$/m, '');
+    expect(withoutTime(copied)).toBe(withoutTime(text));
   });
 });
 

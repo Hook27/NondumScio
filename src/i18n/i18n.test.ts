@@ -40,7 +40,8 @@ describe('vertalingen', () => {
     // Alleen de naam van de app, de papierformaten, de resolutie, "ISO" (een soort datum bij
     // Slim hernoemen), "Database", en bij PDF's vergelijken de samenvatting ("A: … · B: …"), het
     // korte paginalabel ("p3"), de kop onder elkaar ("A · … → B · …") en bij het beeld "Overlay",
-    // "B over A", "Zoom" en de maten ("A: … px · B: … px") zijn in beide talen gelijk.
+    // "B over A", "Zoom", de maten ("A: … px · B: … px") en in het rapport de regel per document
+    // ("A: naam (pagina's, grootte)") zijn in beide talen gelijk.
     expect(same).toEqual([
       'appName',
       'convert.a4',
@@ -53,6 +54,7 @@ describe('vertalingen', () => {
       'compare.visual.alpha',
       'compare.visual.zoom',
       'compare.visual.stat.side',
+      'compare.report.doc',
       'compare.unifiedHead',
       'compare.summary',
       'compare.page',
