@@ -1091,6 +1091,78 @@ h1 {
   background: var(--changed-line);
 }
 
+/* De keuze tussen tekst en profiel: op een vaste plek boven het werkvak. */
+.compare-mode {
+  max-width: 24rem;
+  margin: 0 0 0.75rem;
+}
+
+.compare-mode .segmented {
+  margin: 0;
+}
+
+/* Het documentprofiel: gegevens van A en B naast elkaar, en per pagina. */
+.compare-profile {
+  width: 100%;
+  margin: 0 0 1.25rem;
+  border-collapse: collapse;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  font-size: 0.85rem;
+}
+
+.compare-profile caption {
+  padding: 0 0 0.4rem;
+  font-weight: 600;
+  text-align: left;
+}
+
+.compare-profile th,
+.compare-profile td {
+  padding: 0.4rem 0.6rem;
+  border-bottom: 1px solid var(--border);
+  text-align: left;
+  vertical-align: top;
+  overflow-wrap: anywhere;
+}
+
+.compare-profile thead th {
+  color: var(--text-muted);
+  font-weight: 600;
+}
+
+.compare-profile tbody th {
+  font-weight: 600;
+}
+
+.compare-profile__value {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+}
+
+.compare-profile .compare-profile__num {
+  text-align: right;
+}
+
+/* Wat verschilt: geel, zoals een gewijzigd stuk tekst, met ≠ ervoor. */
+.compare-profile__differs th,
+.compare-profile__differs td {
+  background: var(--changed);
+}
+
+.compare-profile__differs th:first-child {
+  box-shadow: inset 3px 0 0 var(--changed-line);
+}
+
+.compare-profile__flag {
+  margin-right: 0.35rem;
+  font-weight: 700;
+}
+
+.compare-profile__empty {
+  color: var(--text-muted);
+  font-style: italic;
+}
+
 /* De instellingen bij het vergelijken: ze werken meteen. */
 .compare-settings {
   margin: 0 0 0.75rem;

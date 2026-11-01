@@ -14,6 +14,7 @@ import {
   type Segment,
   type Unit,
 } from './diff';
+import { pageRows, pageSize, profileRows, type PageNote, type ProfileDoc } from './profile';
 import {
   clearCompare,
   expandRows,
@@ -21,10 +22,12 @@ import {
   openFiles,
   setOnlyDiff,
   setOptions,
+  setTab,
   setView,
   swapSides,
   useCompareState,
   type CompareDoc,
+  type CompareTab,
   type CompareView,
   type Side,
   type Slot,
@@ -33,6 +36,7 @@ import {
 const SIDES: readonly Side[] = ['a', 'b'];
 const LEVELS: readonly CompareLevel[] = ['paragraph', 'sentence', 'line'];
 const VIEWS: readonly CompareView[] = ['split', 'unified'];
+const TABS: readonly CompareTab[] = ['text', 'profile'];
 const LETTER: Record<Side, string> = { a: 'A', b: 'B' };
 
 /**
@@ -48,50 +52,101 @@ export function CompareTool() {
   const { t } = useI18n();
   const c = t.compare;
   const state = useCompareState();
-  const { result, tooMany } = state;
+  const { result, tooMany, tab } = state;
   const reading = isReading(state);
   const empty = state.a.status === 'empty' && state.b.status === 'empty';
 
   return (
-    <section class="workspace compare" aria-label={c.toolbar}>
-      <div class="workspace__tools">
-        {SIDES.map((side) => (
-          <SlotView key={side} side={side} slot={state[side]} />
-        ))}
-        {tooMany && (
-          <p class="compare__note" role="status">
-            {c.tooMany}
-          </p>
-        )}
-        <div class="toolbar toolbar--tools" role="toolbar" aria-label={c.toolbar}>
-          <div class="toolbar__group toolbar__group--wide">
-            <button
-              type="button"
-              class="button button--secondary"
-              disabled={reading || empty}
-              onClick={swapSides}
-            >
-              {c.swap}
-            </button>
-            <button
-              type="button"
-              class="button button--secondary"
-              disabled={empty}
-              onClick={clearCompare}
-            >
-              {c.clear}
-            </button>
+    <>
+      {/* Op een vaste plek boven het werkvak, zodat hij niet verspringt (zoals bij Slim hernoemen). */}
+      <div class="compare-mode">
+        <TabToggle />
+      </div>
+      <section class="workspace compare" aria-label={c.toolbar}>
+        <div class="workspace__tools">
+          {SIDES.map((side) => (
+            <SlotView key={side} side={side} slot={state[side]} />
+          ))}
+          {tooMany && (
+            <p class="compare__note" role="status">
+              {c.tooMany}
+            </p>
+          )}
+          <div class="toolbar toolbar--tools" role="toolbar" aria-label={c.toolbar}>
+            <div class="toolbar__group toolbar__group--wide">
+              <button
+                type="button"
+                class="button button--secondary"
+                disabled={reading || empty}
+                onClick={swapSides}
+              >
+                {c.swap}
+              </button>
+              <button
+                type="button"
+                class="button button--secondary"
+                disabled={empty}
+                onClick={clearCompare}
+              >
+                {c.clear}
+              </button>
+            </div>
           </div>
+          {/* De tellers en instellingen horen bij de tekst. */}
+          {tab === 'text' && (
+            <>
+              {result && <Counts rows={result.rows} />}
+              <Settings />
+              <p class="annotate__hint">{c.colorsHint}</p>
+            </>
+          )}
+          <p class="annotate__hint">{c.about}</p>
         </div>
-        {result && <Counts rows={result.rows} />}
-        <Settings />
-        <p class="annotate__hint">{c.colorsHint}</p>
-        <p class="annotate__hint">{c.about}</p>
-      </div>
-      <div class="workspace__view" data-scroll-root>
-        <Results />
-      </div>
-    </section>
+        <div class="workspace__view" data-scroll-root>
+          {tab === 'text' ? <Results /> : <ProfileView />}
+        </div>
+      </section>
+    </>
+  );
+}
+
+/** De keuze tussen de tekst en het documentprofiel. */
+function TabToggle() {
+  const { t } = useI18n();
+  const tabs = t.compare.tabs;
+  const { tab } = useCompareState();
+  return (
+    <div class="segmented" role="group" aria-label={tabs.label}>
+      {TABS.map((option) => (
+        <button
+          key={option}
+          type="button"
+          class="segmented__button"
+          aria-pressed={tab === option}
+          onClick={() => setTab(option)}
+        >
+          {tabs[option]}
+        </button>
+      ))}
+    </div>
+  );
+}
+
+/** Zolang A en B er niet allebei zijn: wat er nog nodig is (of dat er gelezen wordt). */
+function Waiting({ placeholder }: { placeholder: string }) {
+  const { t } = useI18n();
+  const c = t.compare;
+  const state = useCompareState();
+  const missing = SIDES.find((side) => state[side].status !== 'ready');
+  const one = SIDES.some((side) => state[side].status === 'ready');
+  return (
+    <p class="compare__placeholder">
+      {isReading(state)
+        ? c.readingStart
+        : one && missing
+          ? format(c.waitingFor, { side: LETTER[missing] })
+          : placeholder}
+    </p>
   );
 }
 
@@ -254,18 +309,10 @@ function Results() {
   const { a, b, result, options } = state;
 
   if (!result || a.status !== 'ready' || b.status !== 'ready') {
-    const missing = SIDES.find((side) => state[side].status !== 'ready');
-    const one = SIDES.some((side) => state[side].status === 'ready');
     return (
       <>
         <PaneHead title={c.textTitle} />
-        <p class="compare__placeholder">
-          {isReading(state)
-            ? c.readingStart
-            : one && missing
-              ? format(c.waitingFor, { side: LETTER[missing] })
-              : c.placeholder}
-        </p>
+        <Waiting placeholder={c.placeholder} />
       </>
     );
   }
@@ -300,6 +347,127 @@ function Results() {
         </div>
       )}
     </>
+  );
+}
+
+const toProfile = (doc: CompareDoc): ProfileDoc => ({
+  name: doc.file.name,
+  size: doc.file.size,
+  pageCount: doc.pageCount,
+  pages: doc.pages,
+  info: doc.info,
+});
+
+/**
+ * Het documentprofiel: de gegevens van A en B naast elkaar, met ≠ bij wat verschilt, en per
+ * pagina het formaat en het aantal tekens.
+ */
+function ProfileView() {
+  const { t, language } = useI18n();
+  const p = t.compare.profile;
+  const { a, b } = useCompareState();
+  if (a.status !== 'ready' || b.status !== 'ready') {
+    return (
+      <>
+        <PaneHead title={p.title} />
+        <Waiting placeholder={p.placeholder} />
+      </>
+    );
+  }
+  const rows = profileRows(toProfile(a.doc), toProfile(b.doc), language, { yes: p.yes, no: p.no });
+  const differ = rows.filter((row) => row.differs).length;
+  return (
+    <>
+      <PaneHead
+        title={p.title}
+        meta={format(differ === 1 ? p.summaryOne : p.summary, { n: differ, total: rows.length })}
+      />
+      <table class="compare-profile">
+        <caption>{p.fieldsCaption}</caption>
+        <thead>
+          <tr>
+            <th scope="col">{p.field}</th>
+            <th scope="col">{`A · ${a.doc.file.name}`}</th>
+            <th scope="col">{`B · ${b.doc.file.name}`}</th>
+          </tr>
+        </thead>
+        <tbody>
+          {rows.map((row) => (
+            <tr key={row.id} class={row.differs ? 'compare-profile__differs' : undefined}>
+              <th scope="row">
+                {row.differs && (
+                  <span class="compare-profile__flag" aria-hidden="true">
+                    ≠
+                  </span>
+                )}
+                {p.fields[row.id]}
+                {row.differs && <span class="visually-hidden">{` (${p.differs})`}</span>}
+              </th>
+              <ProfileValue value={row.a} />
+              <ProfileValue value={row.b} />
+            </tr>
+          ))}
+        </tbody>
+      </table>
+      <PageTable a={a.doc} b={b.doc} />
+    </>
+  );
+}
+
+function ProfileValue({ value }: { value: string }) {
+  const { t } = useI18n();
+  return (
+    <td class="compare-profile__value">
+      {value === '' ? <span class="compare-profile__empty">{t.compare.profile.empty}</span> : value}
+    </td>
+  );
+}
+
+/** Per pagina: formaat en tekens van A en B, met wat opvalt. */
+function PageTable({ a, b }: { a: CompareDoc; b: CompareDoc }) {
+  const { t, language } = useI18n();
+  const p = t.compare.profile;
+  const none = '—';
+  const note = (n: PageNote) =>
+    n.kind === 'chars'
+      ? format(p.notes.chars, {
+          n: `${n.n > 0 ? '+' : '−'}${Math.abs(n.n).toLocaleString(language)}`,
+        })
+      : p.notes[n.kind];
+  return (
+    <table class="compare-profile">
+      <caption>{p.pagesCaption}</caption>
+      <thead>
+        <tr>
+          <th scope="col">{p.columns.page}</th>
+          <th scope="col">{p.columns.sizeA}</th>
+          <th scope="col" class="compare-profile__num">
+            {p.columns.charsA}
+          </th>
+          <th scope="col">{p.columns.sizeB}</th>
+          <th scope="col" class="compare-profile__num">
+            {p.columns.charsB}
+          </th>
+          <th scope="col">{p.columns.note}</th>
+        </tr>
+      </thead>
+      <tbody>
+        {pageRows(toProfile(a), toProfile(b)).map((row) => (
+          <tr key={row.no} class={row.notes.length > 0 ? 'compare-profile__differs' : undefined}>
+            <th scope="row">{row.no}</th>
+            <td class="compare-profile__value">{row.a ? pageSize(row.a) : none}</td>
+            <td class="compare-profile__value compare-profile__num">
+              {row.a ? row.a.chars.toLocaleString(language) : none}
+            </td>
+            <td class="compare-profile__value">{row.b ? pageSize(row.b) : none}</td>
+            <td class="compare-profile__value compare-profile__num">
+              {row.b ? row.b.chars.toLocaleString(language) : none}
+            </td>
+            <td>{row.notes.length > 0 ? row.notes.map(note).join(', ') : none}</td>
+          </tr>
+        ))}
+      </tbody>
+    </table>
   );
 }
 
