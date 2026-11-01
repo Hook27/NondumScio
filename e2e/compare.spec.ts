@@ -166,3 +166,31 @@ test.describe('PDF’s vergelijken', () => {
     await expect(page.getByText(c.placeholder)).toBeVisible();
   });
 });
+
+test.describe('PDF’s vergelijken op een scherm met schaal 150 %', () => {
+  test.skip(({ isMobile }) => isMobile, 'Geavanceerd is er alleen op de computer');
+  // Zoals een laptop met Windows-schaal 150 %: de letters vallen daar net iets breder uit.
+  test.use({ viewport: { width: 1366, height: 768 }, deviceScaleFactor: 1.5 });
+
+  test('de knop om een andere PDF te kiezen past op één regel', async ({ page }) => {
+    await openPage(page, '/#/advanced/compare', { lang: 'nl' });
+    // Een gewone schuifbalk in het linkervak (17 px op Windows) kost breedte. De testbrowser toont
+    // geen schuifbalken, dus die ruimte halen we hier zelf weg.
+    await page.addStyleTag({ content: '.workspace__tools { padding-right: 23px !important; }' });
+    await page
+      .locator('#compare-file-a')
+      .setInputFiles([await file('huur-oud.pdf', OLD), await file('huur-nieuw.pdf', NEW)]);
+    for (const side of ['a', 'b'] as const) {
+      // Pas met het plaatje van pagina 1 erbij staat het vak er helemaal.
+      await expect(slot(page, side).locator('img.compare-slot__thumb')).toBeVisible();
+      const button = slot(page, side).getByText(c.sides[side].replace);
+      // Het aantal regels van de tekst op de knop.
+      const lines = await button.evaluate((element) => {
+        const range = document.createRange();
+        range.selectNodeContents(element);
+        return range.getClientRects().length;
+      });
+      expect(lines, side).toBe(1);
+    }
+  });
+});

@@ -1031,8 +1031,9 @@ h1 {
   overflow-wrap: anywhere;
 }
 
-/* De knop onderaan, onder wat er gelezen is. */
+/* De knop onderaan, onder wat er gelezen is, en ook onder het plaatje: zo past hij op één regel. */
 .compare-slot .button {
+  grid-column: 1 / -1;
   order: 1;
   margin-top: 0.25rem;
 }
@@ -1049,7 +1050,7 @@ h1 {
 
 .compare-slot .compare-slot__thumb {
   grid-column: 1;
-  grid-row: 1 / span 4;
+  grid-row: 1 / span 3;
   width: 100%;
   height: auto;
   background: var(--paper);
