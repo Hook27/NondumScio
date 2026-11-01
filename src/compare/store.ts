@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'preact/hooks';
 import { PdfLoadError } from '../pdf/loader';
 import type { LoadErrorCode } from '../pdf/detect';
-import { DEFAULT_OPTIONS, compareTexts, type TextComparison } from './diff';
+import { DEFAULT_OPTIONS, compareTexts, type CompareOptions, type TextComparison } from './diff';
 import type { PageText } from './layout';
 import { readPdf } from './readPdf';
 
@@ -32,6 +32,10 @@ export type CompareState = {
   expanded: ReadonlySet<number>;
   /** Er werden meer dan twee PDF's tegelijk gekozen; alleen de eerste twee tellen. */
   tooMany: boolean;
+  /** De instellingen voor het vergelijken; ze blijven staan bij Wissen. */
+  options: CompareOptions;
+  /** Ongewijzigde stukken inklappen. */
+  onlyDiff: boolean;
 };
 
 const EMPTY: Slot = { status: 'empty' };
@@ -42,6 +46,8 @@ const INITIAL: CompareState = {
   result: null,
   expanded: new Set(),
   tooMany: false,
+  options: DEFAULT_OPTIONS,
+  onlyDiff: true,
 };
 
 /**
@@ -80,9 +86,10 @@ function release(slot: Slot) {
 
 /** Zet de documenten neer en vergelijkt opnieuw als ze er allebei zijn. */
 function setSlots(a: Slot, b: Slot, extra: Partial<CompareState> = {}) {
+  const options = extra.options ?? state.options;
   const result =
     a.status === 'ready' && b.status === 'ready'
-      ? compareTexts(a.doc.pages, b.doc.pages, DEFAULT_OPTIONS)
+      ? compareTexts(a.doc.pages, b.doc.pages, options)
       : null;
   setState({ a, b, result, expanded: new Set(), ...extra });
 }
@@ -156,6 +163,16 @@ export function clearCompare(): void {
   release(state.a);
   release(state.b);
   setSlots(EMPTY, EMPTY, { tooMany: false });
+}
+
+/** Een instelling veranderen; er wordt meteen opnieuw vergeleken. */
+export function setOptions(change: Partial<CompareOptions>): void {
+  setSlots(state.a, state.b, { options: { ...state.options, ...change } });
+}
+
+/** Ongewijzigde stukken wel of niet inklappen (wat je had opengeklikt, klapt weer in). */
+export function setOnlyDiff(onlyDiff: boolean): void {
+  setState({ onlyDiff, expanded: new Set() });
 }
 
 /** Ingeklapte stukken (rijen `from` tot en met `to`) openklikken. */

@@ -11,14 +11,22 @@ import type { PageText, Piece } from './layout';
 import { readPdf } from './readPdf';
 import { resetCompareState } from './store';
 
-/** Een pagina met alinea's van elk twee regels, met een witregel ertussen. */
-function page(no: number, paragraphs: string[]): PageText {
+/**
+ * Een pagina met alinea's van elk twee regels (de woorden half om half, of de regels zoals
+ * gegeven), met een witregel ertussen; met `head` ook een kop bovenaan, ver van de tekst.
+ */
+function page(no: number, paragraphs: (string | string[])[], head?: string): PageText {
   const items: Piece[] = [];
+  if (head) items.push({ str: head, x: 50, y: 800, fh: 10, w: head.length * 5 });
   let y = 760;
   for (const paragraph of paragraphs) {
-    const words = paragraph.split(' ');
+    const words = typeof paragraph === 'string' ? paragraph.split(' ') : [];
     const half = Math.ceil(words.length / 2);
-    for (const str of [words.slice(0, half).join(' '), words.slice(half).join(' ')]) {
+    const lines =
+      typeof paragraph === 'string'
+        ? [words.slice(0, half).join(' '), words.slice(half).join(' ')]
+        : paragraph;
+    for (const str of lines) {
       if (!str) continue;
       items.push({ str, x: 50, y, fh: 10, w: str.length * 5 });
       y -= 12;
@@ -27,6 +35,40 @@ function page(no: number, paragraphs: string[]): PageText {
   }
   return { no, w: 595, h: 842, items, chars: items.reduce((n, i) => n + i.str.length, 0) };
 }
+
+/** Een pagina zoals Word hem maakt: 11 pt, regelafstand 14,5 pt, 8 pt witruimte na een alinea. */
+function wordPage(paragraphs: string[][]): PageText {
+  const items: Piece[] = [];
+  let y = 760;
+  for (const lines of paragraphs) {
+    for (const str of lines) {
+      items.push({ str, x: 71, y, fh: 11, w: str.length * 5.5 });
+      y -= 14.5;
+    }
+    y -= 22.4 - 14.5;
+  }
+  return { no: 1, w: 595, h: 842, items, chars: items.reduce((n, i) => n + i.str.length, 0) };
+}
+
+/** Een pagina met twee kolommen van zes regels, met een brede goot ertussen. */
+function twoColumns(): PageText {
+  const items: Piece[] = [];
+  for (let i = 0; i < 6; i++) {
+    for (const [x, str] of [
+      [50, `links regel ${i + 1}`],
+      [320, `rechts regel ${i + 1}`],
+    ] as const) {
+      items.push({ str, x, y: 760 - i * 12, fh: 10, w: str.length * 5 });
+    }
+  }
+  return { no: 1, w: 595, h: 842, items, chars: items.reduce((n, i) => n + i.str.length, 0) };
+}
+
+const WORD = [
+  ['De eerste alinea loopt over twee regels', 'en stopt hier.'],
+  ['De tweede alinea staat eronder, met', 'een witregel van 8 pt ertussen.'],
+  ['De derde alinea.'],
+];
 
 const SAME = Array.from({ length: 6 }, (_, i) => `Ongewijzigde alinea nummer ${i + 1}.`);
 
@@ -38,6 +80,15 @@ const DOCS: Record<string, PageText[] | Error> = {
     page(1, [...SAME, 'De huur is 500 euro per maand.', 'Deze alinea vervalt straks.']),
   ],
   'scan.pdf': [page(1, []), page(2, ['Alleen hier tekst.'])],
+  'word-a.pdf': [wordPage(WORD)],
+  'word-b.pdf': [wordPage([WORD[0]!, [WORD[1]![0]!, 'een witregel van 6 pt ertussen.'], WORD[2]!])],
+  'kop-a.pdf': [1, 2].map((no) => page(no, ['Gewone tekst op de pagina.'], 'Rapport 2026')),
+  'kop-b.pdf': [1, 2].map((no) => page(no, ['Gewone tekst op de pagina.'], 'Concept 2027')),
+  'hoofd-a.pdf': [page(1, ['Het Contract is getekend.'])],
+  'hoofd-b.pdf': [page(1, ['het contract is getekend.'])],
+  'afbreek-a.pdf': [page(1, [['Dit is een verge-', 'lijking van twee teksten.']])],
+  'afbreek-b.pdf': [page(1, [['Dit is een vergelijking', 'van twee teksten.']])],
+  'kolommen.pdf': [twoColumns()],
   'geheim.pdf': new PdfLoadError('password'),
   'kapot.pdf': new Error('kapot'),
 };
@@ -246,7 +297,21 @@ describe('PDF’s vergelijken', () => {
     setup();
     choose('a', 'oud.pdf', 'nieuw.pdf');
     await screen.findByRole('table');
+    // Per alinea vergeleken: geen tip om per alinea te vergelijken.
     expect(screen.getByText(c.fallback)).toBeTruthy();
+  });
+
+  it('geeft bij een te grote vergelijking per zin de tip om per alinea te vergelijken', async () => {
+    const real = vi.mocked(compareTexts).getMockImplementation()!;
+    setup();
+    fireEvent.click(screen.getByRole('button', { name: c.levels.sentence.label }));
+    vi.mocked(compareTexts).mockImplementationOnce((...args) => ({
+      ...real(...args),
+      fallback: true,
+    }));
+    choose('a', 'oud.pdf', 'nieuw.pdf');
+    await screen.findByRole('table');
+    expect(screen.getByText(`${c.fallback} ${c.fallbackTip}`)).toBeTruthy();
   });
 
   it('Wissen haalt beide documenten weg', async () => {
@@ -257,5 +322,123 @@ describe('PDF’s vergelijken', () => {
     expect(screen.getByText(c.placeholder)).toBeTruthy();
     expect(screen.queryByRole('table')).toBeNull();
     expect(within(slot('a')).getByText(c.sides.a.choose)).toBeTruthy();
+  });
+});
+
+describe('instellingen', () => {
+  const s = c.settings;
+  const checkbox = (name: string) => screen.getByRole<HTMLInputElement>('checkbox', { name });
+  const level = (name: string) => screen.getByRole('button', { name });
+  const slider = () => screen.getByRole<HTMLInputElement>('slider', { name: s.gap });
+  const summary = (a: string, b: string) => screen.findByText(`A: ${a} · B: ${b}`);
+
+  it('staan klaar met de standaardwaarden', () => {
+    setup();
+    expect(screen.getByRole('group', { name: s.title })).toBeTruthy();
+    expect(level(c.levels.paragraph.label).getAttribute('aria-pressed')).toBe('true');
+    expect(level(c.levels.sentence.label).getAttribute('aria-pressed')).toBe('false');
+    expect(slider().value).toBe('1.3');
+    expect(screen.getByText('1,3')).toBeTruthy();
+    expect(checkbox(s.ignoreCase).checked).toBe(false);
+    for (const name of [s.strip, s.columns, s.dehyphen, s.onlyDiff]) {
+      expect(checkbox(name).checked, name).toBe(true);
+    }
+  });
+
+  it('vergelijkt per zin of per regel, met de bijpassende teksten', async () => {
+    setup();
+    choose('a', 'oud.pdf', 'nieuw.pdf');
+    await summary('1 pagina, 8 alinea’s', '1 pagina, 7 alinea’s');
+    fireEvent.click(level(c.levels.sentence.label));
+    await summary('1 pagina, 8 zinnen', '1 pagina, 7 zinnen');
+    expect(level(c.levels.sentence.label).getAttribute('aria-pressed')).toBe('true');
+    expect(slider().disabled).toBe(false);
+    fireEvent.click(level(c.levels.line.label));
+    await summary('1 pagina, 16 regels', '1 pagina, 14 regels');
+    expect(screen.getByRole('button', { name: /ongewijzigde regels tonen$/ })).toBeTruthy();
+    // De alinea-gevoeligheid doet niets bij regels.
+    expect(slider().disabled).toBe(true);
+  });
+
+  it('alinea-gevoeligheid: Word-alinea’s standaard herkend; opnieuw vergelijken pas bij loslaten', async () => {
+    setup();
+    choose('a', 'word-a.pdf', 'word-b.pdf');
+    await summary('1 pagina, 3 alinea’s', '1 pagina, 3 alinea’s');
+    // Alleen de gewijzigde alinea is geel, niet de hele pagina.
+    expect(screen.getByText('1 gewijzigd')).toBeTruthy();
+    expect(screen.getByRole('table').querySelector('del')!.textContent).toBe('8');
+    fireEvent.input(slider(), { target: { value: '1.6' } });
+    expect(screen.getByText('1,6')).toBeTruthy();
+    expect(screen.getByText('A: 1 pagina, 3 alinea’s · B: 1 pagina, 3 alinea’s')).toBeTruthy();
+    fireEvent.change(slider(), { target: { value: '1.6' } });
+    await summary('1 pagina, 1 alinea', '1 pagina, 1 alinea');
+    expect(slider().value).toBe('1.6');
+  });
+
+  it('hoofdletters negeren', async () => {
+    setup();
+    choose('a', 'hoofd-a.pdf', 'hoofd-b.pdf');
+    await screen.findByText('1 gewijzigd');
+    fireEvent.click(checkbox(s.ignoreCase));
+    await screen.findByText(c.noDiff);
+  });
+
+  it('terugkerende kop- en voetteksten weglaten (aan) of meetellen (uit)', async () => {
+    setup();
+    choose('a', 'kop-a.pdf', 'kop-b.pdf');
+    await screen.findByText(c.noDiff);
+    fireEvent.click(checkbox(s.strip));
+    await screen.findByText('2 gewijzigd');
+    expect(screen.getAllByText('Rapport 2026')).toHaveLength(2);
+  });
+
+  it('afgebroken woorden herstellen (aan) of laten staan (uit)', async () => {
+    setup();
+    choose('a', 'afbreek-a.pdf', 'afbreek-b.pdf');
+    await screen.findByText(c.noDiff);
+    fireEvent.click(checkbox(s.dehyphen));
+    await screen.findByText('1 gewijzigd');
+  });
+
+  it('alleen verschillen tonen uit: alle stukken, zonder inklapknop', async () => {
+    setup();
+    choose('a', 'oud.pdf', 'nieuw.pdf');
+    const table = await screen.findByRole('table');
+    expect(within(table).getByRole('button')).toBeTruthy();
+    fireEvent.click(checkbox(s.onlyDiff));
+    expect(within(table).queryByRole('button')).toBeNull();
+    expect(within(table).getAllByText('Ongewijzigde alinea nummer 1.')).toHaveLength(2);
+  });
+
+  it('weer aan: wat je had opengeklikt, klapt weer in', async () => {
+    setup();
+    choose('a', 'oud.pdf', 'nieuw.pdf');
+    const table = await screen.findByRole('table');
+    fireEvent.click(within(table).getByRole('button'));
+    expect(within(table).queryByRole('button')).toBeNull();
+    fireEvent.click(checkbox(s.onlyDiff));
+    fireEvent.click(checkbox(s.onlyDiff));
+    expect(
+      within(table).getByRole('button', { name: '5 ongewijzigde alinea’s tonen' }),
+    ).toBeTruthy();
+  });
+
+  it('twee kolommen herkennen (aan: na elkaar) of niet (uit: regel voor regel door elkaar)', async () => {
+    setup();
+    choose('a', 'kolommen.pdf', 'kolommen.pdf');
+    await summary('1 pagina, 2 alinea’s', '1 pagina, 2 alinea’s');
+    fireEvent.click(checkbox(s.columns));
+    await summary('1 pagina, 1 alinea', '1 pagina, 1 alinea');
+  });
+
+  it('blijven staan bij Wissen', async () => {
+    setup();
+    fireEvent.click(level(c.levels.line.label));
+    choose('a', 'oud.pdf', 'nieuw.pdf');
+    await screen.findByRole('table');
+    fireEvent.click(screen.getByRole('button', { name: c.clear }));
+    expect(level(c.levels.line.label).getAttribute('aria-pressed')).toBe('true');
+    choose('a', 'oud.pdf', 'nieuw.pdf');
+    await summary('1 pagina, 16 regels', '1 pagina, 14 regels');
   });
 });

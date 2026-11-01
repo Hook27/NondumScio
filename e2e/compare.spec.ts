@@ -79,6 +79,32 @@ const file = async (name: string, pages: string[][], options?: { scan?: boolean 
   buffer: await contract(pages, options),
 });
 
+/**
+ * Een brief zoals Word hem als PDF opslaat: 11 pt, regelafstand 14,5 pt en 8 pt witruimte na elke
+ * alinea (22,4 pt tussen alinea's), gemeten in een echte PDF uit Word.
+ */
+async function wordLetter(name: string, paragraphs: string[][]) {
+  const doc = await PDFDocument.create();
+  const font = await doc.embedFont(StandardFonts.Helvetica);
+  const page = doc.addPage([595, 842]);
+  let y = 760;
+  for (const lines of paragraphs) {
+    for (const line of lines) {
+      page.drawText(line, { x: 71, y, size: 11, font });
+      y -= 14.5;
+    }
+    y -= 22.4 - 14.5;
+  }
+  return { name, mimeType: 'application/pdf', buffer: Buffer.from(await doc.save()) };
+}
+
+const WORD_A = [
+  ['Dit is de eerste alinea. Hij loopt over', 'twee regels en stopt hier.'],
+  ['De tweede alinea staat eronder, met', 'een witregel van 8 pt ertussen.'],
+  ['De derde alinea.'],
+];
+const WORD_B = [WORD_A[0]!, [WORD_A[1]![0]!, 'een witregel van 6 pt ertussen.'], WORD_A[2]!];
+
 const slot = (page: Page, side: 'a' | 'b') =>
   page.locator('section.compare-slot').filter({
     has: page.getByRole('heading', { name: c.sides[side].title }),
@@ -164,6 +190,55 @@ test.describe('PDF’s vergelijken', () => {
 
     await page.getByRole('button', { name: c.clear }).click();
     await expect(page.getByText(c.placeholder)).toBeVisible();
+  });
+});
+
+test.describe('PDF’s vergelijken: instellingen', () => {
+  test.skip(({ isMobile }) => isMobile, 'Geavanceerd is er alleen op de computer');
+
+  test('herkent de alinea’s van Word, en elke instelling werkt meteen', async ({ page }) => {
+    const s = c.settings;
+    await openPage(page, '/#/advanced/compare', { lang: 'nl' });
+    await page
+      .locator('#compare-file-a')
+      .setInputFiles([
+        await wordLetter('brief-a.pdf', WORD_A),
+        await wordLetter('brief-b.pdf', WORD_B),
+      ]);
+    const both = (units: string) => page.getByText(`A: 1 pagina, ${units} · B: 1 pagina, ${units}`);
+    await expect(both('3 alinea’s')).toBeVisible();
+    // Alleen de tweede alinea is gewijzigd, met alleen het getal gemarkeerd.
+    await expect(page.getByText('1 gewijzigd')).toBeVisible();
+    await expect(page.getByRole('table').locator('del')).toHaveText('8');
+
+    const settings = page.getByRole('group', { name: s.title });
+    const slider = settings.getByRole('slider', { name: s.gap });
+    await expect(settings.getByText('1,3')).toBeVisible();
+    // Met de drempel van de losse pdf-vergelijker (en hoger) wordt de pagina één alinea.
+    await slider.focus();
+    await page.keyboard.press('End');
+    await expect(settings.getByText('2,5')).toBeVisible();
+    await expect(both('1 alinea')).toBeVisible();
+    await page.keyboard.press('Home');
+    await expect(settings.getByText('1,1')).toBeVisible();
+    await expect(both('3 alinea’s')).toBeVisible();
+
+    await settings.getByRole('button', { name: c.levels.sentence.label }).click();
+    await expect(both('4 zinnen')).toBeVisible();
+    await settings.getByRole('button', { name: c.levels.line.label }).click();
+    await expect(both('5 regels')).toBeVisible();
+    await expect(slider).toBeDisabled();
+
+    // Alles tonen: ook de ongewijzigde regels, zonder inklapknop.
+    await expect(page.getByRole('table').getByRole('button')).toHaveCount(1);
+    await settings.getByRole('checkbox', { name: s.onlyDiff }).uncheck();
+    await expect(page.getByRole('table').getByRole('button')).toHaveCount(0);
+    await expect(page.getByRole('table').getByText('twee regels en stopt hier.')).toHaveCount(2);
+
+    const result = await new AxeBuilder({ page })
+      .withTags(['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa'])
+      .analyze();
+    expect(result.violations).toEqual([]);
   });
 });
 

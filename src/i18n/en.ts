@@ -543,18 +543,47 @@ export const en: Messages = {
     counts: { added: '{n} added', removed: '{n} removed', changed: '{n} changed' },
     colorsHint:
       'Red: only in A. Green: only in B. Yellow: changed, with the words that differ highlighted. p3 = page 3 of the PDF.',
-    settings:
-      'Compared by paragraph. White space does not count, repeating headers and footers are left out, two columns are read one after the other and hyphenated words are joined again.',
+    settings: {
+      title: 'Settings',
+      level: 'Compare by',
+      gap: 'Paragraph sensitivity',
+      gapHint:
+        'Lower: a new paragraph sooner. Higher: more lines together in one paragraph. Not when comparing by line.',
+      ignoreCase: 'Ignore upper and lower case',
+      strip: 'Leave out repeating headers and footers',
+      columns: 'Recognise two columns',
+      dehyphen: 'Join hyphenated words',
+      onlyDiff: 'Only show differences',
+    },
+    levels: {
+      paragraph: {
+        label: 'Paragraph',
+        one: '1 paragraph',
+        other: '{n} paragraphs',
+        gapOne: 'Show 1 unchanged paragraph',
+        gap: 'Show {n} unchanged paragraphs',
+      },
+      sentence: {
+        label: 'Sentence',
+        one: '1 sentence',
+        other: '{n} sentences',
+        gapOne: 'Show 1 unchanged sentence',
+        gap: 'Show {n} unchanged sentences',
+      },
+      line: {
+        label: 'Line',
+        one: '1 line',
+        other: '{n} lines',
+        gapOne: 'Show 1 unchanged line',
+        gap: 'Show {n} unchanged lines',
+      },
+    },
     about:
       'The text from a PDF is a reconstruction: no text differences does not mean the documents are the same. Your files stay on your device.',
     textTitle: 'Text differences',
     placeholder: 'Choose two PDFs to compare their text.',
     waitingFor: 'Choose PDF {side} as well to compare.',
     summary: 'A: {a} · B: {b}',
-    unitsOne: '1 paragraph',
-    units: '{n} paragraphs',
-    gapOne: 'Show 1 unchanged paragraph',
-    gap: 'Show {n} unchanged paragraphs',
     kinds: { added: 'Added', removed: 'Removed', changed: 'Changed' },
     page: 'p{n}',
     pageLabel: 'Page {n}',
@@ -562,6 +591,7 @@ export const en: Messages = {
     noDiffNote: 'This says nothing about images, stamps, signatures or layout.',
     fallback:
       'The documents are too large for a full comparison: they were only compared in order. Moved text may therefore wrongly show up as changed.',
+    fallbackTip: 'Compare by paragraph to avoid this.',
     noTextWarning:
       'Pages without a text layer: {list}. Those pages are an image (scanned or flattened) and cannot be compared by text.',
     noTextIn: '{n} of {total} in {side}',
