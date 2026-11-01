@@ -1091,6 +1091,81 @@ h1 {
   background: var(--changed-line);
 }
 
+/* De instellingen bij het vergelijken: ze werken meteen. */
+.compare-settings {
+  margin: 0 0 0.75rem;
+  padding: 0.5rem 0.8rem 0.8rem;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+}
+
+.compare-settings legend {
+  padding: 0 0.3rem;
+  font-weight: 600;
+}
+
+.compare-settings__label {
+  margin: 0 0 0.35rem;
+  font-size: 0.9rem;
+}
+
+.compare-settings .segmented {
+  margin: 0 0 0.75rem;
+}
+
+.compare-settings__range {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 0.25rem 0.6rem;
+  font-size: 0.9rem;
+}
+
+.compare-settings__range label {
+  grid-column: 1 / -1;
+}
+
+.compare-settings__range input {
+  width: 100%;
+  accent-color: var(--accent);
+}
+
+.compare-settings__range output {
+  min-width: 2.2rem;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  text-align: right;
+}
+
+.compare-settings__range input:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+
+/* Grijs, niet doorzichtig: zo blijft het getal leesbaar. */
+.compare-settings__range input:disabled + output {
+  color: var(--text-muted);
+}
+
+.compare-settings__hint {
+  margin: 0.25rem 0 0.6rem;
+  color: var(--text-muted);
+  font-size: 0.8rem;
+}
+
+.compare-settings__check {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.5rem;
+  margin-top: 0.4rem;
+  font-size: 0.9rem;
+}
+
+.compare-settings__check input {
+  margin: 0.2rem 0 0;
+  accent-color: var(--accent);
+}
+
 .compare__note,
 .compare__warning {
   margin: 0 0 0.75rem;

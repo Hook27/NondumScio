@@ -11,6 +11,10 @@ export type CompareLevel = 'paragraph' | 'sentence' | 'line';
 
 export type CompareOptions = {
   level: CompareLevel;
+  /**
+   * Witruimte gelijktrekken. Staat altijd aan en is niet in te stellen: de opmaak trekt witruimte
+   * al gelijk, dus uit maakt geen verschil.
+   */
   ignoreSpace: boolean;
   ignoreCase: boolean;
   /** Terugkerende kop- en voetteksten weglaten. */
@@ -19,9 +23,19 @@ export type CompareOptions = {
   columns: boolean;
   /** Afgebroken woorden herstellen. */
   dehyphen: boolean;
+  /** Alinea-gevoeligheid: zoveel keer de gewone regelafstand is een witregel tussen alinea's. */
+  gapFactor: number;
 };
 
-/** De standaardinstellingen van de losse pdf-vergelijker. */
+/** De grenzen van de alinea-gevoeligheid, zoals in de losse pdf-tekst-extractor. */
+export const GAP_FACTOR = { min: 1.1, max: 2.5, step: 0.1 } as const;
+
+/**
+ * De standaardinstellingen van de losse pdf-vergelijker, op één na: de alinea-gevoeligheid is 1,3
+ * in plaats van 1,6. Word zet standaard 8 pt witruimte na een alinea; dat is ongeveer 1,55 keer
+ * de regelafstand, zodat bij 1,6 een hele pagina één alinea werd. Met 6 pt witruimte is het
+ * ongeveer 1,4 keer; 1,3 laat daar nog wat ruimte.
+ */
 export const DEFAULT_OPTIONS: CompareOptions = {
   level: 'paragraph',
   ignoreSpace: true,
@@ -29,6 +43,7 @@ export const DEFAULT_OPTIONS: CompareOptions = {
   strip: true,
   columns: true,
   dehyphen: true,
+  gapFactor: 1.3,
 };
 
 /** Eén stuk tekst om te vergelijken, met de pagina waar het stond. */
@@ -74,7 +89,7 @@ export function buildUnits(pages: readonly PageText[], opts: CompareOptions): Un
     columns: opts.columns,
     dehyphen: opts.dehyphen,
     joinLines: opts.level !== 'line',
-    gapFactor: 1.6,
+    gapFactor: opts.gapFactor,
   };
   const running = opts.strip ? analyseRunning(pages) : null;
   const units: Unit[] = [];

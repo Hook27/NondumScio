@@ -551,18 +551,47 @@ export const nl = {
     counts: { added: '{n} toegevoegd', removed: '{n} verwijderd', changed: '{n} gewijzigd' },
     colorsHint:
       'Rood: alleen in A. Groen: alleen in B. Geel: gewijzigd, met de woorden die verschillen gemarkeerd. p3 = pagina 3 van de PDF.',
-    settings:
-      'Vergeleken per alinea. Witruimte telt niet mee, terugkerende kop- en voetteksten worden weggelaten, twee kolommen worden na elkaar gelezen en afgebroken woorden weer aan elkaar gezet.',
+    settings: {
+      title: 'Instellingen',
+      level: 'Vergelijk per',
+      gap: 'Alinea-gevoeligheid',
+      gapHint:
+        'Lager: sneller een nieuwe alinea. Hoger: meer regels samen in één alinea. Niet bij vergelijken per regel.',
+      ignoreCase: 'Hoofdletters negeren',
+      strip: 'Terugkerende kop- en voetteksten weglaten',
+      columns: 'Twee kolommen herkennen',
+      dehyphen: 'Afgebroken woorden herstellen',
+      onlyDiff: 'Alleen verschillen tonen',
+    },
+    levels: {
+      paragraph: {
+        label: 'Alinea',
+        one: '1 alinea',
+        other: '{n} alinea’s',
+        gapOne: '1 ongewijzigde alinea tonen',
+        gap: '{n} ongewijzigde alinea’s tonen',
+      },
+      sentence: {
+        label: 'Zin',
+        one: '1 zin',
+        other: '{n} zinnen',
+        gapOne: '1 ongewijzigde zin tonen',
+        gap: '{n} ongewijzigde zinnen tonen',
+      },
+      line: {
+        label: 'Regel',
+        one: '1 regel',
+        other: '{n} regels',
+        gapOne: '1 ongewijzigde regel tonen',
+        gap: '{n} ongewijzigde regels tonen',
+      },
+    },
     about:
       'De tekst uit een PDF is een reconstructie: geen tekstverschillen betekent niet dat de documenten gelijk zijn. Je bestanden blijven op je apparaat.',
     textTitle: 'Tekstverschillen',
     placeholder: 'Kies twee PDF’s om hun tekst te vergelijken.',
     waitingFor: 'Kies nog PDF {side} om te vergelijken.',
     summary: 'A: {a} · B: {b}',
-    unitsOne: '1 alinea',
-    units: '{n} alinea’s',
-    gapOne: '1 ongewijzigde alinea tonen',
-    gap: '{n} ongewijzigde alinea’s tonen',
     kinds: { added: 'Toegevoegd', removed: 'Verwijderd', changed: 'Gewijzigd' },
     page: 'p{n}',
     pageLabel: 'Pagina {n}',
@@ -570,6 +599,7 @@ export const nl = {
     noDiffNote: 'Dit zegt niets over afbeeldingen, stempels, handtekeningen of opmaak.',
     fallback:
       'De documenten zijn te groot voor een volledige vergelijking: ze zijn alleen op volgorde vergeleken. Verschoven tekst kan daardoor ten onrechte als gewijzigd verschijnen.',
+    fallbackTip: 'Vergelijk per alinea om dat te voorkomen.',
     noTextWarning:
       'Pagina’s zonder tekstlaag: {list}. Die pagina’s zijn een afbeelding (gescand of afgevlakt) en kunnen niet op tekst worden vergeleken.',
     noTextIn: '{n} van {total} in {side}',

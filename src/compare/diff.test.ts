@@ -124,6 +124,43 @@ describe('normKey', () => {
   });
 });
 
+/**
+ * Een pagina zoals Word hem maakt: 11 pt, regelafstand 14,5 pt en 8 pt witruimte na elke alinea
+ * (dus 22,4 pt tussen alinea's). Zo gemeten in een echte PDF uit Word.
+ */
+function wordPage(paragraphs: string[][]): PageText {
+  const items: Piece[] = [];
+  let y = 760;
+  for (const lines of paragraphs) {
+    for (const str of lines) {
+      items.push({ str, x: 71, y, fh: 11, w: str.length * 5.5 });
+      y -= 14.5;
+    }
+    y -= 22.4 - 14.5;
+  }
+  return { no: 1, w: 595, h: 842, items, chars: 0 };
+}
+
+describe('alinea-gevoeligheid', () => {
+  const pages = [
+    wordPage([
+      ['De eerste alinea loopt over twee regels', 'en stopt hier.'],
+      ['De tweede alinea staat eronder, met', 'een witregel van 8 pt ertussen.'],
+      ['De derde alinea.'],
+    ]),
+  ];
+  const count = (gapFactor: number) => buildUnits(pages, { ...DEFAULT_OPTIONS, gapFactor }).length;
+
+  it('herkent standaard de alinea’s van Word (8 pt witruimte na een alinea)', () => {
+    expect(DEFAULT_OPTIONS.gapFactor).toBe(1.3);
+    expect(count(DEFAULT_OPTIONS.gapFactor)).toBe(3);
+  });
+
+  it('voegt ze samen tot één alinea bij de drempel van de losse pdf-vergelijker (1,6)', () => {
+    expect(count(1.6)).toBe(1);
+  });
+});
+
 describe('buildUnits', () => {
   it('knipt op alinea’s, zinnen of regels', () => {
     const pages = [page(1, ['Eerste zin. Tweede zin.', 'Nog een alinea.'])];
