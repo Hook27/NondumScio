@@ -13,6 +13,7 @@ export function Dropzone({
   accept,
   chooseLabel,
   onFiles,
+  extraClass,
   children,
 }: {
   title: string;
@@ -23,6 +24,8 @@ export function Dropzone({
   accept: string;
   chooseLabel: string;
   onFiles: (files: File[]) => void;
+  /** Een extra klasse voor een andere opmaak, zoals een klein vak in een werkvak. */
+  extraClass?: string;
   children?: ComponentChildren;
 }) {
   const [dragging, setDragging] = useState(false);
@@ -34,7 +37,7 @@ export function Dropzone({
 
   return (
     <section
-      class={`dropzone${dragging ? ' dropzone--active' : ''}`}
+      class={['dropzone', dragging && 'dropzone--active', extraClass].filter(Boolean).join(' ')}
       aria-labelledby={`${inputId}-title`}
       onDragEnter={(event) => {
         event.preventDefault();

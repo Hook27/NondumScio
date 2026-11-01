@@ -7,7 +7,7 @@ export type TaskId = (typeof TASK_IDS)[number];
  * De onderdelen onder Geavanceerd: zelfstandige gereedschappen voor op de computer, elk met een
  * eigen adres onder `#/advanced/` (bijvoorbeeld `#/advanced/rename`).
  */
-export const ADVANCED_IDS = ['rename'] as const;
+export const ADVANCED_IDS = ['rename', 'compare'] as const;
 
 export type AdvancedId = (typeof ADVANCED_IDS)[number];
 
