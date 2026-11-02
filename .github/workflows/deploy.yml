@@ -48,7 +48,7 @@ jobs:
           # Deze twee horen alleen in de hoofdmap van de site, niet in een voorbeeld.
           rm -f dist/CNAME dist/.nojekyll
       # rossjrw/pr-preview-action v1.8.1
-      - uses: rossjrw/pr-preview-action@ffa7509e91a3ec8dfc2e5536c4d5c1acdf7a6de9
+      - uses: rossjrw/pr-preview-action@873417d2df72380da1f3978378fb58560bcde976
         with:
           source-dir: dist
           umbrella-dir: pr-preview
