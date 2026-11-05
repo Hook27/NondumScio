@@ -14,8 +14,11 @@ import {
  * pagina. Koppen, tabellen, pagina-ankers en de rest komen in latere stappen.
  */
 
-/** De instellingen: dezelfde als bij het opbouwen van de tekst voor het vergelijken. */
-export type TextOptions = LayoutOptions;
+/**
+ * De instellingen: dezelfde als bij het opbouwen van de tekst voor het vergelijken, met hier altijd
+ * ook opsommingen en koppen, de kopmarkering en tabellen (de vergelijker laat die weg).
+ */
+export type TextOptions = Required<LayoutOptions>;
 
 /**
  * De standaard van de losse pdf-tekst-extractor, met twee bewuste afwijkingen, zoals bij PDF's
@@ -30,6 +33,10 @@ export const DEFAULT_TEXT_OPTIONS: TextOptions = {
   dehyphen: true,
   joinLines: true,
   gapFactor: 1.3,
+  // Zoals in de extractor: opsommingen en koppen aan, {H} en tabellen uit.
+  structure: true,
+  headingMarker: false,
+  tables: false,
 };
 
 /**

@@ -510,6 +510,101 @@ test.describe('PDF → Platte tekst: vakken per pagina en bewaren', () => {
   });
 });
 
+test.describe('PDF → Platte tekst: opsommingen, koppen en tabellen', () => {
+  test.skip(({ isMobile }) => isMobile, 'Geavanceerd is er alleen op de computer');
+
+  /**
+   * Een huurovereenkomst zoals Word hem maakt (11 pt, regelafstand 14,5 pt, 8 pt na een alinea):
+   * een titel, een artikelkop, een opsomming en een tabel van drie kolommen.
+   */
+  async function contract() {
+    const doc = await PDFDocument.create();
+    const font = await doc.embedFont(StandardFonts.Helvetica);
+    const page = doc.addPage([595, 842]);
+    let y = 760;
+    const line = (text: string, x = 71) => page.drawText(text, { x, y, size: 11, font });
+    const paragraphs: (string | string[][])[][] = [
+      ['Huurovereenkomst', 'Partijen komen het volgende overeen over de woning.'],
+      ['Artikel 1 Huurprijs', 'De huur bedraagt 550 euro per maand en wordt vooraf betaald.'],
+      ['De huurder betaalt ook:', '• gas en water', '• de servicekosten'],
+      [
+        [
+          ['Post', 'Bedrag', 'Termijn'],
+          ['Huur', '550', 'maand'],
+          ['Service', '45', 'maand'],
+        ],
+      ],
+    ];
+    for (const lines of paragraphs) {
+      for (const entry of lines) {
+        if (typeof entry === 'string') {
+          line(entry);
+          y -= 14.5;
+        } else {
+          for (const row of entry) {
+            row.forEach((cell, c) => line(cell, 71 + c * 160));
+            y -= 14.5;
+          }
+        }
+      }
+      y -= 22.4 - 14.5;
+    }
+    return {
+      name: 'huurovereenkomst.pdf',
+      mimeType: 'application/pdf',
+      buffer: Buffer.from(await doc.save()),
+    };
+  }
+
+  test('herkent koppen en opsommingen, met {H} en tabellen als je dat wilt', async ({ page }) => {
+    await openPage(page, '/#/advanced/text', { lang: 'nl' });
+    await page.locator('#plaintext-file').setInputFiles(await contract());
+    await expect(page.locator('canvas.plaintext-preview__canvas')).toBeVisible(SLOW);
+    const settings = page.getByRole('group', { name: s.title });
+    await expect(settings.getByRole('checkbox', { name: s.structure })).toBeChecked();
+    await expect(settings.getByRole('checkbox', { name: s.headingMarker })).not.toBeChecked();
+    await expect(settings.getByRole('checkbox', { name: s.tables })).not.toBeChecked();
+
+    await extract(page);
+    await expect(output(page)).toHaveJSProperty(
+      'textContent',
+      [
+        'Huurovereenkomst',
+        '\n\nPartijen komen het volgende overeen over de woning.',
+        '\n\n\nArtikel 1 Huurprijs',
+        '\n\nDe huur bedraagt 550 euro per maand en wordt vooraf betaald.',
+        '\n\nDe huurder betaalt ook:',
+        '\n\n• gas en water',
+        '\n• de servicekosten',
+        '\n\nPost Bedrag Termijn Huur 550 maand Service 45 maand',
+      ].join(''),
+    );
+
+    // Kopmarkering en tabellen aan.
+    await settings.getByRole('checkbox', { name: s.headingMarker }).check();
+    await settings.getByRole('checkbox', { name: s.tables }).check();
+    await expect(settings.getByRole('checkbox', { name: s.columns })).toBeDisabled();
+    await extract(page);
+    await expect.poll(() => output(page).textContent()).toMatch(/^\{H\} Huurovereenkomst\n\n/);
+    await expect
+      .poll(() => output(page).textContent())
+      .toContain('\n\n\n{H} Artikel 1 Huurprijs\n\n');
+    await expect
+      .poll(() => output(page).textContent())
+      .toMatch(/\n\nPost\tBedrag\tTermijn\nHuur\t550\tmaand\nService\t45\tmaand$/);
+    await axe(page);
+
+    // Opsommingen en koppen uit: geen koppen meer, en de opsomming met witregels.
+    await settings.getByRole('checkbox', { name: s.structure }).uncheck();
+    await expect(settings.getByRole('checkbox', { name: s.headingMarker })).toBeDisabled();
+    await extract(page);
+    const plain = (await output(page).textContent())!;
+    expect(plain).not.toContain('{H}');
+    expect(plain).toContain('Artikel 1 Huurprijs De huur bedraagt');
+    expect(plain).toContain('\n\n• gas en water\n\n• de servicekosten');
+  });
+});
+
 test.describe('PDF → Platte tekst op een scherm met schaal 150 %', () => {
   test.skip(({ isMobile }) => isMobile, 'Geavanceerd is er alleen op de computer');
   test.use({ viewport: { width: 1366, height: 768 }, deviceScaleFactor: 1.5 });

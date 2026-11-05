@@ -3,6 +3,8 @@ import {
   RUNNING_MAX_SIZE,
   analyseRunning,
   isBullet,
+  isGenericHeading,
+  isKeywordHeading,
   layoutBlock,
   pageText,
   piecesFrom,
@@ -251,5 +253,195 @@ describe('piecesFrom', () => {
       // Zonder hoogte en breedte: een schatting.
       { str: 'wereld', x: 90, y: 700, fh: 10, w: 30 },
     ]);
+  });
+});
+
+describe('opsommingen, koppen en tabellen', () => {
+  /** Regels onder elkaar met regelafstand 12; `null` is een witregel (24 in plaats van 12). */
+  const block = (rows: (string | null)[], x = 50) => {
+    const items: Piece[] = [];
+    let y = 700;
+    for (const row of rows) {
+      if (row === null) {
+        y -= 12;
+        continue;
+      }
+      items.push(piece(row, x, y));
+      y -= 12;
+    }
+    return items;
+  };
+  const STRUCTURE: LayoutOptions = {
+    ...OPTS,
+    structure: true,
+    headingMarker: false,
+    tables: false,
+  };
+
+  it('zonder `structure` (de vergelijker): elk opsommingspunt een eigen blok, met een witregel', () => {
+    const items = block(['• een', '• twee', '• drie']);
+    expect(layoutBlock(items, OPTS, false)).toBe('• een\n\n• twee\n\n• drie');
+    // Met: één blok, met een enkele regelovergang tussen de punten.
+    expect(layoutBlock(items, STRUCTURE, false)).toBe('• een\n• twee\n• drie');
+    // Uit: de oude regel van de extractor; • telt daar ook, maar geen blok met enkele regels.
+    expect(layoutBlock(items, { ...STRUCTURE, structure: false }, false)).toBe(
+      '• een\n\n• twee\n\n• drie',
+    );
+  });
+
+  it('de oude opsommingsregel kent wel een liggend streepje en een nummer', () => {
+    const items = block(['Dit zijn de punten:', '- het eerste punt', '2. het tweede punt']);
+    expect(
+      layoutBlock(items, { ...STRUCTURE, structure: false }, false).split(
+        String.fromCharCode(10, 10),
+      ),
+    ).toEqual(['Dit zijn de punten:', '- het eerste punt', '2. het tweede punt']);
+  });
+
+  it('de oude opsommingsregel kent geen letters, streepjes of geneste nummers', () => {
+    const items = block(['Dit zijn de punten:', 'a) het eerste punt', '– het tweede punt']);
+    const old = { ...STRUCTURE, structure: false };
+    expect(layoutBlock(items, old, false)).toBe(
+      'Dit zijn de punten: a) het eerste punt – het tweede punt',
+    );
+    expect(layoutBlock(items, STRUCTURE, false)).toBe(
+      'Dit zijn de punten:\n\na) het eerste punt\n– het tweede punt',
+    );
+    // De vergelijker gebruikt (zonder `structure`) al de uitgebreide regel.
+    expect(layoutBlock(items, OPTS, false)).toBe(
+      'Dit zijn de punten:\n\na) het eerste punt\n\n– het tweede punt',
+    );
+  });
+
+  it('een kop met een vast woord breekt, met een extra witregel erboven, en de tekst erna ook', () => {
+    const items = block([
+      'Partijen komen het volgende overeen over de woning aan de straat.',
+      'Artikel 5 Huurprijs',
+      'De huur bedraagt vijfhonderd euro per maand, te betalen vooraf.',
+    ]);
+    expect(layoutBlock(items, STRUCTURE, false)).toBe(
+      'Partijen komen het volgende overeen over de woning aan de straat.\n\n\nArtikel 5 Huurprijs\n\nDe huur bedraagt vijfhonderd euro per maand, te betalen vooraf.',
+    );
+    expect(layoutBlock(items, { ...STRUCTURE, headingMarker: true }, false)).toContain(
+      '\n\n\n{H} Artikel 5 Huurprijs\n\n',
+    );
+    // De vergelijker ziet geen koppen: alles loopt door.
+    expect(layoutBlock(items, OPTS, false).split('\n\n')).toHaveLength(1);
+    // Zonder kopmarkering-optie maar zonder `structure`: geen {H}.
+    expect(layoutBlock(items, { ...OPTS, headingMarker: true }, false)).not.toContain('{H}');
+  });
+
+  it('een korte losse regel na een witregel is een kop; de tekst erna begint opnieuw', () => {
+    const items = block([
+      'De vorige alinea eindigt hier.',
+      null,
+      'Inleiding',
+      'Dit is een lange regel lopende tekst die op de kop volgt en doorloopt.',
+      'En nog een regel van dezelfde alinea.',
+    ]);
+    expect(layoutBlock(items, { ...STRUCTURE, headingMarker: true }, false)).toBe(
+      'De vorige alinea eindigt hier.\n\n\n{H} Inleiding\n\nDit is een lange regel lopende tekst die op de kop volgt en doorloopt. En nog een regel van dezelfde alinea.',
+    );
+    // Een korte regel midden in een alinea breekt zelf niet af.
+    const inside = block([
+      'De zin loopt hier door en',
+      'Inleiding',
+      'Dit is een lange regel lopende tekst die volgt.',
+    ]);
+    expect(
+      layoutBlock(inside, STRUCTURE, false).startsWith('De zin loopt hier door en Inleiding'),
+    ).toBe(true);
+  });
+
+  it('herkent koppen voorzichtig', () => {
+    expect(isKeywordHeading('Artikel 5 Huurprijs')).toBe(true);
+    expect(isKeywordHeading('Hoofdstuk II')).toBe(true);
+    expect(isKeywordHeading('bijlage B')).toBe(true);
+    expect(isKeywordHeading('Artikel 5.1.2')).toBe(true);
+    expect(isKeywordHeading('Artikelen over huur')).toBe(false);
+    expect(isKeywordHeading('Het artikel 5 zegt')).toBe(false);
+    const long = 'Een regel lopende tekst die lang genoeg is.';
+    expect(isGenericHeading('Inleiding', long)).toBe(true);
+    expect(isGenericHeading('3 Werkwijze', long)).toBe(true);
+    expect(isGenericHeading('Inleiding.', long)).toBe(false);
+    expect(isGenericHeading('inleiding', long)).toBe(false);
+    expect(isGenericHeading('Een kop met zes losse woorden', long + long)).toBe(false);
+    expect(isGenericHeading('Een kop van vijf woorden', long + long)).toBe(true);
+    expect(isGenericHeading('Onderzoeksverantwoordingsparagraaf', long + long)).toBe(false);
+    expect(isGenericHeading('Onderzoeksverantwoordingsparagr', long + long)).toBe(false);
+    expect(isGenericHeading('Onderzoeksverantwoordingsparag', long + long)).toBe(true);
+    expect(isGenericHeading('Inleiding', 'Kort')).toBe(false);
+    expect(isGenericHeading('A', long)).toBe(false);
+  });
+
+  it('een raster van cellen wordt een tabel met tabs, ook met onzichtbare spaties in de gaten', () => {
+    const items: Piece[] = [];
+    const rows = [
+      ['Product', 'Prijs', 'Aantal'],
+      ['Appel', '0,50', '12'],
+      ['Peer', '0,75', '8'],
+    ];
+    rows.forEach((row, r) => {
+      const y = 700 - r * 12;
+      row.forEach((cell, c) => {
+        const x = 50 + c * 150;
+        items.push(piece(cell, x, y));
+        // pdf.js zet een spatie die het hele gat tot de volgende cel vult.
+        if (c < row.length - 1) {
+          const end = x + cell.length * 5;
+          items.push({ str: ' ', x: end, y, fh: 10, w: 50 + (c + 1) * 150 - end });
+        }
+      });
+    });
+    const tables = { ...STRUCTURE, tables: true };
+    expect(layoutBlock(items, tables, true)).toBe(
+      'Product\tPrijs\tAantal\nAppel\t0,50\t12\nPeer\t0,75\t8',
+    );
+    // Zonder tabellen: gewone regels.
+    expect(layoutBlock(items, STRUCTURE, true)).not.toContain('\t');
+    // Eén regel met cellen is nog geen tabel.
+    const single = items.filter((i) => i.y === 700);
+    expect(layoutBlock(single, tables, true)).not.toContain('\t');
+  });
+
+  it('cellen die een paar punten verspringen, staan toch in dezelfde kolom', () => {
+    const items = [
+      piece('Product', 50, 700),
+      piece('Prijs', 200, 700),
+      piece('Appel', 53, 688),
+      piece('0,50', 196, 688),
+      piece('Peer', 48, 676),
+      piece('0,75', 205, 676),
+    ];
+    expect(layoutBlock(items, { ...STRUCTURE, tables: true }, false)).toBe(
+      'Product\tPrijs\nAppel\t0,50\nPeer\t0,75',
+    );
+  });
+
+  it('een lege cel blijft een lege kolom', () => {
+    const items = [
+      piece('Naam', 50, 700),
+      piece('Plaats', 200, 700),
+      piece('Land', 350, 700),
+      piece('Jansen', 50, 688),
+      piece('Nederland', 350, 688),
+    ];
+    expect(layoutBlock(items, { ...STRUCTURE, tables: true }, false)).toBe(
+      'Naam\tPlaats\tLand\nJansen\t\tNederland',
+    );
+  });
+
+  it('bij tabellen geen kolomherkenning: de tabel wordt niet in tweeën gesplitst', () => {
+    // Zes rijen met twee cellen ver uit elkaar: zonder tabellen lijkt dat op twee kolommen.
+    const items: Piece[] = [];
+    for (let r = 0; r < 6; r++) {
+      items.push(piece(`sleutel ${r + 1}`, 50, 700 - r * 12));
+      items.push(piece(`waarde ${r + 1}`, 330, 700 - r * 12));
+    }
+    const columns = layoutBlock(items, { ...STRUCTURE, joinLines: false }, true).split('\n');
+    expect(columns[0]).toBe('sleutel 1');
+    const table = layoutBlock(items, { ...STRUCTURE, tables: true }, true).split('\n');
+    expect(table[0]).toBe('sleutel 1\twaarde 1');
+    expect(table).toHaveLength(6);
   });
 });

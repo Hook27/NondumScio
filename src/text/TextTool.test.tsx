@@ -61,6 +61,15 @@ const DOCS: Record<string, PageText[] | Error> = {
   'scan.pdf': [empty(1), page(2, [['Alleen hier staat een hele zin met tekst.']]), empty(3)],
   'kort.pdf': [page(1, [['Kort.']]), page(2, [['Een pagina met genoeg tekst erop.']])],
   'leeg.pdf': [empty(1), empty(2)],
+  'contract.pdf': [
+    page(1, [
+      [
+        'Partijen komen het volgende overeen over de woning aan de straat.',
+        'Artikel 1 Huurprijs',
+        'De huur bedraagt vijfhonderd euro per maand, vooraf te betalen.',
+      ],
+    ]),
+  ],
   'twee-scans.pdf': [empty(1), empty(2), page(3, [['Tekst op pagina drie, lang genoeg.']])],
   'scans.pdf': [
     empty(1),
@@ -990,5 +999,65 @@ describe('PDF → Platte tekst: instellingen bewaren', () => {
       within(screen.getByRole('dialog')).getByRole('button', { name: p.save.forgetConfirm }),
     );
     expect(screen.getByText(format(p.save.forgotten, { n: 2 }))).toBeTruthy();
+  });
+});
+
+describe('PDF → Platte tekst: opsommingen, koppen en tabellen', () => {
+  const s = p.settings;
+
+  it('staan zoals in de extractor: opsommingen en koppen aan, {H} en tabellen uit', async () => {
+    await open('contract.pdf');
+    expect(check(s.structure).checked).toBe(true);
+    expect(check(s.headingMarker).checked).toBe(false);
+    expect(check(s.tables).checked).toBe(false);
+    fireEvent.click(button(p.extract));
+    expect(output()!.textContent).toBe(
+      'Partijen komen het volgende overeen over de woning aan de straat.\n\n\nArtikel 1 Huurprijs\n\nDe huur bedraagt vijfhonderd euro per maand, vooraf te betalen.',
+    );
+  });
+
+  it('{H} vóór een kop, en zonder opsommingen en koppen loopt de tekst door', async () => {
+    await open('contract.pdf');
+    fireEvent.click(check(s.headingMarker));
+    fireEvent.click(button(p.extract));
+    expect(output()!.textContent).toContain('\n\n\n{H} Artikel 1 Huurprijs\n\n');
+    fireEvent.click(check(s.structure));
+    expect(check(s.headingMarker).disabled).toBe(true);
+    fireEvent.click(button(p.extract));
+    expect(output()!.textContent!.split('\n\n')).toHaveLength(1);
+  });
+
+  it('wanneer een vinkje niets doet, staat het uit', async () => {
+    await open('contract.pdf');
+    // Tabellen: dan geen kolommen.
+    fireEvent.click(check(s.tables));
+    expect(check(s.columns).disabled).toBe(true);
+    fireEvent.click(check(s.tables));
+    expect(check(s.columns).disabled).toBe(false);
+    // Zonder samenvoegen: geen opsommingen, koppen of tabellen.
+    fireEvent.click(check(s.joinLines));
+    for (const name of [s.structure, s.headingMarker, s.tables])
+      expect(check(name).disabled).toBe(true);
+    fireEvent.click(check(s.joinLines));
+    expect(check(s.structure).disabled).toBe(false);
+    expect(check(s.headingMarker).disabled).toBe(false);
+  });
+
+  it('worden onthouden en opgeslagen', async () => {
+    await open('contract.pdf');
+    fireEvent.click(check(s.tables));
+    fireEvent.click(check(s.headingMarker));
+    fireEvent.click(button(p.save.export));
+    const [data] = vi.mocked(downloadFile).mock.calls[0]!;
+    expect(JSON.parse(new TextDecoder().decode(data as Uint8Array)).options).toMatchObject({
+      structure: true,
+      headingMarker: true,
+      tables: true,
+    });
+    fireEvent.click(button(p.clear));
+    fireEvent.click(check(s.tables));
+    choose('contract.pdf');
+    await waitFor(() => expect(screen.getByText(/instellingen hersteld/)).toBeTruthy());
+    expect(check(s.tables).checked).toBe(true);
   });
 });

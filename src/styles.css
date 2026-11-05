@@ -1435,6 +1435,12 @@ h1 {
   margin: 0.5rem 0 0 1.5rem;
 }
 
+/* De kopmarkering hoort bij "Opsommingen en koppen": iets ingesprongen eronder. */
+.compare-settings__check.plaintext__sub,
+.compare-settings__hint.plaintext__sub {
+  margin-left: 1.5rem;
+}
+
 .plaintext__gap + .compare-settings__hint {
   margin-left: 1.5rem;
 }

@@ -80,11 +80,8 @@ describe('fromSettings', () => {
     expect(s.extra.options).toEqual({
       anchors: true,
       crossPage: true,
-      structure: true,
-      headingMarker: false,
       metaHeader: false,
       conventions: false,
-      tables: false,
     });
     const out = toSettings('artikel.pdf', s);
     expect(out.joinOverride).toEqual({ '2': 'join' });
@@ -103,10 +100,31 @@ describe('fromSettings', () => {
       zones: [A, B],
       pages: { 4: [B] },
       readEmpty: true,
-      extra: { options: { tables: true } },
+      extra: { options: { anchors: true } },
     };
     const back = fromSettings(JSON.parse(JSON.stringify(toSettings('x.pdf', s))), BASE)!;
-    expect(back).toEqual({ ...s, extra: { options: { tables: true }, joinOverride: {} } });
+    expect(back).toEqual({ ...s, extra: { options: { anchors: true }, joinOverride: {} } });
+  });
+
+  it('leest en schrijft opsommingen en koppen, de kopmarkering en tabellen', () => {
+    const s = fromSettings(
+      { options: { structure: false, headingMarker: true, tables: true } },
+      BASE,
+    )!;
+    expect(s.options).toEqual({
+      ...BASE.options,
+      structure: false,
+      headingMarker: true,
+      tables: true,
+    });
+    expect(s.extra.options).toEqual({});
+    expect(toSettings('x.pdf', s).options).toMatchObject({
+      structure: false,
+      headingMarker: true,
+      tables: true,
+    });
+    // Niet opgegeven: zoals het was.
+    expect(fromSettings({ options: {} }, s)!.options).toEqual(s.options);
   });
 
   it('leest ook het oude formaat van de extractor (alleen { d, p })', () => {
@@ -153,7 +171,7 @@ describe('fromSettings', () => {
   });
 
   it('negeert opties van het verkeerde soort', () => {
-    const s = fromSettings({ options: { columns: 'nee', useCrop: 1, tables: 'ja' } }, BASE)!;
+    const s = fromSettings({ options: { columns: 'nee', useCrop: 1, anchors: 'ja' } }, BASE)!;
     expect(s.options.columns).toBe(true);
     expect(s.useZones).toBe(false);
     expect(s.extra.options).toEqual({});
