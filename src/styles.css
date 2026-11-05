@@ -1439,6 +1439,218 @@ h1 {
   margin-left: 1.5rem;
 }
 
+/* "Tekst extraheren": vast onderaan het linkervak, zoals in de losse extractor. */
+.plaintext__extract {
+  position: sticky;
+  bottom: -1rem;
+  z-index: 1;
+  margin: 0 0 0.75rem;
+  padding: 0.6rem 0 0.75rem;
+  background: var(--bg);
+  border-top: 1px solid var(--border);
+}
+
+.plaintext__extract .button {
+  width: 100%;
+}
+
+.plaintext__done {
+  margin: 0.4rem 0 0;
+  color: var(--text-muted);
+  font-size: 0.85rem;
+}
+
+/* De lijst met leesvakken, met hun nummer zoals op het voorbeeld. */
+.plaintext-zones {
+  display: grid;
+  gap: 0.3rem;
+  margin: 0.5rem 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.plaintext-zones__item {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.2rem 0.4rem;
+  font-size: 0.9rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+}
+
+.plaintext-zones__num {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.4rem;
+  height: 1.4rem;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-weight: 700;
+  color: var(--accent-contrast);
+  background: var(--accent);
+  border-radius: 4px;
+}
+
+.plaintext-zones__label {
+  flex: 1;
+}
+
+.plaintext-zones__remove {
+  padding: 0 0.4rem;
+  font: inherit;
+  font-size: 1.1rem;
+  line-height: 1;
+  color: var(--text-muted);
+  background: none;
+  border: 1px solid transparent;
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+.plaintext-zones__remove:hover {
+  color: var(--text);
+  border-color: var(--border);
+}
+
+.plaintext-zones__empty {
+  margin: 0.5rem 0 0;
+  color: var(--text-muted);
+  font-size: 0.85rem;
+  font-style: italic;
+}
+
+.plaintext-zones__buttons {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  margin-top: 0.6rem;
+}
+
+.plaintext-zones__buttons .button,
+.plaintext-nav .button,
+.plaintext-zoom .button {
+  flex: 0 0 auto;
+  padding: 0.35rem 0.7rem;
+  white-space: nowrap;
+}
+
+/* Bladeren (in de kop van het vak) en zoomen. */
+.plaintext-nav,
+.plaintext-zoom {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.35rem;
+}
+
+.plaintext-zoom__value {
+  min-width: 3.2rem;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  text-align: center;
+}
+
+.plaintext-zoom .button[aria-pressed='true'] {
+  border-color: var(--accent);
+  box-shadow: inset 0 0 0 1px var(--accent);
+}
+
+/* Het voorbeeld: de pagina, met de leesvakken erover. Breder dan het vak: dan schuift het. */
+.plaintext-preview {
+  overflow: auto;
+}
+
+.plaintext-preview__page {
+  position: relative;
+  margin: 0 auto;
+  background: var(--paper);
+  box-shadow: var(--shadow);
+}
+
+.plaintext-preview__canvas {
+  display: block;
+}
+
+.plaintext-zones-layer {
+  position: absolute;
+  inset: 0;
+  cursor: crosshair;
+  user-select: none;
+}
+
+.plaintext-zone {
+  position: absolute;
+  border: 2px solid var(--accent);
+  background: color-mix(in srgb, var(--accent) 12%, transparent);
+  cursor: move;
+}
+
+.plaintext-zone__num {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  font:
+    700 3rem/1 system-ui,
+    sans-serif;
+  color: var(--accent);
+  opacity: 0.35;
+  pointer-events: none;
+}
+
+.plaintext-zone__handle {
+  position: absolute;
+  width: 12px;
+  height: 12px;
+  margin: -6px 0 0 -6px;
+  background: var(--accent);
+  border: 1px solid var(--paper);
+  border-radius: 2px;
+}
+
+.plaintext-zone__handle--nw {
+  left: 0;
+  top: 0;
+  cursor: nwse-resize;
+}
+.plaintext-zone__handle--n {
+  left: 50%;
+  top: 0;
+  cursor: ns-resize;
+}
+.plaintext-zone__handle--ne {
+  left: 100%;
+  top: 0;
+  cursor: nesw-resize;
+}
+.plaintext-zone__handle--e {
+  left: 100%;
+  top: 50%;
+  cursor: ew-resize;
+}
+.plaintext-zone__handle--se {
+  left: 100%;
+  top: 100%;
+  cursor: nwse-resize;
+}
+.plaintext-zone__handle--s {
+  left: 50%;
+  top: 100%;
+  cursor: ns-resize;
+}
+.plaintext-zone__handle--sw {
+  left: 0;
+  top: 100%;
+  cursor: nesw-resize;
+}
+.plaintext-zone__handle--w {
+  left: 0;
+  top: 50%;
+  cursor: ew-resize;
+}
+
 /* De verschillen naast elkaar: twee even brede kolommen, elk stuk op een eigen rij. */
 .compare-diff {
   width: 100%;

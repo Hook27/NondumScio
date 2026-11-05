@@ -6,7 +6,8 @@ import { format } from '../src/i18n/format';
 import { messages, openPage, type Theme } from './helpers';
 
 /**
- * PDF → Platte tekst (Geavanceerd, alleen op de computer): een PDF openen en de tekst eruit halen.
+ * PDF → Platte tekst (Geavanceerd, alleen op de computer): een PDF openen, leesvakken tekenen en de
+ * tekst eruit halen.
  * De PDF's worden hier gemaakt en in de browser door pdf.js gelezen, zoals bij een echte PDF.
  */
 
@@ -90,6 +91,80 @@ const axe = async (page: Page) => {
   expect(result.violations).toEqual([]);
 };
 
+const LINES = 8;
+const column = (side: string, no: number) =>
+  Array.from({ length: LINES }, (_, i) => `${side} kolom pagina ${no} regel ${i + 1}`);
+
+/**
+ * Een artikel in twee kolommen, zoals een tijdschrift: bovenaan een titel over de volle breedte,
+ * dan links en rechts acht regels van 10 pt, en onderaan een paginanummer.
+ */
+async function article(name: string, pages = 2) {
+  const doc = await PDFDocument.create();
+  const font = await doc.embedFont(StandardFonts.Helvetica);
+  for (let no = 1; no <= pages; no++) {
+    const page = doc.addPage([595, 842]);
+    page.drawText('Proefartikel over leesvakken', { x: 60, y: 780, size: 16, font });
+    column('Linker', no).forEach((line, i) =>
+      page.drawText(line, { x: 60, y: 700 - i * 12, size: 10, font }),
+    );
+    column('Rechter', no).forEach((line, i) =>
+      page.drawText(line, { x: 315, y: 700 - i * 12, size: 10, font }),
+    );
+    page.drawText(`Pagina ${no}`, { x: 280, y: 40, size: 9, font });
+  }
+  return { name, mimeType: 'application/pdf', buffer: Buffer.from(await doc.save()) };
+}
+
+/** De kolommen als vak (links, boven, rechts, onder), in punten vanaf linksonder. */
+const LEFT_BOX = [50, 715, 300, 600] as const;
+const RIGHT_BOX = [305, 715, 560, 600] as const;
+
+/** Een punt op de pagina (in punten vanaf linksonder) als plek op het scherm. */
+async function at(page: Page, x: number, y: number) {
+  const box = (await page.locator('.plaintext-preview__page').boundingBox())!;
+  return { x: box.x + (x / 595) * box.width, y: box.y + ((842 - y) / 842) * box.height };
+}
+
+/** Met de muis slepen van het ene punt naar het andere (in punten). */
+async function drag(page: Page, from: [number, number], to: [number, number]) {
+  const start = await at(page, ...from);
+  const end = await at(page, ...to);
+  await page.mouse.move(start.x, start.y);
+  await page.mouse.down();
+  await page.mouse.move(end.x, end.y, { steps: 6 });
+  await page.mouse.up();
+}
+
+const draw = (page: Page, [left, top, right, bottom]: readonly [number, number, number, number]) =>
+  drag(page, [left, top], [right, bottom]);
+
+/** Telt de pixels die niet wit zijn: het voorbeeld is echt getekend. */
+/** Een vingerafdruk van het getekende beeld: verschilt per pagina. */
+const fingerprint = (page: Page) =>
+  page.locator('canvas.plaintext-preview__canvas').evaluate((canvas: HTMLCanvasElement) => {
+    const data = canvas.getContext('2d')!.getImageData(0, 0, canvas.width, canvas.height).data;
+    let sum = 0;
+    for (let i = 0; i < data.length; i += 4) sum = (sum * 31 + data[i]!) % 1_000_000_007;
+    return sum;
+  });
+
+const ink = (page: Page) =>
+  page.locator('canvas.plaintext-preview__canvas').evaluate((canvas: HTMLCanvasElement) => {
+    const data = canvas.getContext('2d')!.getImageData(0, 0, canvas.width, canvas.height).data;
+    let n = 0;
+    for (let i = 0; i < data.length; i += 4) if (data[i]! < 200) n++;
+    return n;
+  });
+
+const openArticle = async (page: Page, pages = 2) => {
+  await openPage(page, '/#/advanced/text', { lang: 'nl' });
+  await page.locator('#plaintext-file').setInputFiles(await article('artikel.pdf', pages));
+  await expect(page.locator('canvas.plaintext-preview__canvas')).toBeVisible(SLOW);
+};
+
+const extract = (page: Page) => page.getByRole('button', { name: p.extract }).click();
+
 test.describe('PDF → Platte tekst', () => {
   test.skip(({ isMobile }) => isMobile, 'Geavanceerd is er alleen op de computer');
 
@@ -104,65 +179,156 @@ test.describe('PDF → Platte tekst', () => {
   });
 
   for (const theme of ['light', 'dark'] as Theme[]) {
-    test(`haalt de tekst uit een PDF, zonder kop en voet (thema ${theme})`, async ({ page }) => {
+    test(`eerst het voorbeeld, dan de tekst na "Tekst extraheren" (thema ${theme})`, async ({
+      page,
+    }) => {
       await openPage(page, '/#/advanced/text', { lang: 'nl', theme });
       await choose(page, { scan: true });
+      await expect(page.locator('canvas.plaintext-preview__canvas')).toBeVisible(SLOW);
+      await expect(page.getByText(format(p.preview.page, { n: 1, total: 3 }))).toBeVisible();
+      await expect.poll(() => ink(page)).toBeGreaterThan(100);
+      await expect(output(page)).toHaveCount(0);
+      const slot = page.locator('section.compare-slot');
+      await expect(slot.getByText(/^3 pagina’s · .* · 1 pagina zonder tekstlaag$/)).toBeVisible();
+      await expect(slot.locator('img.compare-slot__thumb')).toBeVisible();
+      await axe(page);
 
-      await expect(output(page)).toHaveJSProperty('textContent', TEXT, SLOW);
-      await expect(
-        page.getByText(/^\d+ tekens · 2 van 3 pagina’s gelezen · gemiddeld/),
-      ).toBeVisible();
+      await extract(page);
+      await expect(page.getByRole('button', { name: p.views.result })).toHaveAttribute(
+        'aria-pressed',
+        'true',
+      );
+      await expect(output(page)).toHaveJSProperty('textContent', TEXT);
       await expect(
         page.getByText(format(p.noTextPages, { list: format(p.pageOne, { n: 3 }) })),
       ).toBeVisible();
-      const slot = page.locator('section.compare-slot');
-      await expect(slot.getByText('brief.pdf')).toBeVisible();
-      await expect(slot.getByText(/^3 pagina’s · .* · 1 pagina zonder tekstlaag$/)).toBeVisible();
-      await expect(slot.locator('img.compare-slot__thumb')).toBeVisible();
+      await expect(
+        page.getByText(/^Klaar: \d+ tekens · 2 van 3 pagina’s gelezen\.$/),
+      ).toBeVisible();
       await axe(page);
     });
   }
 
-  test('elke instelling werkt meteen', async ({ page }) => {
+  test('leesvakken: alleen wat in de vakken staat, in tekenvolgorde', async ({ page }) => {
+    await openArticle(page);
+    const zones = page.getByRole('group', { name: p.zones.title });
+    await zones.getByRole('checkbox', { name: p.zones.use }).check();
+    await expect(zones.getByText(p.zones.empty)).toBeVisible();
+
+    // Eerst de rechterkolom, dan de linker: zo wordt het ook gelezen.
+    await draw(page, RIGHT_BOX);
+    await draw(page, LEFT_BOX);
+    await expect(zones.locator('.plaintext-zones__label')).toHaveText(['Vak 1', 'Vak 2']);
+    await expect(page.locator('.plaintext-zone__num')).toHaveText(['1', '2']);
+    await axe(page);
+
+    await extract(page);
+    const both = (no: number) =>
+      `${column('Rechter', no).join(' ')}\n\n${column('Linker', no).join(' ')}`;
+    await expect(output(page)).toHaveJSProperty('textContent', `${both(1)}\n\n${both(2)}`);
+
+    // Ctrl+Z haalt het laatste vak weg (in het voorbeeld); dan alleen nog de rechterkolom.
+    await page.getByRole('button', { name: p.views.preview }).click();
+    await page.keyboard.press('Control+z');
+    await expect(zones.locator('.plaintext-zones__label')).toHaveText(['Vak 1']);
+    await extract(page);
+    await expect(output(page)).toHaveJSProperty(
+      'textContent',
+      `${column('Rechter', 1).join(' ')}\n\n${column('Rechter', 2).join(' ')}`,
+    );
+  });
+
+  test('een vak verplaatsen en een rand verslepen', async ({ page }) => {
+    await openArticle(page, 1);
+    await page.getByRole('checkbox', { name: p.zones.use }).check();
+    await draw(page, LEFT_BOX);
+    // Het vak naar rechts schuiven: dan leest het de rechterkolom.
+    await drag(page, [150, 650], [405, 650]);
+    await extract(page);
+    await expect(output(page)).toHaveJSProperty('textContent', column('Rechter', 1).join(' '));
+
+    // De onderrand omhoog, tot net onder de derde regel (y 676): alleen de eerste drie.
+    await page.getByRole('button', { name: p.views.preview }).click();
+    await drag(page, [432, 600], [432, 670]);
+    await extract(page);
+    await expect(output(page)).toHaveJSProperty(
+      'textContent',
+      column('Rechter', 1).slice(0, 3).join(' '),
+    );
+  });
+
+  test('bladeren en zoomen', async ({ page }) => {
+    await openArticle(page, 3);
+    const label = (n: number) => page.getByText(format(p.preview.page, { n, total: 3 }));
+    await expect.poll(() => ink(page)).toBeGreaterThan(100);
+    const first = await fingerprint(page);
+    await page.getByRole('button', { name: p.preview.next }).click();
+    await expect(label(2)).toBeVisible();
+    // Er wordt echt een andere pagina getekend (de regels noemen hun paginanummer).
+    await expect.poll(() => fingerprint(page)).not.toBe(first);
+    await page.keyboard.press('End');
+    await expect(label(3)).toBeVisible();
+    await page.keyboard.press('Home');
+    await expect(label(1)).toBeVisible();
+    // Het scrollwiel: de hele pagina past, dus het bladert meteen door.
+    const centre = await at(page, 300, 420);
+    await page.mouse.move(centre.x, centre.y);
+    await page.mouse.wheel(0, 200);
+    await expect(label(2)).toBeVisible();
+
+    const value = page.locator('.plaintext-zoom__value');
+    const fitted = parseInt((await value.textContent())!, 10);
+    await page.getByRole('button', { name: p.preview.zoomIn }).click();
+    await expect
+      .poll(async () => parseInt((await value.textContent())!, 10))
+      .toBeGreaterThan(fitted);
+    await page.getByRole('button', { name: p.preview.fitWidth }).click();
+    await expect(page.getByRole('button', { name: p.preview.fitWidth })).toHaveAttribute(
+      'aria-pressed',
+      'true',
+    );
+    await page.getByRole('button', { name: p.preview.fitPage }).click();
+    await expect(value).toHaveText(`${fitted}%`);
+  });
+
+  test('instellingen werken bij opnieuw extraheren', async ({ page }) => {
     await openPage(page, '/#/advanced/text', { lang: 'nl' });
     await choose(page);
+    await extract(page);
     await expect(output(page)).toHaveJSProperty('textContent', TEXT, SLOW);
     const settings = page.getByRole('group', { name: s.title });
 
-    // De kop en voet komen op elke pagina terug; zonder weglaten staan ze erin.
+    // Kop- en voetteksten: pas na opnieuw extraheren staan ze erin.
     await settings.getByRole('checkbox', { name: s.strip }).uncheck();
+    await expect(page.getByText(p.stale)).toBeVisible();
+    await expect(output(page)).toHaveJSProperty('textContent', TEXT);
+    await extract(page);
+    await expect(page.getByText(p.stale)).toHaveCount(0);
     await expect(output(page)).toContainText('Woningstichting Voorbeeld');
     await expect(output(page)).toContainText('Pagina 2 van 2');
     await settings.getByRole('checkbox', { name: s.strip }).check();
-    await expect(output(page)).toHaveJSProperty('textContent', TEXT);
 
-    // Afgebroken woorden blijven afgebroken als herstellen uit staat.
-    await settings.getByRole('checkbox', { name: s.dehyphen }).uncheck();
-    await expect(output(page)).toContainText('huurovereen- komst');
-    await settings.getByRole('checkbox', { name: s.dehyphen }).check();
-
-    // De alinea-gevoeligheid: bij 1,6 (de oude standaard) en hoger wordt pagina 1 één alinea.
+    // De alinea-gevoeligheid: bij 2,5 wordt pagina 1 één alinea.
     const slider = settings.getByRole('slider', { name: s.gap });
     await expect(settings.getByText('1,3')).toBeVisible();
     await slider.focus();
     await page.keyboard.press('End');
     await expect(settings.getByText('2,5')).toBeVisible();
+    await extract(page);
     await expect
       .poll(() => output(page).textContent())
       .toContain('Geachte heer Jansen, Hierbij ontvangt u');
-    await page.keyboard.press('Home');
-    await expect(output(page)).toHaveJSProperty('textContent', TEXT);
 
-    // Regels los: elke regel op een eigen regel, en de gevoeligheid doet dan niet mee.
+    // Regels los: elke regel apart, en de gevoeligheid doet dan niet mee.
     await settings.getByRole('checkbox', { name: s.joinLines }).uncheck();
+    await expect(slider).toBeDisabled();
+    await extract(page);
     await expect
       .poll(() => output(page).textContent())
       .toContain('Geachte heer Jansen,\nHierbij ontvangt u');
-    await expect(slider).toBeDisabled();
-    await axe(page);
 
     // Wissen: de PDF is weg, de instellingen blijven.
-    await page.getByRole('button', { name: p.clear }).click();
+    await page.getByRole('button', { name: p.clear, exact: true }).click();
     await expect(page.getByText(p.placeholder)).toBeVisible();
     await expect(settings.getByRole('checkbox', { name: s.joinLines })).not.toBeChecked();
   });
@@ -171,6 +337,7 @@ test.describe('PDF → Platte tekst', () => {
     await context.grantPermissions(['clipboard-read', 'clipboard-write']);
     await openPage(page, '/#/advanced/text', { lang: 'nl' });
     await choose(page);
+    await extract(page);
     await expect(output(page)).toHaveJSProperty('textContent', TEXT, SLOW);
 
     const [download] = await Promise.all([
@@ -200,6 +367,7 @@ test.describe('PDF → Platte tekst op een scherm met schaal 150 %', () => {
     await page.addStyleTag({ content: '.workspace__tools { padding-right: 23px !important; }' });
     await choose(page);
     await expect(page.locator('img.compare-slot__thumb')).toBeVisible(SLOW);
+    await page.getByRole('checkbox', { name: p.zones.use }).check();
     const lines = (button: Locator) =>
       button.evaluate((element) => {
         const range = document.createRange();
@@ -208,7 +376,21 @@ test.describe('PDF → Platte tekst op een scherm met schaal 150 %', () => {
       });
     // De knop in het vak met de PDF is een label bij het bestandsveld.
     expect(await lines(page.getByText(p.slot.replace, { exact: true })), p.slot.replace).toBe(1);
-    for (const name of [p.copy, p.download, p.clear]) {
+    const names = [
+      p.views.preview,
+      p.views.result,
+      p.clear,
+      p.zones.undo,
+      p.zones.clearAll,
+      p.extract,
+      p.preview.fitPage,
+      p.preview.fitWidth,
+    ];
+    for (const name of names) {
+      expect(await lines(page.getByRole('button', { name, exact: true })), name).toBe(1);
+    }
+    await extract(page);
+    for (const name of [p.copy, p.download]) {
       expect(await lines(page.getByRole('button', { name, exact: true })), name).toBe(1);
     }
   });

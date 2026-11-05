@@ -3,10 +3,15 @@ import type { PageText, Piece } from '../compare/layout';
 import {
   DEFAULT_TEXT_OPTIONS,
   LOW_TEXT,
+  clampZone,
   exportName,
   extractText,
+  moveZone,
   quality,
+  resizeZone,
+  zoneItems,
   type PageResult,
+  type Zone,
 } from './extract';
 
 /** Een pagina met regels (elk een eigen tekststukje), van boven naar beneden; `gap` na een alinea. */
@@ -130,8 +135,15 @@ describe('quality', () => {
         { no: 2, text: '', status: 'notext' },
         read(3, `  ${short}  `),
         read(4, 'z'.repeat(LOW_TEXT)),
+        { no: 5, text: '', status: 'skipped' },
       ]),
-    ).toEqual({ read: 3, average: Math.round((100 + 24 + 25) / 3), noText: [2], low: [3] });
+    ).toEqual({
+      read: 3,
+      average: Math.round((100 + 24 + 25) / 3),
+      noText: [2],
+      skipped: [5],
+      low: [3],
+    });
   });
 
   it('heeft zonder gelezen pagina’s een gemiddelde van 0', () => {
@@ -139,6 +151,7 @@ describe('quality', () => {
       read: 0,
       average: 0,
       noText: [1],
+      skipped: [],
       low: [],
     });
   });
@@ -151,5 +164,129 @@ describe('exportName', () => {
     expect(exportName('notulen.pdf.pdf')).toBe('notulen.pdf_extract.txt');
     expect(exportName('zonder-extensie')).toBe('zonder-extensie_extract.txt');
     expect(exportName('.pdf')).toBe('pdf-tekst_extract.txt');
+  });
+});
+
+/**
+ * Een pagina met een kop, twee kolommen van zes regels en een voet (A4, in punten). Een vak in
+ * delen van de pagina: (x in punten) / 595 en (842 − y in punten) / 842.
+ */
+const ROWS = 6;
+const rows = (side: string) => Array.from({ length: ROWS }, (_, i) => `${side} ${i + 1}`);
+
+function twoColumns(no = 1): PageText {
+  const items: Piece[] = [];
+  const add = (str: string, x: number, y: number) =>
+    items.push({ str, x, y, fh: 10, w: str.length * 5 });
+  add('Kop van het tijdschrift', 50, 800);
+  for (let i = 0; i < ROWS; i++) {
+    add(`links ${i + 1}`, 50, 700 - i * 12);
+    add(`rechts ${i + 1}`, 320, 700 - i * 12);
+  }
+  add(`Pagina ${no}`, 280, 40);
+  return { no, w: 595, h: 842, items, chars: items.reduce((n, i) => n + i.str.length, 0) };
+}
+
+/** Een vak in punten (links, boven, rechts, onder), omgerekend naar delen van de pagina. */
+const pts = (left: number, top: number, right: number, bottom: number): Zone => ({
+  x0: left / 595,
+  y0: (842 - top) / 842,
+  x1: right / 595,
+  y1: (842 - bottom) / 842,
+});
+
+const LEFT = pts(40, 720, 300, 600);
+const RIGHT = pts(310, 720, 560, 600);
+
+describe('leesvakken', () => {
+  it('neemt een tekststukje mee als zijn midden in het vak ligt', () => {
+    const p = twoColumns();
+    expect(zoneItems(p, LEFT).map((i) => i.str)).toEqual(rows('links'));
+    // "links 1" loopt van x 50 tot 85, midden 67,5: een vak tot x 70 pakt het nog, tot 65 niet.
+    expect(zoneItems(p, pts(40, 720, 70, 698)).map((i) => i.str)).toEqual(['links 1']);
+    expect(zoneItems(p, pts(40, 720, 65, 698))).toEqual([]);
+    // In de hoogte ook het midden: "links 1" staat op y 700 (10 pt hoog, midden 705).
+    expect(zoneItems(p, pts(40, 720, 300, 703)).map((i) => i.str)).toEqual(['links 1']);
+    expect(zoneItems(p, pts(40, 720, 300, 706))).toEqual([]);
+  });
+
+  it('leest de vakken in hun volgorde, elk als eigen blok, en de rest van de pagina vervalt', () => {
+    const opts = { ...DEFAULT_TEXT_OPTIONS, joinLines: false };
+    expect(extractText([twoColumns()], opts, [RIGHT, LEFT]).text).toBe(
+      `${rows('rechts').join('\n')}\n\n${rows('links').join('\n')}`,
+    );
+  });
+
+  it('splitst binnen een vak geen kolommen, en laat daar geen kop of voet weg', () => {
+    const opts = { ...DEFAULT_TEXT_OPTIONS, joinLines: false };
+    const pages = [1, 2, 3].map(twoColumns);
+    // Zonder vakken: kop en voet weg (ze komen op elke pagina terug), links en rechts na elkaar.
+    expect(extractText(pages, opts).text.split('\n\n')[0]).toBe(
+      [...rows('links'), ...rows('rechts')].join('\n'),
+    );
+    // Eén vak over de hele pagina: alles, regel voor regel over de volle breedte.
+    const whole = extractText(pages, opts, [{ x0: 0, y0: 0, x1: 1, y1: 1 }]).text;
+    expect(whole.split('\n\n')[0]).toBe(
+      [
+        'Kop van het tijdschrift',
+        ...rows('links').map((l, i) => `${l} rechts ${i + 1}`),
+        'Pagina 1',
+      ].join('\n'),
+    );
+  });
+
+  it('slaat elke pagina over als de leesvakken aan staan maar er geen vak is', () => {
+    const result = extractText([twoColumns(1), empty(2), twoColumns(3)], DEFAULT_TEXT_OPTIONS, []);
+    expect(result.text).toBe('');
+    expect(result.pages.map((p) => p.status)).toEqual(['skipped', 'notext', 'skipped']);
+  });
+
+  it('geeft een lege pagina-tekst als er niets in de vakken staat', () => {
+    const result = extractText([twoColumns()], DEFAULT_TEXT_OPTIONS, [pts(0, 600, 595, 500)]);
+    expect(result.pages[0]).toEqual({ no: 1, text: '', status: 'read' });
+  });
+});
+
+describe('vakken verschuiven en vergroten', () => {
+  const zone: Zone = { x0: 0.2, y0: 0.2, x1: 0.5, y1: 0.4 };
+
+  it('zet een andersom getekend vak recht en houdt het binnen de pagina', () => {
+    expect(clampZone({ x0: 0.6, y0: 0.9, x1: -0.2, y1: 0.1 })).toEqual({
+      x0: 0,
+      y0: 0.1,
+      x1: 0.6,
+      y1: 0.9,
+    });
+    expect(clampZone({ x0: 0.5, y0: 0.5, x1: 1.4, y1: 1.2 })).toEqual({
+      x0: 0.5,
+      y0: 0.5,
+      x1: 1,
+      y1: 1,
+    });
+  });
+
+  it('verschuift een vak zonder dat het de pagina uit gaat, en houdt zijn maat', () => {
+    const moved = moveZone(zone, 0.1, 0.1);
+    for (const [key, value] of Object.entries({ x0: 0.3, y0: 0.3, x1: 0.6, y1: 0.5 }))
+      expect(moved[key as keyof Zone], key).toBeCloseTo(value);
+    const right = moveZone(zone, 0.9, 0.9);
+    expect(right.x1).toBeCloseTo(1);
+    expect(right.y1).toBeCloseTo(1);
+    expect(right.x1 - right.x0).toBeCloseTo(0.3);
+    expect(right.y1 - right.y0).toBeCloseTo(0.2);
+    expect(moveZone(zone, -1, -1)).toEqual({ x0: 0, y0: 0, x1: 0.3, y1: 0.2 });
+  });
+
+  it('versleept één kant of een hoek', () => {
+    expect(resizeZone(zone, 'e', 0.7, 0.99)).toEqual({ x0: 0.2, y0: 0.2, x1: 0.7, y1: 0.4 });
+    expect(resizeZone(zone, 'n', 0.99, 0.1)).toEqual({ x0: 0.2, y0: 0.1, x1: 0.5, y1: 0.4 });
+    expect(resizeZone(zone, 'sw', 0.1, 0.6)).toEqual({ x0: 0.1, y0: 0.2, x1: 0.5, y1: 0.6 });
+    expect(resizeZone(zone, 'nw', 0.1, 0.1)).toEqual({ x0: 0.1, y0: 0.1, x1: 0.5, y1: 0.4 });
+    expect(resizeZone(zone, 'ne', 0.6, 0.15)).toEqual({ x0: 0.2, y0: 0.15, x1: 0.6, y1: 0.4 });
+    expect(resizeZone(zone, 'se', 0.6, 0.5)).toEqual({ x0: 0.2, y0: 0.2, x1: 0.6, y1: 0.5 });
+    expect(resizeZone(zone, 's', 0.99, 0.5)).toEqual({ x0: 0.2, y0: 0.2, x1: 0.5, y1: 0.5 });
+    expect(resizeZone(zone, 'w', 0.1, 0.99)).toEqual({ x0: 0.1, y0: 0.2, x1: 0.5, y1: 0.4 });
+    // Voorbij de andere kant: het vak klapt om en blijft recht.
+    expect(resizeZone(zone, 'e', 0.1, 0)).toEqual({ x0: 0.1, y0: 0.2, x1: 0.2, y1: 0.4 });
   });
 });

@@ -1,100 +1,134 @@
-import { useState } from 'preact/hooks';
+import { useEffect, useLayoutEffect, useRef, useState } from 'preact/hooks';
 import { GAP_FACTOR } from '../compare/layout';
 import { copyText } from '../compare/report';
+import { ZOOM_STEPS, renderPage, stepZoom, targetWidths } from '../compare/visual';
 import { Dropzone } from '../components/Dropzone';
 import { PaneHead } from '../components/WorkspaceParts';
 import { useI18n } from '../i18n/LanguageContext';
 import { format, plural } from '../i18n/format';
 import { formatFileSize } from '../lib/format';
 import { downloadFile } from '../pdf/save';
-import { exportName, quality, type Extraction, type TextOptions } from './extract';
-import { clearText, openFiles, setOptions, useTextState, type TextDoc } from './store';
+import {
+  clampZone,
+  exportName,
+  moveZone,
+  quality,
+  resizeZone,
+  type Extraction,
+  type Handle,
+  type TextOptions,
+  type Zone,
+} from './extract';
+import {
+  clearText,
+  clearZones,
+  extract,
+  getTextState,
+  openFiles,
+  removeZone,
+  setFit,
+  setOptions,
+  setPage,
+  setUseZones,
+  setView,
+  setZones,
+  setZoom,
+  undoZones,
+  useTextState,
+  type Fit,
+  type TextDoc,
+  type TextView,
+} from './store';
 
 type Texts = ReturnType<typeof useI18n>['t'];
 
+const VIEWS: readonly TextView[] = ['preview', 'result'];
+const HANDLES: readonly Handle[] = ['nw', 'n', 'ne', 'e', 'se', 's', 'sw', 'w'];
+const FITS: readonly Fit[] = ['page', 'width'];
+
+/** Kleiner getekend dan dit (in beeldpunten, breed of hoog) telt niet als vak, zoals in de extractor. */
+const MIN_ZONE_PX = 8;
+
 /**
- * PDF → Platte tekst: een PDF openen en de tekst eruit halen, om te kopiëren of als tekstbestand te
- * downloaden. Werkt los van de gewone taken; de stand staat buiten het scherm (`store.ts`).
- * Overgenomen uit de losse pdf-tekst-extractor; bewuste afwijkingen: er is geen knop "Tekst
- * extraheren" (de tekst staat er zodra de PDF gelezen is, en verandert meteen bij elke andere
- * instelling, zoals bij PDF's vergelijken), terugkerende kop- en voetteksten gaan er standaard uit,
- * de alinea-gevoeligheid staat standaard op 1,3 (zie `DEFAULT_TEXT_OPTIONS`), en de tekst is niet
- * te bewerken in het scherm.
+ * PDF → Platte tekst: een PDF openen, op het voorbeeld leesvakken tekenen die de leesvolgorde
+ * bepalen, en dan de tekst eruit halen, om te kopiëren of als tekstbestand te downloaden. Werkt
+ * los van de gewone taken; de stand staat buiten het scherm (`store.ts`). Overgenomen uit de losse
+ * pdf-tekst-extractor, met dezelfde werkwijze: eerst de PDF zien en vakken zetten, dan pas
+ * "Tekst extraheren". Bewuste afwijkingen: zonder vakken gaan terugkerende kop- en voetteksten er
+ * standaard uit, de alinea-gevoeligheid staat standaard op 1,3 (zie `DEFAULT_TEXT_OPTIONS`), en
+ * de tekst is niet te bewerken in het scherm.
  */
 export function TextTool() {
   const { t } = useI18n();
   const p = t.plainText;
-  const { slot, result, tooMany } = useTextState();
-  // Wat er met de tekst gebeurd is (gekopieerd, gedownload), bij welke tekst: bij een andere tekst
-  // hoort de melding er niet meer bij. (Geen effect om hem te wissen, zie PDF's vergelijken.)
-  const [status, setStatus] = useState<{ result: Extraction | null; text: string } | null>(null);
-  const shown = status && status.result === result ? status.text : null;
-  const ready = slot.status === 'ready' && result !== null && result.text !== '';
-  const name = slot.status === 'ready' ? slot.doc.file.name : '';
-
+  const { view, tooMany } = useTextState();
   return (
-    <section class="workspace plaintext" aria-label={p.toolbar}>
-      <div class="workspace__tools">
-        <SlotView />
-        {tooMany && (
-          <p class="compare__note" role="status">
-            {p.tooMany}
-          </p>
-        )}
-        <div class="toolbar toolbar--tools" role="toolbar" aria-label={p.toolbar}>
-          <div class="toolbar__group toolbar__group--wide">
-            <button
-              type="button"
-              class="button button--secondary"
-              disabled={!ready}
-              onClick={() =>
-                void copyText(result!.text).then((ok) =>
-                  setStatus({ result, text: ok ? p.copied : p.copyFailed }),
-                )
-              }
-            >
-              {p.copy}
-            </button>
-            <button
-              type="button"
-              class="button button--secondary"
-              disabled={!ready}
-              onClick={() => {
-                const file = exportName(name);
-                downloadFile(
-                  new TextEncoder().encode(result!.text),
-                  file,
-                  'text/plain;charset=utf-8',
-                );
-                setStatus({ result, text: format(p.downloaded, { name: file }) });
-              }}
-            >
-              {p.download}
-            </button>
-          </div>
-          <div class="toolbar__group toolbar__group--wide">
-            <button
-              type="button"
-              class="button button--secondary"
-              disabled={slot.status === 'empty'}
-              onClick={clearText}
-            >
-              {p.clear}
-            </button>
-          </div>
+    <>
+      {/* Op een vaste plek boven het werkvak, zoals bij PDF's vergelijken. */}
+      <div class="compare-mode">
+        <ViewToggle />
+      </div>
+      <section class="workspace plaintext" aria-label={p.toolbar}>
+        <div class="workspace__tools">
+          <SlotView />
+          {tooMany && (
+            <p class="compare__note" role="status">
+              {p.tooMany}
+            </p>
+          )}
+          <ClearButton />
+          <ZoneSettings />
+          <Settings />
+          <ExtractBar />
+          <p class="annotate__hint">{p.about}</p>
         </div>
-        {shown && (
-          <p class="page-editor__saved" role="status">
-            {shown}
-          </p>
-        )}
-        <Settings />
-        <p class="annotate__hint">{p.about}</p>
+        <div class="workspace__view" data-scroll-root>
+          {view === 'preview' ? <Preview /> : <Output />}
+        </div>
+      </section>
+    </>
+  );
+}
+
+/** De keuze tussen het voorbeeld (vakken tekenen) en het resultaat (de tekst). */
+function ViewToggle() {
+  const { t } = useI18n();
+  const v = t.plainText.views;
+  const { view } = useTextState();
+  return (
+    <div class="segmented" role="group" aria-label={v.label}>
+      {VIEWS.map((option) => (
+        <button
+          key={option}
+          type="button"
+          class="segmented__button"
+          aria-pressed={view === option}
+          onClick={() => setView(option)}
+        >
+          {v[option]}
+        </button>
+      ))}
+    </div>
+  );
+}
+
+function ClearButton() {
+  const { t } = useI18n();
+  const p = t.plainText;
+  const { slot } = useTextState();
+  return (
+    <div class="toolbar toolbar--tools" role="toolbar" aria-label={p.toolbar}>
+      <div class="toolbar__group toolbar__group--wide">
+        <button
+          type="button"
+          class="button button--secondary"
+          disabled={slot.status === 'empty'}
+          onClick={clearText}
+        >
+          {p.clear}
+        </button>
       </div>
-      <div class="workspace__view" data-scroll-root>
-        <Output />
-      </div>
-    </section>
+    </div>
   );
 }
 
@@ -151,28 +185,92 @@ function docMeta(doc: TextDoc, t: Texts, language: string) {
     .join(' · ');
 }
 
-/** De aan- en uitzetters; alleen "regels samenvoegen" heeft een eigen plek, bij de gevoeligheid. */
-const TOGGLES = ['strip', 'columns', 'dehyphen'] as const satisfies readonly (keyof TextOptions)[];
-
-/** Hoe de tekst wordt opgebouwd; elke instelling werkt meteen. */
-function Settings() {
-  const { t, language } = useI18n();
-  const s = t.plainText.settings;
-  const { options } = useTextState();
-  // Tijdens het slepen alleen het getal bijwerken; pas bij loslaten opnieuw opbouwen.
-  const [dragging, setDragging] = useState<number | null>(null);
-  const gap = dragging ?? options.gapFactor;
+/** Leesvakken aan of uit, de lijst met vakken, Ongedaan en Alle vakken wissen. */
+function ZoneSettings() {
+  const { t } = useI18n();
+  const z = t.plainText.zones;
+  const { useZones, zones, undo } = useTextState();
   return (
     <fieldset class="compare-settings">
-      <legend>{s.title}</legend>
+      <legend>{z.title}</legend>
       <label class="compare-settings__check">
         <input
           type="checkbox"
-          checked={options.joinLines}
-          onChange={(event) => setOptions({ joinLines: event.currentTarget.checked })}
+          checked={useZones}
+          aria-describedby="plaintext-zones-hint"
+          onChange={(event) => setUseZones(event.currentTarget.checked)}
         />
-        {s.joinLines}
+        {z.use}
       </label>
+      <p id="plaintext-zones-hint" class="compare-settings__hint">
+        {z.useHint}
+      </p>
+      {useZones &&
+        (zones.length === 0 ? (
+          <p class="plaintext-zones__empty">{z.empty}</p>
+        ) : (
+          <ol class="plaintext-zones">
+            {zones.map((_, i) => (
+              <li key={i} class="plaintext-zones__item">
+                <span class="plaintext-zones__num" aria-hidden="true">
+                  {i + 1}
+                </span>
+                <span class="plaintext-zones__label">{format(z.item, { n: i + 1 })}</span>
+                <button
+                  type="button"
+                  class="plaintext-zones__remove"
+                  aria-label={format(z.remove, { n: i + 1 })}
+                  onClick={() => removeZone(i)}
+                >
+                  ×
+                </button>
+              </li>
+            ))}
+          </ol>
+        ))}
+      <div class="plaintext-zones__buttons">
+        <button
+          type="button"
+          class="button button--secondary"
+          disabled={!useZones || undo.length === 0}
+          onClick={undoZones}
+        >
+          {z.undo}
+        </button>
+        <button
+          type="button"
+          class="button button--secondary"
+          disabled={!useZones || zones.length === 0}
+          onClick={clearZones}
+        >
+          {z.clearAll}
+        </button>
+      </div>
+    </fieldset>
+  );
+}
+
+/** Hoe de tekst wordt opgebouwd; het werkt bij de volgende keer extraheren. */
+function Settings() {
+  const { t, language } = useI18n();
+  const s = t.plainText.settings;
+  const { options, useZones } = useTextState();
+  const check = (key: keyof TextOptions & ('strip' | 'columns' | 'dehyphen' | 'joinLines')) => (
+    <label key={key} class="compare-settings__check">
+      <input
+        type="checkbox"
+        checked={options[key]}
+        // Kolommen en kop/voet gaan over de hele pagina; met leesvakken bepaal je dat zelf.
+        disabled={useZones && (key === 'strip' || key === 'columns')}
+        onChange={(event) => setOptions({ [key]: event.currentTarget.checked })}
+      />
+      {s[key]}
+    </label>
+  );
+  return (
+    <fieldset class="compare-settings">
+      <legend>{s.title}</legend>
+      {check('joinLines')}
       <div class="compare-settings__range plaintext__gap">
         <label for="plaintext-gap">{s.gap}</label>
         <input
@@ -181,33 +279,422 @@ function Settings() {
           min={GAP_FACTOR.min}
           max={GAP_FACTOR.max}
           step={GAP_FACTOR.step}
-          value={gap}
+          value={options.gapFactor}
           disabled={!options.joinLines}
           aria-describedby="plaintext-gap-hint"
-          onInput={(event) => setDragging(Number(event.currentTarget.value))}
-          onChange={(event) => {
-            setDragging(null);
-            setOptions({ gapFactor: Number(event.currentTarget.value) });
-          }}
+          onInput={(event) => setOptions({ gapFactor: Number(event.currentTarget.value) })}
         />
         <output for="plaintext-gap">
-          {gap.toLocaleString(language, { minimumFractionDigits: 1, maximumFractionDigits: 1 })}
+          {options.gapFactor.toLocaleString(language, {
+            minimumFractionDigits: 1,
+            maximumFractionDigits: 1,
+          })}
         </output>
       </div>
       <p id="plaintext-gap-hint" class="compare-settings__hint">
         {s.gapHint}
       </p>
-      {TOGGLES.map((key) => (
-        <label key={key} class="compare-settings__check">
-          <input
-            type="checkbox"
-            checked={options[key]}
-            onChange={(event) => setOptions({ [key]: event.currentTarget.checked })}
-          />
-          {s[key]}
-        </label>
-      ))}
+      {check('dehyphen')}
+      {check('columns')}
+      {check('strip')}
+      {useZones && <p class="compare-settings__hint">{s.zonesOff}</p>}
     </fieldset>
+  );
+}
+
+/** De knop "Tekst extraheren", vast onderaan het linkervak, met wat er gelezen is. */
+function ExtractBar() {
+  const { t, language } = useI18n();
+  const p = t.plainText;
+  const { slot, result } = useTextState();
+  return (
+    <div class="plaintext__extract">
+      <button type="button" class="button" disabled={slot.status !== 'ready'} onClick={extract}>
+        {p.extract}
+      </button>
+      {result && slot.status === 'ready' && (
+        <p class="plaintext__done" role="status">
+          {format(p.done, { summary: summary(result, slot.doc, t, language) })}
+        </p>
+      )}
+    </div>
+  );
+}
+
+/** "89.784 tekens · 16 van 16 pagina's gelezen". */
+function summary(result: Extraction, doc: TextDoc, t: Texts, language: string) {
+  const c = t.compare;
+  const chars = result.text.length;
+  return format(t.plainText.meta, {
+    chars: format(chars === 1 ? c.charsOne : c.chars, { n: chars.toLocaleString(language) }),
+    read: quality(result.pages).read,
+    pages: plural(doc.pageCount, c.pagesOne, c.pages),
+  });
+}
+
+/** Het voorbeeld: de pagina om leesvakken op te tekenen. */
+function Preview() {
+  const { t } = useI18n();
+  const p = t.plainText;
+  const { slot } = useTextState();
+  if (slot.status !== 'ready') {
+    return (
+      <>
+        <PaneHead title={p.preview.title} />
+        <p class="compare__placeholder">
+          {slot.status === 'reading' ? t.compare.readingStart : p.placeholder}
+        </p>
+      </>
+    );
+  }
+  return <PageView doc={slot.doc} />;
+}
+
+/** De getekende pagina van nu, of een fout. */
+type Drawn = { canvas: HTMLCanvasElement } | { error: true };
+
+function PageView({ doc }: { doc: TextDoc }) {
+  const { t } = useI18n();
+  const v = t.plainText.preview;
+  const { page, fit, zoom, useZones, zones } = useTextState();
+  const size = doc.pages[page - 1] ?? { w: 595, h: 842 };
+  const wrap = useRef<HTMLDivElement>(null);
+  // De ruimte in het vak; zonder meting (zoals in een test) een redelijke schatting.
+  const [space, setSpace] = useState({ w: 0, h: 0 });
+  const [drawn, setDrawn] = useState<Drawn | null>(null);
+
+  useLayoutEffect(() => {
+    const element = wrap.current;
+    if (!element) return;
+    const root = element.closest<HTMLElement>('[data-scroll-root]');
+    const measure = () => {
+      const top = root
+        ? element.getBoundingClientRect().top - root.getBoundingClientRect().top + root.scrollTop
+        : 0;
+      // Onderaan heeft het vak opvulling; "hele pagina" moet echt passen, zonder schuifruimte, anders
+      // schuift het scrollwiel eerst een stukje in plaats van door te bladeren.
+      const padding = root ? parseFloat(getComputedStyle(root).paddingBottom) || 0 : 0;
+      setSpace({ w: element.clientWidth, h: (root?.clientHeight ?? 0) - top - padding - 4 });
+    };
+    measure();
+    if (typeof ResizeObserver === 'undefined') return;
+    const observer = new ResizeObserver(measure);
+    observer.observe(element);
+    if (root) observer.observe(root);
+    return () => observer.disconnect();
+  }, []);
+
+  const availW = space.w > 0 ? space.w : 600;
+  const availH = space.h > 0 ? space.h : 800;
+  const fitCss = fit === 'width' ? availW : Math.min(availW, (availH * size.w) / size.h);
+  const widths = targetWidths(Math.floor(fitCss), zoom, window.devicePixelRatio);
+
+  useEffect(() => {
+    let cancelled = false;
+    renderPage(doc.file, page, widths.dev)
+      .then((canvas): Drawn => (canvas ? { canvas } : { error: true }))
+      .catch((): Drawn => ({ error: true }))
+      .then((next) => {
+        if (!cancelled) setDrawn(next);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [doc, page, widths.dev]);
+
+  // Toetsen: ← → (en PageUp/PageDown) bladeren, Home en End naar de eerste of laatste pagina,
+  // Ctrl+Z maakt het laatste vak ongedaan. Niet in een invoerveld.
+  useEffect(() => {
+    const onKey = (event: KeyboardEvent) => {
+      const tag = (event.target as HTMLElement | null)?.tagName?.toLowerCase();
+      if (tag === 'input' || tag === 'select' || tag === 'textarea') return;
+      const now = getTextState();
+      if ((event.ctrlKey || event.metaKey) && !event.altKey && event.key.toLowerCase() === 'z') {
+        if (!now.useZones) return;
+        event.preventDefault();
+        undoZones();
+        return;
+      }
+      if (event.ctrlKey || event.metaKey || event.altKey) return;
+      const to: Record<string, number> = {
+        Home: 1,
+        End: doc.pageCount,
+        ArrowLeft: now.page - 1,
+        PageUp: now.page - 1,
+        ArrowRight: now.page + 1,
+        PageDown: now.page + 1,
+      };
+      if (!(event.key in to)) return;
+      event.preventDefault();
+      setPage(to[event.key]!);
+    };
+    const target = document;
+    target.addEventListener('keydown', onKey);
+    return () => target.removeEventListener('keydown', onKey);
+  }, [doc]);
+
+  // Het scrollwiel bladert door aan de boven- of onderrand van het vak, zoals in de extractor.
+  useEffect(() => {
+    const root = wrap.current?.closest<HTMLElement>('[data-scroll-root]');
+    if (!root) return;
+    let locked = false;
+    const onWheel = (event: WheelEvent) => {
+      if (event.ctrlKey) return;
+      const now = getTextState().page;
+      const atTop = root.scrollTop <= 0;
+      const atBottom = root.scrollTop + root.clientHeight >= root.scrollHeight - 1;
+      const to =
+        event.deltaY > 0 && atBottom && now < doc.pageCount
+          ? now + 1
+          : event.deltaY < 0 && atTop && now > 1
+            ? now - 1
+            : null;
+      if (to === null) return;
+      event.preventDefault();
+      if (locked) return;
+      locked = true;
+      setTimeout(() => (locked = false), 250);
+      setPage(to);
+    };
+    root.addEventListener('wheel', onWheel, { passive: false });
+    return () => root.removeEventListener('wheel', onWheel);
+  }, [doc]);
+
+  const lastZoom = ZOOM_STEPS[ZOOM_STEPS.length - 1]!;
+  const percent = Math.round((widths.css / size.w) * 100);
+  return (
+    <>
+      <PaneHead title={v.title} meta={format(v.page, { n: page, total: doc.pageCount })}>
+        <div class="plaintext-nav" role="group" aria-label={v.nav}>
+          <button
+            type="button"
+            class="button button--secondary"
+            aria-label={v.first}
+            disabled={page <= 1}
+            onClick={() => setPage(1)}
+          >
+            ‹‹
+          </button>
+          <button
+            type="button"
+            class="button button--secondary"
+            aria-label={v.previous}
+            disabled={page <= 1}
+            onClick={() => setPage(page - 1)}
+          >
+            ‹
+          </button>
+          <button
+            type="button"
+            class="button button--secondary"
+            aria-label={v.next}
+            disabled={page >= doc.pageCount}
+            onClick={() => setPage(page + 1)}
+          >
+            ›
+          </button>
+          <button
+            type="button"
+            class="button button--secondary"
+            aria-label={v.last}
+            disabled={page >= doc.pageCount}
+            onClick={() => setPage(doc.pageCount)}
+          >
+            ››
+          </button>
+        </div>
+      </PaneHead>
+      <div class="plaintext-zoom" role="group" aria-label={v.zoom}>
+        <button
+          type="button"
+          class="button button--secondary"
+          aria-label={v.zoomOut}
+          disabled={zoom <= ZOOM_STEPS[0]}
+          onClick={() => setZoom(stepZoom(zoom, -1))}
+        >
+          −
+        </button>
+        <output class="plaintext-zoom__value">{`${percent}%`}</output>
+        <button
+          type="button"
+          class="button button--secondary"
+          aria-label={v.zoomIn}
+          disabled={zoom >= lastZoom}
+          onClick={() => setZoom(stepZoom(zoom, 1))}
+        >
+          +
+        </button>
+        {FITS.map((option) => (
+          <button
+            key={option}
+            type="button"
+            class="button button--secondary"
+            aria-pressed={fit === option && zoom === 100}
+            onClick={() => setFit(option)}
+          >
+            {option === 'page' ? v.fitPage : v.fitWidth}
+          </button>
+        ))}
+      </div>
+      <p class="compare-settings__hint">{useZones ? t.plainText.zones.drawHint : v.keys}</p>
+      <div class="plaintext-preview" ref={wrap}>
+        {drawn && 'error' in drawn ? (
+          <p class="compare-visual__msg">{v.error}</p>
+        ) : (
+          <div
+            class="plaintext-preview__page"
+            style={{ width: `${widths.css}px`, height: `${(widths.css * size.h) / size.w}px` }}
+          >
+            {drawn && (
+              <CanvasBox
+                canvas={drawn.canvas}
+                width={widths.css}
+                label={format(v.canvas, { n: page })}
+              />
+            )}
+            {useZones && <ZoneLayer zones={zones} />}
+          </div>
+        )}
+      </div>
+    </>
+  );
+}
+
+/** Een getekend canvas op zijn weergavebreedte (getekend is het fijner, zie `targetWidths`). */
+function CanvasBox({
+  canvas,
+  width,
+  label,
+}: {
+  canvas: HTMLCanvasElement;
+  width: number;
+  label: string;
+}) {
+  const box = useRef<HTMLDivElement>(null);
+  useLayoutEffect(() => {
+    canvas.className = 'plaintext-preview__canvas';
+    canvas.style.width = `${width}px`;
+    canvas.setAttribute('role', 'img');
+    canvas.setAttribute('aria-label', label);
+    box.current?.replaceChildren(canvas);
+  }, [canvas, width, label]);
+  return <div ref={box} />;
+}
+
+/** Wat je met de muis doet: een nieuw vak tekenen, een vak verplaatsen of een rand verslepen. */
+type Action =
+  | { kind: 'draw'; index: number; x: number; y: number }
+  | { kind: 'move'; index: number; x: number; y: number; start: Zone }
+  | { kind: 'resize'; index: number; handle: Handle; start: Zone };
+
+/**
+ * De leesvakken over de pagina: genummerd, te verplaatsen en met acht handgrepen te vergroten of
+ * te verkleinen. Een sleep op een lege plek tekent een nieuw vak. Tijdens het slepen staan de
+ * vakken alleen hier; bij loslaten gaan ze naar de stand (en kan het terug met Ongedaan).
+ */
+function ZoneLayer({ zones }: { zones: Zone[] }) {
+  const layer = useRef<HTMLDivElement>(null);
+  const action = useRef<Action | null>(null);
+  const [live, setLive] = useState<Zone[] | null>(null);
+  const latest = useRef<{ zones: Zone[]; live: Zone[] | null }>({ zones, live });
+  latest.current = { zones, live };
+  const shown = live ?? zones;
+
+  const point = (event: MouseEvent) => {
+    const rect = layer.current!.getBoundingClientRect();
+    return {
+      x: (event.clientX - rect.left) / (rect.width || 1),
+      y: (event.clientY - rect.top) / (rect.height || 1),
+      rect,
+    };
+  };
+
+  useEffect(() => {
+    const onMove = (event: MouseEvent) => {
+      const now = action.current;
+      if (!now) return;
+      const { x, y } = point(event);
+      const next = [...(latest.current.live ?? latest.current.zones)];
+      if (now.kind === 'draw') next[now.index] = clampZone({ x0: now.x, y0: now.y, x1: x, y1: y });
+      else if (now.kind === 'move') next[now.index] = moveZone(now.start, x - now.x, y - now.y);
+      else next[now.index] = resizeZone(now.start, now.handle, x, y);
+      setLive(next);
+    };
+    const onUp = (event: MouseEvent) => {
+      const now = action.current;
+      if (!now) return;
+      action.current = null;
+      const next = latest.current.live;
+      setLive(null);
+      if (!next) return;
+      const zone = next[now.index]!;
+      const { rect } = point(event);
+      // Te klein getekend: geen vak (en geen stap om ongedaan te maken).
+      if (
+        now.kind === 'draw' &&
+        ((zone.x1 - zone.x0) * rect.width < MIN_ZONE_PX ||
+          (zone.y1 - zone.y0) * rect.height < MIN_ZONE_PX)
+      )
+        return;
+      const before = latest.current.zones[now.index];
+      if (before && JSON.stringify(before) === JSON.stringify(zone)) return;
+      setZones(next);
+    };
+    // Op het hele venster: ook als de muis tijdens het slepen buiten de pagina komt.
+    const target = window;
+    target.addEventListener('mousemove', onMove);
+    target.addEventListener('mouseup', onUp);
+    return () => {
+      target.removeEventListener('mousemove', onMove);
+      target.removeEventListener('mouseup', onUp);
+    };
+  }, []);
+
+  const onMouseDown = (event: MouseEvent) => {
+    if (event.button !== 0) return;
+    event.preventDefault();
+    const { x, y } = point(event);
+    const target = event.target as HTMLElement;
+    const box = target.closest<HTMLElement>('[data-zone]');
+    const handle = target.closest<HTMLElement>('[data-handle]')?.dataset.handle as
+      Handle | undefined;
+    if (box) {
+      const index = Number(box.dataset.zone);
+      const start = zones[index]!;
+      action.current = handle
+        ? { kind: 'resize', index, handle, start }
+        : { kind: 'move', index, x, y, start };
+      return;
+    }
+    action.current = { kind: 'draw', index: zones.length, x, y };
+    setLive([...zones, { x0: x, y0: y, x1: x, y1: y }]);
+  };
+
+  return (
+    <div class="plaintext-zones-layer" ref={layer} onMouseDown={onMouseDown} aria-hidden="true">
+      {shown.map((zone, i) => (
+        <div
+          key={i}
+          class="plaintext-zone"
+          data-zone={i}
+          style={{
+            left: `${zone.x0 * 100}%`,
+            top: `${zone.y0 * 100}%`,
+            width: `${(zone.x1 - zone.x0) * 100}%`,
+            height: `${(zone.y1 - zone.y0) * 100}%`,
+          }}
+        >
+          <span class="plaintext-zone__num">{i + 1}</span>
+          {HANDLES.map((h) => (
+            <span
+              key={h}
+              class={`plaintext-zone__handle plaintext-zone__handle--${h}`}
+              data-handle={h}
+            />
+          ))}
+        </div>
+      ))}
+    </div>
   );
 }
 
@@ -219,47 +706,84 @@ function pageList(pages: readonly number[], t: Texts) {
   return format(p.pageMany, { list });
 }
 
-/** Het rechtervak: de tekst, met wat er opvalt aan de tekstlaag. */
+/** Het resultaat: de tekst, met kopiëren en downloaden, en wat er opvalt aan de tekstlaag. */
 function Output() {
   const { t, language } = useI18n();
   const p = t.plainText;
-  const c = t.compare;
-  const { slot, result } = useTextState();
+  const { slot, result, stale } = useTextState();
+  // Wat er met de tekst gebeurd is (gekopieerd, gedownload), bij welke tekst: bij een andere tekst
+  // hoort de melding er niet meer bij. (Geen effect om hem te wissen, zie PDF's vergelijken.)
+  const [status, setStatus] = useState<{ result: Extraction | null; text: string } | null>(null);
   if (slot.status !== 'ready' || !result) {
     return (
       <>
-        <PaneHead title={p.title} />
+        <PaneHead title={p.views.result} />
         <p class="compare__placeholder">
-          {slot.status === 'reading' ? c.readingStart : p.placeholder}
+          {slot.status === 'ready'
+            ? p.resultPlaceholder
+            : slot.status === 'reading'
+              ? t.compare.readingStart
+              : p.placeholder}
         </p>
       </>
     );
   }
+  const shown = status && status.result === result ? status.text : null;
   const q = quality(result.pages);
-  const chars = result.text.length;
+  const ready = result.text !== '';
   const meta = [
-    format(p.meta, {
-      chars: format(chars === 1 ? c.charsOne : c.chars, { n: chars.toLocaleString(language) }),
-      read: q.read,
-      pages: plural(slot.doc.pageCount, c.pagesOne, c.pages),
-    }),
+    summary(result, slot.doc, t, language),
     q.read > 0 && format(p.average, { n: q.average.toLocaleString(language) }),
   ]
     .filter(Boolean)
     .join(' · ');
   return (
     <>
-      <PaneHead title={p.title} meta={meta} />
+      <PaneHead title={p.views.result} meta={meta}>
+        <div class="toolbar__group">
+          <button
+            type="button"
+            class="button button--secondary"
+            disabled={!ready}
+            onClick={() =>
+              void copyText(result.text).then((ok) =>
+                setStatus({ result, text: ok ? p.copied : p.copyFailed }),
+              )
+            }
+          >
+            {p.copy}
+          </button>
+          <button
+            type="button"
+            class="button button--secondary"
+            disabled={!ready}
+            onClick={() => {
+              const file = exportName(slot.doc.file.name);
+              downloadFile(new TextEncoder().encode(result.text), file, 'text/plain;charset=utf-8');
+              setStatus({ result, text: format(p.downloaded, { name: file }) });
+            }}
+          >
+            {p.download}
+          </button>
+        </div>
+      </PaneHead>
+      {shown && (
+        <p class="page-editor__saved" role="status">
+          {shown}
+        </p>
+      )}
+      {stale && <p class="compare__note">{p.stale}</p>}
+      {q.skipped.length > 0 && <p class="compare__warning">{p.noZones}</p>}
       {q.noText.length > 0 && (
         <p class="compare__warning">{format(p.noTextPages, { list: pageList(q.noText, t) })}</p>
       )}
       {q.low.length > 0 && (
         <p class="compare__warning">{format(p.lowPages, { list: pageList(q.low, t) })}</p>
       )}
-      {result.text === '' ? (
-        <p class="compare__placeholder">{p.empty}</p>
-      ) : (
+      {ready ? (
         <pre class="plaintext__output">{result.text}</pre>
+      ) : (
+        <p class="compare__placeholder">{p.empty}</p>
       )}
     </>
   );
