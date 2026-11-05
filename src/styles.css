@@ -1571,6 +1571,29 @@ h1 {
   font-size: 0.85rem;
 }
 
+/* Het afgedrukte paginanummer naast het nummer in de PDF: wat lichter. */
+.plaintext-nav__printed {
+  color: var(--text-muted);
+}
+
+/* De keuze per pagina-overgang. */
+.plaintext-join {
+  display: grid;
+  gap: 0.3rem;
+  margin-top: 0.4rem;
+  font-size: 0.9rem;
+}
+
+.plaintext-join select {
+  justify-self: start;
+  padding: 0.3rem 0.5rem;
+  font: inherit;
+  color: var(--text);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+}
+
 .plaintext-nav__page {
   min-width: 4.5rem;
   font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;

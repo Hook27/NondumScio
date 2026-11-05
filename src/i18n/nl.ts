@@ -779,6 +779,24 @@ export const nl = {
       zonesOffRead:
         'Kop- en voetteksten: niet bij leesvakken. Kolommen: alleen op pagina’s zonder vakken, die helemaal gelezen worden.',
     },
+    pages: {
+      title: 'Pagina-overgangen',
+      anchors: 'Pagina-ankers {p#} invoegen',
+      anchorsHint:
+        'Elke PDF-pagina begint met {p#} (# = het paginanummer in de PDF). Onderaan komt een paginaconcordantie: PDF-pagina en afgedrukt paginanummer.',
+      crossPage: 'Doorlopende alinea’s over pagina’s',
+      crossPageHint:
+        'Een zin die over de pagina-overgang doorloopt, weer aan elkaar: geen leesteken aan het eind en een kleine beginletter, of een afbreekstreepje.',
+      join: 'Aansluiting van pagina {n} op de vorige',
+      joinFirst: 'Blader naar pagina 2 of verder om per overgang te kiezen.',
+      joins: { auto: 'Automatisch', join: 'Aaneen', break: 'Gescheiden' },
+    },
+    concordance: {
+      title: 'Paginaconcordantie:',
+      page: 'PDF-pagina {n} = documentpagina {p}',
+      none: 'PDF-pagina {n} = geen documentpaginanummer',
+      titlePage: ' (titelblad)',
+    },
     save: {
       title: 'Instellingen bewaren',
       hint: 'Vakken en instellingen worden in deze browser per bestandsnaam onthouden. Opslaan en laden gaat met een .json-bestand, zoals in de losse pdf-tekst-extractor.',
@@ -804,6 +822,7 @@ export const nl = {
       'De instellingen of de vakken zijn veranderd sinds het extraheren. Klik opnieuw op Tekst extraheren.',
     preview: {
       page: 'Pagina {n} van {total}',
+      pageDoc: 'Pagina {n} van {total}, documentpagina {p}',
       nav: 'Bladeren',
       first: 'Eerste pagina',
       previous: 'Vorige pagina',

@@ -36,6 +36,7 @@ import {
   setBlock,
   setOwnPage,
   setPage,
+  setJoin,
   setReadEmpty,
   setUseZones,
   setView,
@@ -48,6 +49,7 @@ import {
   type TextDoc,
   type TextView,
 } from './store';
+import { JOINS, type Join } from './pages';
 import { forgetStored } from './settings';
 
 type Texts = ReturnType<typeof useI18n>['t'];
@@ -83,6 +85,7 @@ export function TextTool() {
         )}
         <ZoneSettings />
         <Settings />
+        <PageSettings />
         <SaveSettings />
         <ExtractBar />
       </div>
@@ -419,6 +422,65 @@ function Settings() {
 }
 
 /**
+ * Pagina-overgangen: pagina-ankers {p#} met een concordantie, doorlopende zinnen over de
+ * pagina-overgang, en per overgang de keuze automatisch, aaneen of gescheiden. In de extractor stond
+ * die keuze in de bladerbalk; hier in dit blok, zodat de balk boven de pagina op één regel blijft.
+ */
+function PageSettings() {
+  const { t } = useI18n();
+  const g = t.plainText.pages;
+  const { options, slot, page, joins } = useTextState();
+  const ready = slot.status === 'ready';
+  return (
+    <Block id="pages" title={g.title}>
+      <label class="compare-settings__check">
+        <input
+          type="checkbox"
+          checked={options.anchors}
+          aria-describedby="plaintext-anchors-hint"
+          onChange={(event) => setOptions({ anchors: event.currentTarget.checked })}
+        />
+        {g.anchors}
+      </label>
+      <p id="plaintext-anchors-hint" class="compare-settings__hint">
+        {g.anchorsHint}
+      </p>
+      <label class="compare-settings__check">
+        <input
+          type="checkbox"
+          checked={options.crossPage}
+          aria-describedby="plaintext-cross-hint"
+          onChange={(event) => setOptions({ crossPage: event.currentTarget.checked })}
+        />
+        {g.crossPage}
+      </label>
+      <p id="plaintext-cross-hint" class="compare-settings__hint">
+        {g.crossPageHint}
+      </p>
+      {options.crossPage &&
+        (ready && page > 1 ? (
+          <div class="plaintext-join">
+            <label for="plaintext-join">{format(g.join, { n: page })}</label>
+            <select
+              id="plaintext-join"
+              value={joins[page] ?? 'auto'}
+              onChange={(event) => setJoin(page, event.currentTarget.value as Join)}
+            >
+              {JOINS.map((join) => (
+                <option key={join} value={join}>
+                  {g.joins[join]}
+                </option>
+              ))}
+            </select>
+          </div>
+        ) : (
+          <p class="compare-settings__hint">{g.joinFirst}</p>
+        ))}
+    </Block>
+  );
+}
+
+/**
  * Instellingen bewaren: de vakken en instellingen worden per bestandsnaam onthouden (in deze
  * browser). Opslaan en laden gaat met een .json-bestand in het formaat van de extractor. "Vergeten"
  * wist wat er voor alle PDF's onthouden is, na een vraag; in de extractor deed Reset dat ongevraagd.
@@ -511,7 +573,12 @@ function ExtractBar() {
   const { slot, result } = useTextState();
   return (
     <div class="plaintext__extract">
-      <button type="button" class="button" disabled={slot.status !== 'ready'} onClick={extract}>
+      <button
+        type="button"
+        class="button"
+        disabled={slot.status !== 'ready'}
+        onClick={() => extract(p.concordance)}
+      >
         {p.extract}
       </button>
       {result && slot.status === 'ready' && (
@@ -560,6 +627,7 @@ function PageView({ doc }: { doc: TextDoc }) {
   const v = t.plainText.preview;
   const state = useTextState();
   const { page, fit, zoom, useZones } = state;
+  const printed = doc.printed[page] ?? null;
   const size = doc.pages[page - 1] ?? { w: 595, h: 842 };
   const wrap = useRef<HTMLDivElement>(null);
   // De ruimte in het vak; zonder meting (zoals in een test) een redelijke schatting.
@@ -688,8 +756,15 @@ function PageView({ doc }: { doc: TextDoc }) {
             ‹
           </button>
           <span class="plaintext-nav__page">
-            <span aria-hidden="true">{`${page} / ${doc.pageCount}`}</span>
-            <span class="visually-hidden">{format(v.page, { n: page, total: doc.pageCount })}</span>
+            <span aria-hidden="true">
+              {`${page} / ${doc.pageCount}`}
+              {printed && <span class="plaintext-nav__printed">{` · ${printed}`}</span>}
+            </span>
+            <span class="visually-hidden">
+              {printed
+                ? format(v.pageDoc, { n: page, total: doc.pageCount, p: printed })
+                : format(v.page, { n: page, total: doc.pageCount })}
+            </span>
           </span>
           <button
             type="button"

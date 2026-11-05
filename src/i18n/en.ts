@@ -769,6 +769,24 @@ export const en: Messages = {
       zonesOffRead:
         'Headers and footers: not with reading zones. Columns: only on pages without zones, which are read in full.',
     },
+    pages: {
+      title: 'Page transitions',
+      anchors: 'Insert page anchors {p#}',
+      anchorsHint:
+        'Every PDF page starts with {p#} (# = the page number in the PDF). At the bottom comes a page concordance: PDF page and printed page number.',
+      crossPage: 'Paragraphs that continue across pages',
+      crossPageHint:
+        'A sentence that continues across the page break is joined again: no punctuation at the end and a lower-case start, or a hyphen.',
+      join: 'How page {n} joins the previous one',
+      joinFirst: 'Go to page 2 or later to choose per transition.',
+      joins: { auto: 'Automatic', join: 'Joined', break: 'Separate' },
+    },
+    concordance: {
+      title: 'Page concordance:',
+      page: 'PDF page {n} = document page {p}',
+      none: 'PDF page {n} = no document page number',
+      titlePage: ' (title page)',
+    },
     save: {
       title: 'Keep settings',
       hint: 'Zones and settings are remembered in this browser per file name. Saving and loading uses a .json file, as in the separate PDF text extractor.',
@@ -793,6 +811,7 @@ export const en: Messages = {
     stale: 'The settings or the zones have changed since extracting. Click Extract text again.',
     preview: {
       page: 'Page {n} of {total}',
+      pageDoc: 'Page {n} of {total}, document page {p}',
       nav: 'Browse',
       first: 'First page',
       previous: 'Previous page',

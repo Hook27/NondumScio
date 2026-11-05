@@ -17,6 +17,9 @@ import {
   type ZoneSetup,
 } from './extract';
 
+/** De standaard zonder pagina-ankers en doorlopende zinnen: die staan in `pages.test.ts`. */
+const PLAIN = { ...DEFAULT_TEXT_OPTIONS, anchors: false, crossPage: false };
+
 /** Een pagina met regels (elk een eigen tekststukje), van boven naar beneden; `gap` na een alinea. */
 function page(
   no: number,
@@ -46,6 +49,18 @@ function page(
 const empty = (no: number): PageText => ({ no, w: 595, h: 842, items: [], chars: 0 });
 
 describe('extractText', () => {
+  it('heeft standaard pagina-ankers en doorlopende zinnen, zoals de extractor', () => {
+    expect(DEFAULT_TEXT_OPTIONS.anchors).toBe(true);
+    expect(DEFAULT_TEXT_OPTIONS.crossPage).toBe(true);
+    const { text } = extractText(
+      [page(1, [['Deze zin loopt door op de']]), page(2, [['volgende pagina.']])],
+      DEFAULT_TEXT_OPTIONS,
+    );
+    expect(text).toBe(
+      '{p1} Deze zin loopt door op de {p2} volgende pagina.\n\n---\nPaginaconcordantie:\nPDF-pagina 1 = geen documentpaginanummer (titelblad)\nPDF-pagina 2 = geen documentpaginanummer',
+    );
+  });
+
   it('zet de pagina’s na elkaar, met een witregel ertussen, en laat pagina’s zonder tekst weg', () => {
     const { text, pages } = extractText(
       [
@@ -53,7 +68,7 @@ describe('extractText', () => {
         empty(2),
         page(3, [['Op pagina drie.']]),
       ],
-      DEFAULT_TEXT_OPTIONS,
+      PLAIN,
     );
     expect(text).toBe(
       'De eerste alinea loopt over twee regels.\n\nDe tweede alinea.\n\nOp pagina drie.',
@@ -73,11 +88,11 @@ describe('extractText', () => {
       }),
     );
     expect(DEFAULT_TEXT_OPTIONS.strip).toBe(true);
-    const stripped = extractText(pages, DEFAULT_TEXT_OPTIONS).text;
+    const stripped = extractText(pages, PLAIN).text;
     expect(stripped).not.toContain('Rapport 2026');
     expect(stripped).not.toMatch(/Pagina \d van 3/);
 
-    const kept = extractText(pages, { ...DEFAULT_TEXT_OPTIONS, strip: false }).text;
+    const kept = extractText(pages, { ...PLAIN, strip: false }).text;
     expect(kept).toContain('Rapport 2026');
     expect(kept).toContain('Pagina 2 van 3');
   });
@@ -98,31 +113,31 @@ describe('extractText', () => {
     }
     const word: PageText = { no: 1, w: 595, h: 842, items, chars: 0 };
     expect(DEFAULT_TEXT_OPTIONS.gapFactor).toBe(1.3);
-    expect(extractText([word], DEFAULT_TEXT_OPTIONS).text).toBe(
+    expect(extractText([word], PLAIN).text).toBe(
       'De eerste alinea loopt over twee regels.\n\nDe tweede alinea, ook over twee regels.',
     );
-    expect(extractText([word], { ...DEFAULT_TEXT_OPTIONS, gapFactor: 1.6 }).text).toBe(
+    expect(extractText([word], { ...PLAIN, gapFactor: 1.6 }).text).toBe(
       'De eerste alinea loopt over twee regels. De tweede alinea, ook over twee regels.',
     );
   });
 
   it('laat elke regel los als regels niet worden samengevoegd', () => {
     const doc = [page(1, [['Regel een', 'regel twee'], ['Regel drie']])];
-    expect(extractText(doc, { ...DEFAULT_TEXT_OPTIONS, joinLines: false }).text).toBe(
+    expect(extractText(doc, { ...PLAIN, joinLines: false }).text).toBe(
       'Regel een\nregel twee\nRegel drie',
     );
   });
 
   it('herstelt afgebroken woorden, behalve als dat uit staat', () => {
     const doc = [page(1, [['Dit is een verge-', 'lijking van tekst.']])];
-    expect(extractText(doc, DEFAULT_TEXT_OPTIONS).text).toBe('Dit is een vergelijking van tekst.');
-    expect(extractText(doc, { ...DEFAULT_TEXT_OPTIONS, dehyphen: false }).text).toBe(
+    expect(extractText(doc, PLAIN).text).toBe('Dit is een vergelijking van tekst.');
+    expect(extractText(doc, { ...PLAIN, dehyphen: false }).text).toBe(
       'Dit is een verge- lijking van tekst.',
     );
   });
 
   it('geeft lege tekst als geen enkele pagina een tekstlaag heeft', () => {
-    expect(extractText([empty(1), empty(2)], DEFAULT_TEXT_OPTIONS).text).toBe('');
+    expect(extractText([empty(1), empty(2)], PLAIN).text).toBe('');
   });
 });
 
@@ -221,14 +236,14 @@ describe('leesvakken', () => {
   });
 
   it('leest de vakken in hun volgorde, elk als eigen blok, en de rest van de pagina vervalt', () => {
-    const opts = { ...DEFAULT_TEXT_OPTIONS, joinLines: false };
+    const opts = { ...PLAIN, joinLines: false };
     expect(extractText([twoColumns()], opts, setup([RIGHT, LEFT])).text).toBe(
       `${rows('rechts').join('\n')}\n\n${rows('links').join('\n')}`,
     );
   });
 
   it('splitst binnen een vak geen kolommen, en laat daar geen kop of voet weg', () => {
-    const opts = { ...DEFAULT_TEXT_OPTIONS, joinLines: false };
+    const opts = { ...PLAIN, joinLines: false };
     const pages = [1, 2, 3].map(twoColumns);
     // Zonder vakken: kop en voet weg (ze komen op elke pagina terug), links en rechts na elkaar.
     expect(extractText(pages, opts).text.split('\n\n')[0]).toBe(
@@ -246,21 +261,13 @@ describe('leesvakken', () => {
   });
 
   it('slaat elke pagina over als de leesvakken aan staan maar er geen vak is', () => {
-    const result = extractText(
-      [twoColumns(1), empty(2), twoColumns(3)],
-      DEFAULT_TEXT_OPTIONS,
-      setup([]),
-    );
+    const result = extractText([twoColumns(1), empty(2), twoColumns(3)], PLAIN, setup([]));
     expect(result.text).toBe('');
     expect(result.pages.map((p) => p.status)).toEqual(['skipped', 'notext', 'skipped']);
   });
 
   it('geeft een lege pagina-tekst als er niets in de vakken staat', () => {
-    const result = extractText(
-      [twoColumns()],
-      DEFAULT_TEXT_OPTIONS,
-      setup([pts(0, 600, 595, 500)]),
-    );
+    const result = extractText([twoColumns()], PLAIN, setup([pts(0, 600, 595, 500)]));
     expect(result.pages[0]).toEqual({ no: 1, text: '', status: 'read' });
   });
 });
@@ -310,7 +317,7 @@ describe('vakken verschuiven en vergroten', () => {
 });
 
 describe('vakken per pagina', () => {
-  const opts = { ...DEFAULT_TEXT_OPTIONS, joinLines: false };
+  const opts = { ...PLAIN, joinLines: false };
   const doc = [1, 2, 3].map(twoColumns);
   const textOf = (result: { pages: { no: number; text: string }[] }, no: number) =>
     result.pages.find((p) => p.no === no)!.text;

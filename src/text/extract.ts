@@ -6,19 +6,25 @@ import {
   type PageText,
   type Piece,
 } from '../compare/layout';
+import { DUTCH_CONCORDANCE, assemble, printedPages, type Assembly } from './pages';
 
 /**
  * PDF → Platte tekst: de tekstlaag van een PDF als lopende tekst, met dezelfde opmaakregels als
  * PDF's vergelijken (`../compare/layout`). Overgenomen uit de losse pdf-tekst-extractor: met
  * leesvakken wordt alleen gelezen wat in de vakken staat, vak voor vak; zonder vakken de hele
- * pagina. Koppen, tabellen, pagina-ankers en de rest komen in latere stappen.
+ * pagina; met pagina-ankers en doorlopende zinnen over de pagina-overgang (`./pages`).
  */
 
 /**
  * De instellingen: dezelfde als bij het opbouwen van de tekst voor het vergelijken, met hier altijd
  * ook opsommingen en koppen, de kopmarkering en tabellen (de vergelijker laat die weg).
  */
-export type TextOptions = Required<LayoutOptions>;
+export type TextOptions = Required<LayoutOptions> & {
+  /** Elke pagina begint met {p#}, met een paginaconcordantie onderaan. */
+  anchors: boolean;
+  /** Een zin die over de pagina-overgang doorloopt weer aan elkaar zetten. */
+  crossPage: boolean;
+};
 
 /**
  * De standaard van de losse pdf-tekst-extractor, met twee bewuste afwijkingen, zoals bij PDF's
@@ -37,6 +43,9 @@ export const DEFAULT_TEXT_OPTIONS: TextOptions = {
   structure: true,
   headingMarker: false,
   tables: false,
+  // Zoals in de extractor: pagina-ankers en doorlopende zinnen aan.
+  anchors: true,
+  crossPage: true,
 };
 
 /**
@@ -119,6 +128,7 @@ export function extractText(
   pages: readonly PageText[],
   opts: TextOptions,
   setup: ZoneSetup | null = null,
+  assembly: Partial<Assembly> = {},
 ): Extraction {
   const running = setup === null && opts.strip ? analyseRunning(pages) : null;
   const results = pages.map((page, index): PageResult => {
@@ -131,10 +141,11 @@ export function extractText(
     if (!setup.readEmpty) return { no: page.no, text: '', status: 'skipped' };
     return { no: page.no, text: layoutBlock(page.items, opts, opts.columns), status: 'read' };
   });
-  const text = results
-    .map((result) => result.text.trim())
-    .filter((t) => t !== '')
-    .join('\n\n');
+  const text = assemble(results, opts, {
+    printed: assembly.printed ?? printedPages(pages),
+    joins: assembly.joins ?? {},
+    texts: assembly.texts ?? DUTCH_CONCORDANCE,
+  });
   return { text, pages: results };
 }
 

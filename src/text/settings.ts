@@ -1,6 +1,7 @@
 import { GAP_FACTOR } from '../compare/layout';
 import { browserStorage } from '../lib/storage';
 import { clampZone, type TextOptions, type Zone } from './extract';
+import { JOINS, type Join } from './pages';
 
 /**
  * Instellingen bewaren: per PDF (op bestandsnaam) in de opslag van de browser, en als .json-bestand
@@ -18,14 +19,15 @@ export type Settings = {
   /** Eigen vakken per pagina. */
   pages: Record<number, Zone[]>;
   readEmpty: boolean;
+  /** De keuze per pagina-overgang (aansluiting op de vorige pagina). */
+  joins: Record<number, Join>;
   /** Wat de extractor ook bewaart maar hier (nog) niet gebruikt wordt; gaat ongewijzigd mee. */
   extra: Extra;
 };
 
 export type Extra = {
-  /** Opties van de extractor die deze tool nog niet kent (anchors, tables…). */
+  /** Opties van de extractor die deze tool nog niet kent (documentkop, conventieblok). */
   options: Record<string, unknown>;
-  joinOverride?: unknown;
   meta?: unknown;
 };
 
@@ -40,6 +42,8 @@ const KNOWN = [
   'structure',
   'headingMarker',
   'tables',
+  'anchors',
+  'crossPage',
   'strip',
 ];
 
@@ -53,6 +57,18 @@ function readZone(value: unknown): Zone | null {
   const numbers = [x0, y0, x1, y1];
   if (!numbers.every((n) => typeof n === 'number' && Number.isFinite(n))) return null;
   return clampZone({ x0: x0 as number, y0: y0 as number, x1: x1 as number, y1: y1 as number });
+}
+
+/** De keuzes per overgang: alleen paginanummers vanaf 1 en bekende keuzes. */
+function readJoins(value: unknown): Record<number, Join> {
+  const joins: Record<number, Join> = {};
+  if (!isObject(value)) return joins;
+  for (const [key, choice] of Object.entries(value)) {
+    const no = Number(key);
+    if (Number.isInteger(no) && no >= 1 && JOINS.includes(choice as Join))
+      joins[no] = choice as Join;
+  }
+  return joins;
 }
 
 const readZones = (value: unknown): Zone[] =>
@@ -99,14 +115,17 @@ export function fromSettings(raw: unknown, base: Settings): Settings | null {
       structure: flag('structure', base.options.structure),
       headingMarker: flag('headingMarker', base.options.headingMarker),
       tables: flag('tables', base.options.tables),
+      anchors: flag('anchors', base.options.anchors),
+      crossPage: flag('crossPage', base.options.crossPage),
     },
     useZones: flag('useCrop', base.useZones),
     zones: readZones(zones.d),
     pages,
     readEmpty: flag('readEmpty', base.readEmpty),
+    // Zoals de vakken: altijd vervangen, zoals in de extractor.
+    joins: readJoins(raw.joinOverride),
     extra: {
       options: extraOptions,
-      joinOverride: isObject(raw.joinOverride) ? raw.joinOverride : base.extra.joinOverride,
       meta: isObject(raw.meta) ? raw.meta : base.extra.meta,
     },
   };
@@ -119,7 +138,7 @@ export function toSettings(pdf: string, settings: Settings) {
     v: 2,
     pdf,
     zones: { d: settings.zones, p: settings.pages },
-    joinOverride: extra.joinOverride ?? {},
+    joinOverride: settings.joins,
     options: {
       useCrop: settings.useZones,
       columns: options.columns,
@@ -128,6 +147,8 @@ export function toSettings(pdf: string, settings: Settings) {
       // In de extractor is dit de waarde van de schuif: een tekst.
       paraGap: String(options.gapFactor),
       readEmpty: settings.readEmpty,
+      anchors: options.anchors,
+      crossPage: options.crossPage,
       structure: options.structure,
       headingMarker: options.headingMarker,
       tables: options.tables,

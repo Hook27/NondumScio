@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/preact';
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { PageText, Piece } from '../compare/layout';
 import { readPdf } from '../compare/readPdf';
 import { copyText } from '../compare/report';
@@ -12,7 +12,7 @@ import { PdfLoadError } from '../pdf/loader';
 import { downloadFile } from '../pdf/save';
 import { TextTool } from './TextTool';
 import { SETTINGS_PREFIX } from './settings';
-import { UNDO_LIMIT, getTextState, resetTextState, undoZones } from './store';
+import { UNDO_LIMIT, getTextState, resetTextState, setOptions, undoZones } from './store';
 
 /** Een pagina met alinea's (elk een lijst regels), met een witregel ertussen. */
 function page(no: number, paragraphs: string[][]): PageText {
@@ -44,6 +44,13 @@ function columns(no: number): PageText {
   return { no, w: 595, h: 842, items, chars: items.reduce((n, i) => n + i.str.length, 0) };
 }
 
+/** Een pagina met regels tekst en onderaan een paginanummer, in de onderrand. */
+function numberedPage(no: number, lines: string[], printed: string): PageText {
+  const p = page(no, [lines]);
+  p.items.push({ str: printed, x: 290, y: 30, fh: 10, w: printed.length * 5 });
+  return p;
+}
+
 const empty = (no: number): PageText => ({ no, w: 595, h: 842, items: [], chars: 0 });
 
 const LETTER = [
@@ -61,6 +68,12 @@ const DOCS: Record<string, PageText[] | Error> = {
   'scan.pdf': [empty(1), page(2, [['Alleen hier staat een hele zin met tekst.']]), empty(3)],
   'kort.pdf': [page(1, [['Kort.']]), page(2, [['Een pagina met genoeg tekst erop.']])],
   'leeg.pdf': [empty(1), empty(2)],
+  'boek.pdf': [
+    page(1, [['De titel van het boek.']]),
+    numberedPage(2, ['Het voorwoord van', 'het boek.'], '1'),
+    numberedPage(3, ['En dan loopt de zin', 'door op de'], '2'),
+    numberedPage(4, ['volgende pagina en', 'eindigt hier.'], '3'),
+  ],
   'contract.pdf': [
     page(1, [
       [
@@ -184,6 +197,10 @@ const zoneList = () =>
 /** De kolommen van het artikel: links en rechts, elk als vak. */
 const LEFT_BOX = [40, 720, 300, 600] as const;
 const RIGHT_BOX = [310, 720, 560, 600] as const;
+
+// De tekst in deze tests zonder pagina-ankers en doorlopende zinnen (de standaard); die hebben
+// hun eigen tests onderaan.
+beforeEach(() => setOptions({ anchors: false, crossPage: false }));
 
 afterEach(() => {
   cleanup();
@@ -631,7 +648,7 @@ describe('PDF → Platte tekst: indeling', () => {
       block(p.settings.title).open = false;
       block(p.settings.title).dispatchEvent(new Event('toggle'));
     });
-    expect(getTextState().blocks).toEqual({ zones: true, clean: false, save: false });
+    expect(getTextState().blocks).toEqual({ zones: true, clean: false, pages: true, save: false });
     fireEvent.click(button(p.clear));
     cleanup();
     setup();
@@ -1059,5 +1076,132 @@ describe('PDF → Platte tekst: opsommingen, koppen en tabellen', () => {
     choose('contract.pdf');
     await waitFor(() => expect(screen.getByText(/instellingen hersteld/)).toBeTruthy());
     expect(check(s.tables).checked).toBe(true);
+  });
+});
+
+describe('PDF → Platte tekst: pagina-overgangen', () => {
+  const g = p.pages;
+  /** De standaard terug (de tests hierboven zetten ankers en doorlopende zinnen uit). */
+  beforeEach(() => setOptions({ anchors: true, crossPage: true }));
+
+  it('standaard: {p#} vóór elke pagina, de zin loopt door, en de concordantie onderaan', async () => {
+    await open('boek.pdf');
+    expect(check(g.anchors).checked).toBe(true);
+    expect(check(g.crossPage).checked).toBe(true);
+    fireEvent.click(button(p.extract));
+    expect(output()!.textContent).toBe(
+      [
+        '{p1} De titel van het boek.',
+        '',
+        '{p2} Het voorwoord van het boek.',
+        '',
+        '{p3} En dan loopt de zin door op de {p4} volgende pagina en eindigt hier.',
+        '',
+        '---',
+        'Paginaconcordantie:',
+        'PDF-pagina 1 = geen documentpaginanummer (titelblad)',
+        'PDF-pagina 2 = documentpagina 1',
+        'PDF-pagina 3 = documentpagina 2',
+        'PDF-pagina 4 = documentpagina 3',
+      ].join('\n'),
+    );
+  });
+
+  it('zonder ankers en doorlopende zinnen: zoals eerst', async () => {
+    await open('boek.pdf');
+    fireEvent.click(check(g.anchors));
+    fireEvent.click(check(g.crossPage));
+    fireEvent.click(button(p.extract));
+    expect(output()!.textContent).toBe(
+      'De titel van het boek.\n\nHet voorwoord van het boek.\n\nEn dan loopt de zin door op de\n\nvolgende pagina en eindigt hier.',
+    );
+  });
+
+  it('per overgang: aaneen of gescheiden, en weer automatisch', async () => {
+    await open('boek.pdf');
+    fireEvent.click(check(g.anchors));
+    // Op pagina 1 valt er niets te kiezen.
+    expect(screen.getByText(g.joinFirst)).toBeTruthy();
+    expect(screen.queryByRole('combobox')).toBeNull();
+    fireEvent.click(button(p.preview.last));
+    const select = screen.getByRole<HTMLSelectElement>('combobox', {
+      name: format(g.join, { n: 4 }),
+    });
+    expect(select.value).toBe('auto');
+    fireEvent.change(select, { target: { value: 'break' } });
+    expect(getTextState().joins).toEqual({ 4: 'break' });
+    fireEvent.click(button(p.extract));
+    expect(output()!.textContent).toContain('op de\n\nvolgende pagina');
+    // Pagina 2 aaneen met pagina 1.
+    fireEvent.click(button(p.views.preview));
+    fireEvent.click(button(p.preview.first));
+    fireEvent.click(button(p.preview.next));
+    fireEvent.change(screen.getByRole('combobox'), { target: { value: 'join' } });
+    fireEvent.click(button(p.extract));
+    expect(output()!.textContent!.startsWith('De titel van het boek. Het voorwoord')).toBe(true);
+    // Terug naar automatisch: de keuze verdwijnt.
+    fireEvent.click(button(p.views.preview));
+    fireEvent.change(screen.getByRole('combobox'), { target: { value: 'auto' } });
+    expect(getTextState().joins).toEqual({ 4: 'break' });
+    // Zonder doorlopende alinea's geen keuze.
+    fireEvent.click(check(g.crossPage));
+    expect(screen.queryByRole('combobox')).toBeNull();
+    expect(screen.queryByText(g.joinFirst)).toBeNull();
+  });
+
+  it('de keuzes per overgang worden onthouden en opgeslagen', async () => {
+    await open('boek.pdf');
+    fireEvent.click(button(p.preview.last));
+    fireEvent.change(screen.getByRole('combobox'), { target: { value: 'break' } });
+    fireEvent.click(button(p.save.export));
+    const [data] = vi.mocked(downloadFile).mock.calls[0]!;
+    const saved = JSON.parse(new TextDecoder().decode(data as Uint8Array));
+    expect(saved.joinOverride).toEqual({ 4: 'break' });
+    expect(saved.options).toMatchObject({ anchors: true, crossPage: true });
+    fireEvent.click(button(p.clear));
+    choose('boek.pdf');
+    await waitFor(() => expect(screen.getByText(/instellingen hersteld/)).toBeTruthy());
+    expect(getTextState().joins).toEqual({ 4: 'break' });
+  });
+
+  it('een andere PDF begint zonder keuzes per overgang', async () => {
+    await open('boek.pdf');
+    fireEvent.click(button(p.preview.last));
+    fireEvent.change(screen.getByRole('combobox'), { target: { value: 'break' } });
+    expect(getTextState().joins).toEqual({ 4: 'break' });
+    choose('brief.pdf');
+    await waitFor(() =>
+      expect(screen.getByText(format(p.preview.page, { n: 1, total: 1 }))).toBeTruthy(),
+    );
+    expect(getTextState().joins).toEqual({});
+  });
+
+  it('het afgedrukte paginanummer staat in de balk', async () => {
+    await open('boek.pdf');
+    const bar = () => document.querySelector<HTMLElement>('.plaintext-nav__page')!;
+    expect(bar().textContent).toContain('1 / 4');
+    expect(document.querySelector('.plaintext-nav__printed')).toBeNull();
+    fireEvent.click(button(p.preview.next));
+    expect(within(bar()).getByText('· 1', { exact: false })).toBeTruthy();
+    expect(screen.getByText(format(p.preview.pageDoc, { n: 2, total: 4, p: '1' }))).toBeTruthy();
+  });
+
+  it('de concordantie in de taal van de app', async () => {
+    render(
+      <LanguageProvider initial="en">
+        <TextTool />
+      </LanguageProvider>,
+    );
+    choose('boek.pdf');
+    const en = messages.en.plainText;
+    await waitFor(() =>
+      expect(screen.getByRole<HTMLButtonElement>('button', { name: en.extract }).disabled).toBe(
+        false,
+      ),
+    );
+    fireEvent.click(screen.getByRole('button', { name: en.extract }));
+    expect(output()!.textContent).toContain(
+      '---\nPage concordance:\nPDF page 1 = no document page number (title page)\nPDF page 2 = document page 1',
+    );
   });
 });
