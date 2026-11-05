@@ -21,6 +21,7 @@ import {
   type Extra,
   type Settings,
 } from './settings';
+import { printedPages, type ConcordanceTexts, type Join, type Printed } from './pages';
 
 /** Een gelezen PDF. */
 export type TextDoc = {
@@ -29,6 +30,8 @@ export type TextDoc = {
   pages: PageText[];
   /** Een klein plaatje van de eerste pagina (een blob-adres), of null. */
   thumb: string | null;
+  /** Het afgedrukte paginanummer per pagina (herkend bij het openen). */
+  printed: Printed;
 };
 
 export type TextSlot =
@@ -44,7 +47,7 @@ export type TextView = 'preview' | 'result';
 export type Fit = 'page' | 'width';
 
 /** De blokken links die je kunt in- en uitklappen. */
-export type TextBlock = 'zones' | 'clean' | 'save';
+export type TextBlock = 'zones' | 'clean' | 'pages' | 'save';
 
 /** Hoeveel stappen terug "Ongedaan" kan, zoals in de extractor. */
 export const UNDO_LIMIT = 60;
@@ -66,6 +69,8 @@ export type TextState = {
   pages: Record<number, Zone[]>;
   /** Pagina's zonder vakken toch helemaal lezen. */
   readEmpty: boolean;
+  /** De keuze per pagina-overgang: hoe pagina n aansluit op de vorige. */
+  joins: Record<number, Join>;
   /** Eerdere vakken, voor Ongedaan (de laatste het eerst). */
   undo: ZoneSnapshot[];
   /** Wat de extractor ook bewaart maar hier (nog) niet gebruikt wordt. */
@@ -98,6 +103,7 @@ const INITIAL: TextState = {
   zones: [],
   pages: {},
   readEmpty: false,
+  joins: {},
   undo: [],
   extra: NO_EXTRA,
   restored: false,
@@ -107,7 +113,7 @@ const INITIAL: TextState = {
   zoom: 100,
   result: null,
   stale: false,
-  blocks: { zones: true, clean: true, save: false },
+  blocks: { zones: true, clean: true, pages: true, save: false },
 };
 
 /**
@@ -146,6 +152,7 @@ const settingsOf = (s: TextState): Settings => ({
   zones: s.zones,
   pages: s.pages,
   readEmpty: s.readEmpty,
+  joins: s.joins,
   extra: s.extra,
 });
 
@@ -171,6 +178,7 @@ function setSlot(slot: TextSlot, extra: Partial<TextState> = {}) {
     slot,
     zones: [],
     pages: {},
+    joins: {},
     undo: [],
     extra: NO_EXTRA,
     restored: false,
@@ -210,7 +218,10 @@ async function load(file: File) {
     // Eerder onthouden instellingen voor deze PDF terughalen, zoals in de extractor.
     const stored = fromSettings(loadStored(file.name), settingsOf(state));
     setState({
-      slot: { status: 'ready', doc: { file, pageCount, pages, thumb: url } },
+      slot: {
+        status: 'ready',
+        doc: { file, pageCount, pages, thumb: url, printed: printedPages(pages) },
+      },
       ...(stored ? { ...stored, restored: true } : {}),
     });
   } catch (error) {
@@ -247,6 +258,14 @@ export function setOptions(next: Partial<TextOptions>): void {
 /** Leesvakken aan of uit; aan zet het voorbeeld voor, om ze te kunnen tekenen. */
 export function setUseZones(useZones: boolean): void {
   change({ useZones, ...(useZones ? { view: 'preview' as const } : {}) });
+}
+
+/** Hoe een pagina aansluit op de vorige: automatisch, aaneen of gescheiden. */
+export function setJoin(page: number, join: Join): void {
+  const joins = { ...state.joins };
+  if (join === 'auto') delete joins[page];
+  else joins[page] = join;
+  change({ joins });
 }
 
 /** Pagina's zonder vakken toch helemaal lezen (of overslaan). */
@@ -362,14 +381,21 @@ export function setZoom(zoom: number): void {
   setState({ zoom });
 }
 
-/** De tekst maken met de instellingen en vakken van nu, en de tekst tonen. */
-export function extract(): void {
+/**
+ * De tekst maken met de instellingen en vakken van nu, en de tekst tonen. `texts` zijn de woorden
+ * van de paginaconcordantie, in de taal van de app.
+ */
+export function extract(texts?: ConcordanceTexts): void {
   if (state.slot.status !== 'ready') return;
   const setup = state.useZones
     ? { zones: state.zones, pages: state.pages, readEmpty: state.readEmpty }
     : null;
   setState({
-    result: extractText(state.slot.doc.pages, state.options, setup),
+    result: extractText(state.slot.doc.pages, state.options, setup, {
+      printed: state.slot.doc.printed,
+      joins: state.joins,
+      ...(texts ? { texts } : {}),
+    }),
     view: 'result',
     stale: false,
   });

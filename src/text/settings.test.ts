@@ -18,6 +18,7 @@ const BASE: Settings = {
   zones: [],
   pages: {},
   readEmpty: false,
+  joins: {},
   extra: { options: {} },
 };
 
@@ -77,14 +78,12 @@ describe('fromSettings', () => {
 
   it('bewaart wat de extractor kent maar deze tool nog niet, en schrijft het terug', () => {
     const s = fromSettings(ORIGINAL, BASE)!;
-    expect(s.extra.options).toEqual({
-      anchors: true,
-      crossPage: true,
-      metaHeader: false,
-      conventions: false,
-    });
+    expect(s.extra.options).toEqual({ metaHeader: false, conventions: false });
+    expect(s.options.anchors).toBe(true);
+    expect(s.options.crossPage).toBe(true);
+    expect(s.joins).toEqual({ 2: 'join' });
     const out = toSettings('artikel.pdf', s);
-    expect(out.joinOverride).toEqual({ '2': 'join' });
+    expect(out.joinOverride).toEqual({ 2: 'join' });
     expect(out.meta).toEqual(ORIGINAL.meta);
     // Alle opties van de extractor staan er weer in, met dezelfde waarden; "strip" komt erbij.
     expect(out.options).toEqual({ ...ORIGINAL.options, strip: true });
@@ -100,10 +99,11 @@ describe('fromSettings', () => {
       zones: [A, B],
       pages: { 4: [B] },
       readEmpty: true,
-      extra: { options: { anchors: true } },
+      joins: { 3: 'break', 4: 'join' },
+      extra: { options: { metaHeader: true } },
     };
     const back = fromSettings(JSON.parse(JSON.stringify(toSettings('x.pdf', s))), BASE)!;
-    expect(back).toEqual({ ...s, extra: { options: { anchors: true }, joinOverride: {} } });
+    expect(back).toEqual(s);
   });
 
   it('leest en schrijft opsommingen en koppen, de kopmarkering en tabellen', () => {
@@ -125,6 +125,25 @@ describe('fromSettings', () => {
     });
     // Niet opgegeven: zoals het was.
     expect(fromSettings({ options: {} }, s)!.options).toEqual(s.options);
+  });
+
+  it('leest de keuzes per overgang: alleen bekende keuzes en paginanummers vanaf 1', () => {
+    const s = fromSettings(
+      {
+        joinOverride: {
+          '2': 'join',
+          '3': 'break',
+          '4': 'auto',
+          '5': 'anders',
+          '0': 'join',
+          x: 'join',
+        },
+      },
+      { ...BASE, joins: { 9: 'join' } },
+    )!;
+    expect(s.joins).toEqual({ 2: 'join', 3: 'break', 4: 'auto' });
+    // Zonder keuzes in het bestand: geen keuzes (zoals de vakken altijd vervangen).
+    expect(fromSettings({}, { ...BASE, joins: { 9: 'join' } })!.joins).toEqual({});
   });
 
   it('leest ook het oude formaat van de extractor (alleen { d, p })', () => {
@@ -171,7 +190,7 @@ describe('fromSettings', () => {
   });
 
   it('negeert opties van het verkeerde soort', () => {
-    const s = fromSettings({ options: { columns: 'nee', useCrop: 1, anchors: 'ja' } }, BASE)!;
+    const s = fromSettings({ options: { columns: 'nee', useCrop: 1, metaHeader: 'ja' } }, BASE)!;
     expect(s.options.columns).toBe(true);
     expect(s.useZones).toBe(false);
     expect(s.extra.options).toEqual({});

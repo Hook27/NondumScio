@@ -81,8 +81,20 @@ const TEXT = [
  */
 const output = (page: Page) => page.locator('pre.plaintext__output');
 
-const choose = async (page: Page, options?: { scan?: boolean }) =>
-  page.locator('#plaintext-file').setInputFiles(await letter('brief.pdf', PAGES, options));
+/**
+ * Pagina-ankers en doorlopende alinea's uit (de standaard is aan): de tests hieronder kijken naar de
+ * tekst zonder; die twee hebben hun eigen test onderaan.
+ */
+async function withoutPageMarks(page: Page) {
+  const block = page.getByRole('group', { name: p.pages.title });
+  await block.getByRole('checkbox', { name: p.pages.anchors }).uncheck();
+  await block.getByRole('checkbox', { name: p.pages.crossPage }).uncheck();
+}
+
+const choose = async (page: Page, options?: { scan?: boolean }) => {
+  await withoutPageMarks(page);
+  await page.locator('#plaintext-file').setInputFiles(await letter('brief.pdf', PAGES, options));
+};
 
 const axe = async (page: Page) => {
   const result = await new AxeBuilder({ page })
@@ -159,6 +171,7 @@ const ink = (page: Page) =>
 
 const openArticle = async (page: Page, pages = 2) => {
   await openPage(page, '/#/advanced/text', { lang: 'nl' });
+  await withoutPageMarks(page);
   await page.locator('#plaintext-file').setInputFiles(await article('artikel.pdf', pages));
   await expect(page.locator('canvas.plaintext-preview__canvas')).toBeVisible(SLOW);
 };
@@ -558,6 +571,7 @@ test.describe('PDF → Platte tekst: opsommingen, koppen en tabellen', () => {
 
   test('herkent koppen en opsommingen, met {H} en tabellen als je dat wilt', async ({ page }) => {
     await openPage(page, '/#/advanced/text', { lang: 'nl' });
+    await withoutPageMarks(page);
     await page.locator('#plaintext-file').setInputFiles(await contract());
     await expect(page.locator('canvas.plaintext-preview__canvas')).toBeVisible(SLOW);
     const settings = page.getByRole('group', { name: s.title });
@@ -602,6 +616,97 @@ test.describe('PDF → Platte tekst: opsommingen, koppen en tabellen', () => {
     expect(plain).not.toContain('{H}');
     expect(plain).toContain('Artikel 1 Huurprijs De huur bedraagt');
     expect(plain).toContain('\n\n• gas en water\n\n• de servicekosten');
+  });
+});
+
+test.describe('PDF → Platte tekst: pagina-overgangen', () => {
+  test.skip(({ isMobile }) => isMobile, 'Geavanceerd is er alleen op de computer');
+
+  /**
+   * Een boek van vijf pagina's zoals Word het maakt: een titelblad zonder nummer, dan vier pagina's
+   * met onderaan het paginanummer 1 tot 4. De zin van pagina 3 loopt door op pagina 4.
+   */
+  async function book() {
+    const doc = await PDFDocument.create();
+    const font = await doc.embedFont(StandardFonts.Helvetica);
+    doc.addPage([595, 842]).drawText('Het boek over leesvakken', { x: 71, y: 700, size: 16, font });
+    const pages = [
+      ['Voorwoord van de schrijver over', 'het hele boek.'],
+      ['Het eerste hoofdstuk begint hier', 'en de zin loopt door op de'],
+      ['volgende pagina tot het eind.', 'Dat is alles.'],
+      ['Nawoord.', 'Einde.'],
+    ];
+    pages.forEach((lines, i) => {
+      const page = doc.addPage([595, 842]);
+      lines.forEach((line, k) => page.drawText(line, { x: 71, y: 760 - k * 14.5, size: 11, font }));
+      page.drawText(String(i + 1), { x: 295, y: 30, size: 9, font });
+    });
+    return { name: 'boek.pdf', mimeType: 'application/pdf', buffer: Buffer.from(await doc.save()) };
+  }
+
+  const g = p.pages;
+  const TEXT = [
+    '{p1} Het boek over leesvakken',
+    '',
+    '{p2} Voorwoord van de schrijver over het hele boek.',
+    '',
+    '{p3} Het eerste hoofdstuk begint hier en de zin loopt door op de {p4} volgende pagina tot het eind. Dat is alles.',
+    '',
+    '{p5} Nawoord. Einde.',
+    '',
+    '---',
+    'Paginaconcordantie:',
+    'PDF-pagina 1 = geen documentpaginanummer (titelblad)',
+    'PDF-pagina 2 = documentpagina 1',
+    'PDF-pagina 3 = documentpagina 2',
+    'PDF-pagina 4 = documentpagina 3',
+    'PDF-pagina 5 = documentpagina 4',
+  ].join('\n');
+
+  test('ankers, een zin die doorloopt, de concordantie, en per overgang kiezen', async ({
+    page,
+  }) => {
+    await openPage(page, '/#/advanced/text', { lang: 'nl' });
+    await page.locator('#plaintext-file').setInputFiles(await book());
+    await expect(page.locator('canvas.plaintext-preview__canvas')).toBeVisible(SLOW);
+    const block = page.getByRole('group', { name: g.title });
+    await expect(block.getByRole('checkbox', { name: g.anchors })).toBeChecked();
+    await expect(block.getByRole('checkbox', { name: g.crossPage })).toBeChecked();
+    await expect(block.getByText(g.joinFirst)).toBeVisible();
+
+    await extract(page);
+    await expect(output(page)).toHaveJSProperty('textContent', TEXT);
+
+    // In de balk: het afgedrukte paginanummer.
+    await page.getByRole('button', { name: p.views.preview }).click();
+    await page.getByRole('button', { name: p.preview.next }).click();
+    await page.getByRole('button', { name: p.preview.next }).click();
+    await expect(page.locator('.plaintext-nav__page')).toHaveText(/^3 \/ 5 · 2/);
+
+    // Pagina 4 gescheiden van pagina 3.
+    await page.getByRole('button', { name: p.preview.next }).click();
+    const join = block.getByRole('combobox', { name: format(g.join, { n: 4 }) });
+    await expect(join).toHaveValue('auto');
+    await join.selectOption('break');
+    await axe(page);
+    await extract(page);
+    await expect
+      .poll(() => output(page).textContent())
+      .toContain('loopt door op de\n\n{p4} volgende pagina');
+
+    // Zonder ankers: geen {p#} en geen concordantie.
+    await block.getByRole('checkbox', { name: g.anchors }).uncheck();
+    await extract(page);
+    const text = (await output(page).textContent())!;
+    expect(text).not.toContain('{p');
+    expect(text).not.toContain('Paginaconcordantie');
+    expect(text.split('\n\n')).toEqual([
+      'Het boek over leesvakken',
+      'Voorwoord van de schrijver over het hele boek.',
+      'Het eerste hoofdstuk begint hier en de zin loopt door op de',
+      'volgende pagina tot het eind. Dat is alles.',
+      'Nawoord. Einde.',
+    ]);
   });
 });
 
