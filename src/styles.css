@@ -1718,6 +1718,27 @@ h1 {
   cursor: move;
 }
 
+/* Eigen vakken van een pagina: oranje, zodat je ziet dat de standaardvakken hier niet gelden. */
+.plaintext-zone--own {
+  border-color: var(--candidate);
+  background: color-mix(in srgb, var(--candidate) 14%, transparent);
+}
+
+.plaintext-zone--own .plaintext-zone__num {
+  color: var(--candidate);
+}
+
+.plaintext-zone--own .plaintext-zone__handle {
+  background: var(--candidate);
+}
+
+/* In de lijst: het nummer met een oranje rand (oranje als achtergrond is te weinig contrast). */
+.plaintext-zones--own .plaintext-zones__num {
+  color: var(--text);
+  background: transparent;
+  box-shadow: inset 0 0 0 2px var(--candidate);
+}
+
 .plaintext-zone__num {
   position: absolute;
   inset: 0;

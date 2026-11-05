@@ -730,6 +730,17 @@ export const en: Messages = {
       useHint:
         'Zones over the text, read in the order you draw them; the rest is left out. They apply to all pages.',
       empty: 'No zones yet: drag one on the preview.',
+      emptyOwn:
+        'Page {n} has its own zones, but not a single zone yet: this page is skipped (or read in full, if that is turned on below).',
+      own: 'Own zones for this page',
+      ownOff: 'The default zones apply to every page without its own zones.',
+      ownOn: 'Page {n} has its own zones (orange). Untick: back to the default zones.',
+      allOwn: 'Own zones for all pages',
+      allOwnHint:
+        'Every page gets a copy of the default zones, to adjust page by page. Useful when every page is different.',
+      readEmpty: 'Read pages without zones in full',
+      readEmptyHint:
+        'Off: such a page is skipped, for example a list of sources. On: the whole page is read.',
       item: 'Zone {n}',
       remove: 'Remove zone {n}',
       undo: 'Undo',
@@ -747,7 +758,28 @@ export const en: Messages = {
       columns: 'Recognise two columns',
       strip: 'Leave out recurring headers and footers',
       zonesOff: 'Columns and headers and footers: not with reading zones.',
+      zonesOffRead:
+        'Headers and footers: not with reading zones. Columns: only on pages without zones, which are read in full.',
     },
+    save: {
+      title: 'Keep settings',
+      hint: 'Zones and settings are remembered in this browser per file name. Saving and loading uses a .json file, as in the separate PDF text extractor.',
+      export: 'Save settings',
+      exported: 'Saved as {name}.',
+      import: 'Load settings',
+      imported: 'Settings loaded from {name}.',
+      importFailed: '{name} could not be read as a settings file.',
+      forget: 'Forget remembered settings',
+      forgetTitle: 'Forget remembered settings?',
+      forgetText:
+        'The zones and settings this browser remembers for all your PDFs are erased. What is open now stays. This cannot be undone.',
+      forgetConfirm: 'Forget',
+      cancel: 'Cancel',
+      forgottenNone: 'There were no remembered settings.',
+      forgottenOne: 'The remembered settings of 1 PDF have been forgotten.',
+      forgotten: 'The remembered settings of {n} PDFs have been forgotten.',
+    },
+    restored: 'settings restored',
     extract: 'Extract text',
     done: 'Done: {summary}.',
     stale: 'The settings or the zones have changed since extracting. Click Extract text again.',
@@ -781,6 +813,7 @@ export const en: Messages = {
     noTextPages:
       'No text layer on {list}: possibly a scan or an image. No text is recognised there (no OCR).',
     lowPages: 'Hardly any text on {list}.',
+    skippedPages: 'Skipped (no zones): {list}.',
     pageOne: 'page {n}',
     pageMany: 'pages {list}',
     and: ' and ',

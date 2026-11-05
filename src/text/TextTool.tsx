@@ -3,6 +3,7 @@ import { useEffect, useLayoutEffect, useRef, useState } from 'preact/hooks';
 import { GAP_FACTOR } from '../compare/layout';
 import { copyText } from '../compare/report';
 import { ZOOM_STEPS, renderPage, stepZoom, targetWidths } from '../compare/visual';
+import { ConfirmDialog } from '../components/ConfirmDialog';
 import { Dropzone } from '../components/Dropzone';
 import { useI18n } from '../i18n/LanguageContext';
 import { format, plural } from '../i18n/format';
@@ -22,14 +23,21 @@ import {
 import {
   clearText,
   clearZones,
+  editingZones,
+  exportSettings,
   extract,
   getTextState,
+  importSettings,
   openFiles,
+  ownAllPages,
+  ownPage,
   removeZone,
   setFit,
   setOptions,
   setBlock,
+  setOwnPage,
   setPage,
+  setReadEmpty,
   setUseZones,
   setView,
   setZones,
@@ -41,6 +49,7 @@ import {
   type TextDoc,
   type TextView,
 } from './store';
+import { forgetStored } from './settings';
 
 type Texts = ReturnType<typeof useI18n>['t'];
 
@@ -75,6 +84,7 @@ export function TextTool() {
         )}
         <ZoneSettings />
         <Settings />
+        <SaveSettings />
         <ExtractBar />
       </div>
       <div class="workspace__view" data-scroll-root>
@@ -128,7 +138,7 @@ function SlotView() {
   const { t, language } = useI18n();
   const p = t.plainText;
   const c = t.compare;
-  const { slot } = useTextState();
+  const { slot, restored } = useTextState();
   return (
     <Dropzone
       title={p.slot.title}
@@ -165,7 +175,10 @@ function SlotView() {
         </p>
       )}
       {slot.status === 'ready' && (
-        <p class="plaintext-slot__meta">{docMeta(slot.doc, t, language)}</p>
+        <p class="plaintext-slot__meta">
+          {docMeta(slot.doc, t, language)}
+          {restored && ` · ${p.restored}`}
+        </p>
       )}
     </Dropzone>
   );
@@ -212,11 +225,19 @@ function Block({
   );
 }
 
-/** Leesvakken aan of uit, de lijst met vakken, Ongedaan en Alle vakken wissen. */
+/**
+ * Leesvakken: aan of uit, eigen vakken voor deze pagina (of voor alle pagina's), de lijst met de
+ * vakken die je op deze pagina bewerkt, Ongedaan, Alle vakken wissen, en wat er gebeurt met een
+ * pagina zonder vakken. Zoals in de extractor.
+ */
 function ZoneSettings() {
   const { t } = useI18n();
   const z = t.plainText.zones;
-  const { useZones, zones, undo } = useTextState();
+  const state = useTextState();
+  const { useZones, undo, slot, page, readEmpty } = state;
+  const zones = editingZones(state);
+  const own = ownPage(state);
+  const ready = slot.status === 'ready';
   return (
     <Block id="zones" title={z.title}>
       <label class="compare-settings__check">
@@ -231,11 +252,24 @@ function ZoneSettings() {
       <p id="plaintext-zones-hint" class="compare-settings__hint">
         {z.useHint}
       </p>
+      <label class="compare-settings__check">
+        <input
+          type="checkbox"
+          checked={own}
+          disabled={!useZones || !ready}
+          aria-describedby="plaintext-own-hint"
+          onChange={(event) => setOwnPage(event.currentTarget.checked)}
+        />
+        {z.own}
+      </label>
+      <p id="plaintext-own-hint" class="compare-settings__hint">
+        {own ? format(z.ownOn, { n: page }) : z.ownOff}
+      </p>
       {useZones &&
         (zones.length === 0 ? (
-          <p class="plaintext-zones__empty">{z.empty}</p>
+          <p class="plaintext-zones__empty">{own ? format(z.emptyOwn, { n: page }) : z.empty}</p>
         ) : (
-          <ol class="plaintext-zones">
+          <ol class={`plaintext-zones${own ? ' plaintext-zones--own' : ''}`}>
             {zones.map((_, i) => (
               <li key={i} class="plaintext-zones__item">
                 <span class="plaintext-zones__num" aria-hidden="true">
@@ -271,7 +305,29 @@ function ZoneSettings() {
         >
           {z.clearAll}
         </button>
+        <button
+          type="button"
+          class="button button--secondary"
+          disabled={!useZones || !ready}
+          title={z.allOwnHint}
+          onClick={ownAllPages}
+        >
+          {z.allOwn}
+        </button>
       </div>
+      <label class="compare-settings__check">
+        <input
+          type="checkbox"
+          checked={readEmpty}
+          disabled={!useZones}
+          aria-describedby="plaintext-read-empty-hint"
+          onChange={(event) => setReadEmpty(event.currentTarget.checked)}
+        />
+        {z.readEmpty}
+      </label>
+      <p id="plaintext-read-empty-hint" class="compare-settings__hint">
+        {z.readEmptyHint}
+      </p>
       {useZones && <p class="compare-settings__hint">{z.drawHint}</p>}
     </Block>
   );
@@ -281,14 +337,14 @@ function ZoneSettings() {
 function Settings() {
   const { t, language } = useI18n();
   const s = t.plainText.settings;
-  const { options, useZones } = useTextState();
+  const { options, useZones, readEmpty } = useTextState();
   const check = (key: keyof TextOptions & ('strip' | 'columns' | 'dehyphen' | 'joinLines')) => (
     <label key={key} class="compare-settings__check">
       <input
         type="checkbox"
         checked={options[key]}
         // Kolommen en kop/voet gaan over de hele pagina; met leesvakken bepaal je dat zelf.
-        disabled={useZones && (key === 'strip' || key === 'columns')}
+        disabled={useZones && (key === 'strip' || (key === 'columns' && !readEmpty))}
         onChange={(event) => setOptions({ [key]: event.currentTarget.checked })}
       />
       {s[key]}
@@ -323,7 +379,93 @@ function Settings() {
       {check('dehyphen')}
       {check('columns')}
       {check('strip')}
-      {useZones && <p class="compare-settings__hint">{s.zonesOff}</p>}
+      {useZones && <p class="compare-settings__hint">{readEmpty ? s.zonesOffRead : s.zonesOff}</p>}
+    </Block>
+  );
+}
+
+/**
+ * Instellingen bewaren: de vakken en instellingen worden per bestandsnaam onthouden (in deze
+ * browser). Opslaan en laden gaat met een .json-bestand in het formaat van de extractor. "Vergeten"
+ * wist wat er voor alle PDF's onthouden is, na een vraag; in de extractor deed Reset dat ongevraagd.
+ */
+function SaveSettings() {
+  const { t } = useI18n();
+  const v = t.plainText.save;
+  const { slot } = useTextState();
+  const input = useRef<HTMLInputElement>(null);
+  const [status, setStatus] = useState<string | null>(null);
+  const [confirming, setConfirming] = useState(false);
+  const ready = slot.status === 'ready';
+  return (
+    <Block id="save" title={v.title}>
+      <p class="compare-settings__hint">{v.hint}</p>
+      <div class="plaintext-zones__buttons">
+        <button
+          type="button"
+          class="button button--secondary"
+          disabled={!ready}
+          onClick={() => {
+            const out = exportSettings();
+            if (!out) return;
+            downloadFile(new TextEncoder().encode(out.json), out.name, 'application/json');
+            setStatus(format(v.exported, { name: out.name }));
+          }}
+        >
+          {v.export}
+        </button>
+        <button
+          type="button"
+          class="button button--secondary"
+          disabled={!ready}
+          onClick={() => input.current?.click()}
+        >
+          {v.import}
+        </button>
+        <input
+          ref={input}
+          id="plaintext-settings-file"
+          class="visually-hidden"
+          type="file"
+          accept="application/json,.json"
+          tabIndex={-1}
+          aria-hidden="true"
+          onChange={(event) => {
+            const file = event.currentTarget.files?.[0];
+            event.currentTarget.value = '';
+            if (!file) return;
+            void file
+              .text()
+              .then((text) => importSettings(JSON.parse(text)))
+              .catch(() => false)
+              .then((ok) =>
+                setStatus(format(ok ? v.imported : v.importFailed, { name: file.name })),
+              );
+          }}
+        />
+        <button type="button" class="button button--secondary" onClick={() => setConfirming(true)}>
+          {v.forget}
+        </button>
+      </div>
+      {status && (
+        <p class="plaintext__done" role="status">
+          {status}
+        </p>
+      )}
+      {confirming && (
+        <ConfirmDialog
+          title={v.forgetTitle}
+          text={v.forgetText}
+          cancel={v.cancel}
+          confirm={v.forgetConfirm}
+          onCancel={() => setConfirming(false)}
+          onConfirm={() => {
+            const n = forgetStored();
+            setConfirming(false);
+            setStatus(n === 0 ? v.forgottenNone : plural(n, v.forgottenOne, v.forgotten));
+          }}
+        />
+      )}
     </Block>
   );
 }
@@ -382,7 +524,8 @@ type Drawn = { canvas: HTMLCanvasElement } | { error: true };
 function PageView({ doc }: { doc: TextDoc }) {
   const { t } = useI18n();
   const v = t.plainText.preview;
-  const { page, fit, zoom, useZones, zones } = useTextState();
+  const state = useTextState();
+  const { page, fit, zoom, useZones } = state;
   const size = doc.pages[page - 1] ?? { w: 595, h: 842 };
   const wrap = useRef<HTMLDivElement>(null);
   // De ruimte in het vak; zonder meting (zoals in een test) een redelijke schatting.
@@ -581,7 +724,7 @@ function PageView({ doc }: { doc: TextDoc }) {
                 label={format(v.canvas, { n: page })}
               />
             )}
-            {useZones && <ZoneLayer zones={zones} />}
+            {useZones && <ZoneLayer zones={editingZones(state)} own={ownPage(state)} />}
           </div>
         )}
       </div>
@@ -621,7 +764,7 @@ type Action =
  * te verkleinen. Een sleep op een lege plek tekent een nieuw vak. Tijdens het slepen staan de
  * vakken alleen hier; bij loslaten gaan ze naar de stand (en kan het terug met Ongedaan).
  */
-function ZoneLayer({ zones }: { zones: Zone[] }) {
+function ZoneLayer({ zones, own }: { zones: Zone[]; own: boolean }) {
   const layer = useRef<HTMLDivElement>(null);
   const action = useRef<Action | null>(null);
   const [live, setLive] = useState<Zone[] | null>(null);
@@ -704,7 +847,7 @@ function ZoneLayer({ zones }: { zones: Zone[] }) {
       {shown.map((zone, i) => (
         <div
           key={i}
-          class="plaintext-zone"
+          class={`plaintext-zone${own ? ' plaintext-zone--own' : ''}`}
           data-zone={i}
           style={{
             left: `${zone.x0 * 100}%`,
@@ -727,11 +870,20 @@ function ZoneLayer({ zones }: { zones: Zone[] }) {
   );
 }
 
-/** "pagina 3" of "pagina's 3, 5 en 7". */
+/** "pagina 3", "pagina's 3, 5 en 7" of "pagina's 1–4 en 9": drie of meer op een rij als reeks. */
 function pageList(pages: readonly number[], t: Texts) {
   const p = t.plainText;
   if (pages.length === 1) return format(p.pageOne, { n: pages[0]! });
-  const list = `${pages.slice(0, -1).join(', ')}${p.and}${pages[pages.length - 1]!}`;
+  const parts: string[] = [];
+  for (let i = 0; i < pages.length;) {
+    let j = i;
+    while (j + 1 < pages.length && pages[j + 1] === pages[j]! + 1) j++;
+    if (j - i >= 2) parts.push(`${pages[i]}–${pages[j]}`);
+    else for (let k = i; k <= j; k++) parts.push(String(pages[k]));
+    i = j + 1;
+  }
+  const list =
+    parts.length === 1 ? parts[0]! : `${parts.slice(0, -1).join(', ')}${p.and}${parts.at(-1)!}`;
   return format(p.pageMany, { list });
 }
 
@@ -803,7 +955,12 @@ function Output() {
         </p>
       )}
       {stale && <p class="compare__note">{p.stale}</p>}
-      {q.skipped.length > 0 && <p class="compare__warning">{p.noZones}</p>}
+      {q.skipped.length > 0 &&
+        (q.read === 0 ? (
+          <p class="compare__warning">{p.noZones}</p>
+        ) : (
+          <p class="compare__note">{format(p.skippedPages, { list: pageList(q.skipped, t) })}</p>
+        ))}
       {q.noText.length > 0 && (
         <p class="compare__warning">{format(p.noTextPages, { list: pageList(q.noText, t) })}</p>
       )}

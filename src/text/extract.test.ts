@@ -6,12 +6,15 @@ import {
   clampZone,
   exportName,
   extractText,
+  hasOwnZones,
+  zonesFor,
   moveZone,
   quality,
   resizeZone,
   zoneItems,
   type PageResult,
   type Zone,
+  type ZoneSetup,
 } from './extract';
 
 /** Een pagina met regels (elk een eigen tekststukje), van boven naar beneden; `gap` na een alinea. */
@@ -195,6 +198,13 @@ const pts = (left: number, top: number, right: number, bottom: number): Zone => 
   y1: (842 - bottom) / 842,
 });
 
+/** Leesvakken: standaardvakken, eigen vakken per pagina, en of lege pagina's gelezen worden. */
+const setup = (zones: Zone[], pages: ZoneSetup['pages'] = {}, readEmpty = false): ZoneSetup => ({
+  zones,
+  pages,
+  readEmpty,
+});
+
 const LEFT = pts(40, 720, 300, 600);
 const RIGHT = pts(310, 720, 560, 600);
 
@@ -212,7 +222,7 @@ describe('leesvakken', () => {
 
   it('leest de vakken in hun volgorde, elk als eigen blok, en de rest van de pagina vervalt', () => {
     const opts = { ...DEFAULT_TEXT_OPTIONS, joinLines: false };
-    expect(extractText([twoColumns()], opts, [RIGHT, LEFT]).text).toBe(
+    expect(extractText([twoColumns()], opts, setup([RIGHT, LEFT])).text).toBe(
       `${rows('rechts').join('\n')}\n\n${rows('links').join('\n')}`,
     );
   });
@@ -225,7 +235,7 @@ describe('leesvakken', () => {
       [...rows('links'), ...rows('rechts')].join('\n'),
     );
     // Eén vak over de hele pagina: alles, regel voor regel over de volle breedte.
-    const whole = extractText(pages, opts, [{ x0: 0, y0: 0, x1: 1, y1: 1 }]).text;
+    const whole = extractText(pages, opts, setup([{ x0: 0, y0: 0, x1: 1, y1: 1 }])).text;
     expect(whole.split('\n\n')[0]).toBe(
       [
         'Kop van het tijdschrift',
@@ -236,13 +246,21 @@ describe('leesvakken', () => {
   });
 
   it('slaat elke pagina over als de leesvakken aan staan maar er geen vak is', () => {
-    const result = extractText([twoColumns(1), empty(2), twoColumns(3)], DEFAULT_TEXT_OPTIONS, []);
+    const result = extractText(
+      [twoColumns(1), empty(2), twoColumns(3)],
+      DEFAULT_TEXT_OPTIONS,
+      setup([]),
+    );
     expect(result.text).toBe('');
     expect(result.pages.map((p) => p.status)).toEqual(['skipped', 'notext', 'skipped']);
   });
 
   it('geeft een lege pagina-tekst als er niets in de vakken staat', () => {
-    const result = extractText([twoColumns()], DEFAULT_TEXT_OPTIONS, [pts(0, 600, 595, 500)]);
+    const result = extractText(
+      [twoColumns()],
+      DEFAULT_TEXT_OPTIONS,
+      setup([pts(0, 600, 595, 500)]),
+    );
     expect(result.pages[0]).toEqual({ no: 1, text: '', status: 'read' });
   });
 });
@@ -288,5 +306,54 @@ describe('vakken verschuiven en vergroten', () => {
     expect(resizeZone(zone, 'w', 0.1, 0.99)).toEqual({ x0: 0.1, y0: 0.2, x1: 0.5, y1: 0.4 });
     // Voorbij de andere kant: het vak klapt om en blijft recht.
     expect(resizeZone(zone, 'e', 0.1, 0)).toEqual({ x0: 0.1, y0: 0.2, x1: 0.2, y1: 0.4 });
+  });
+});
+
+describe('vakken per pagina', () => {
+  const opts = { ...DEFAULT_TEXT_OPTIONS, joinLines: false };
+  const doc = [1, 2, 3].map(twoColumns);
+  const textOf = (result: { pages: { no: number; text: string }[] }, no: number) =>
+    result.pages.find((p) => p.no === no)!.text;
+
+  it('een pagina met eigen vakken leest die; de andere pagina’s de standaardvakken', () => {
+    const result = extractText(doc, opts, setup([LEFT], { 2: [RIGHT] }));
+    expect(textOf(result, 1)).toBe(rows('links').join('\n'));
+    expect(textOf(result, 2)).toBe(rows('rechts').join('\n'));
+    expect(textOf(result, 3)).toBe(rows('links').join('\n'));
+  });
+
+  it('een lege eigen set slaat de pagina over, ook als er standaardvakken zijn', () => {
+    const result = extractText(doc, opts, setup([LEFT], { 2: [] }));
+    expect(result.pages.map((p) => p.status)).toEqual(['read', 'skipped', 'read']);
+  });
+
+  it('met "helemaal lezen" wordt een pagina zonder vakken helemaal gelezen, met kolommen', () => {
+    const result = extractText(doc, opts, setup([LEFT], { 2: [] }, true));
+    expect(result.pages.map((p) => p.status)).toEqual(['read', 'read', 'read']);
+    // Zoals in de extractor: de hele pagina, links dan rechts, en kop en voet blijven staan.
+    expect(textOf(result, 2)).toBe(
+      ['Kop van het tijdschrift', ...rows('links'), ...rows('rechts'), 'Pagina 2'].join('\n'),
+    );
+    // Zonder kolommen: regel voor regel over de volle breedte.
+    const flat = extractText(doc, { ...opts, columns: false }, setup([], {}, true));
+    expect(textOf(flat, 1).split('\n')[1]).toBe('links 1 rechts 1');
+  });
+
+  it('zonder standaardvakken en zonder eigen set: overslaan (of helemaal lezen)', () => {
+    expect(extractText(doc, opts, setup([], { 3: [RIGHT] })).pages.map((p) => p.status)).toEqual([
+      'skipped',
+      'skipped',
+      'read',
+    ]);
+  });
+
+  it('weet welke vakken op een pagina gelden', () => {
+    const s = setup([LEFT], { 2: [RIGHT], 3: [] });
+    expect(hasOwnZones(s, 1)).toBe(false);
+    expect(hasOwnZones(s, 2)).toBe(true);
+    expect(hasOwnZones(s, 3)).toBe(true);
+    expect(zonesFor(s, 1)).toEqual([LEFT]);
+    expect(zonesFor(s, 2)).toEqual([RIGHT]);
+    expect(zonesFor(s, 3)).toEqual([]);
   });
 });

@@ -740,6 +740,17 @@ export const nl = {
       useHint:
         'Vakken over de tekst, gelezen in de volgorde waarin je ze tekent; de rest vervalt. Ze gelden voor alle pagina’s.',
       empty: 'Nog geen vakken: sleep er een op het voorbeeld.',
+      emptyOwn:
+        'Pagina {n} heeft eigen vakken, maar nog geen enkel vak: deze pagina wordt overgeslagen (of helemaal gelezen, als dat hieronder aan staat).',
+      own: 'Eigen vakken voor deze pagina',
+      ownOff: 'De standaardvakken gelden voor elke pagina zonder eigen vakken.',
+      ownOn: 'Pagina {n} heeft eigen vakken (oranje). Uitvinken: terug naar de standaardvakken.',
+      allOwn: 'Alle pagina’s eigen vakken',
+      allOwnHint:
+        'Elke pagina krijgt een kopie van de standaardvakken, om per pagina bij te stellen. Handig als elke pagina anders is.',
+      readEmpty: 'Pagina’s zonder vakken helemaal lezen',
+      readEmptyHint:
+        'Uit: zo’n pagina wordt overgeslagen, bijvoorbeeld een bronnenlijst. Aan: de hele pagina wordt gelezen.',
       item: 'Vak {n}',
       remove: 'Vak {n} wissen',
       undo: 'Ongedaan',
@@ -757,7 +768,28 @@ export const nl = {
       columns: 'Twee kolommen herkennen',
       strip: 'Terugkerende kop- en voetteksten weglaten',
       zonesOff: 'Kolommen en kop- en voetteksten: niet bij leesvakken.',
+      zonesOffRead:
+        'Kop- en voetteksten: niet bij leesvakken. Kolommen: alleen op pagina’s zonder vakken, die helemaal gelezen worden.',
     },
+    save: {
+      title: 'Instellingen bewaren',
+      hint: 'Vakken en instellingen worden in deze browser per bestandsnaam onthouden. Opslaan en laden gaat met een .json-bestand, zoals in de losse pdf-tekst-extractor.',
+      export: 'Instellingen opslaan',
+      exported: 'Opgeslagen als {name}.',
+      import: 'Instellingen laden',
+      imported: 'Instellingen geladen uit {name}.',
+      importFailed: '{name} kon niet worden gelezen als instellingenbestand.',
+      forget: 'Onthouden instellingen vergeten',
+      forgetTitle: 'Onthouden instellingen vergeten?',
+      forgetText:
+        'De vakken en instellingen die deze browser voor al je PDF’s onthoudt, worden gewist. Wat nu open staat, blijft staan. Dit kun je niet ongedaan maken.',
+      forgetConfirm: 'Vergeten',
+      cancel: 'Annuleren',
+      forgottenNone: 'Er waren geen onthouden instellingen.',
+      forgottenOne: 'De onthouden instellingen van 1 PDF zijn vergeten.',
+      forgotten: 'De onthouden instellingen van {n} PDF’s zijn vergeten.',
+    },
+    restored: 'instellingen hersteld',
     extract: 'Tekst extraheren',
     done: 'Klaar: {summary}.',
     stale:
@@ -792,6 +824,7 @@ export const nl = {
     noTextPages:
       'Geen tekstlaag op {list}: mogelijk een scan of een afbeelding. Daar wordt geen tekst herkend (geen OCR).',
     lowPages: 'Nauwelijks tekst op {list}.',
+    skippedPages: 'Overgeslagen (geen vakken): {list}.',
     pageOne: 'pagina {n}',
     pageMany: 'pagina’s {list}',
     and: ' en ',
