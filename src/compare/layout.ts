@@ -86,6 +86,9 @@ function groupLines(items: readonly Piece[], yTol: number): Line[] {
   return lines;
 }
 
+/** Hoeveel groter dan de lopende tekst de letter van een kop- of voettekst hooguit is. */
+export const RUNNING_MAX_SIZE = 1.15;
+
 /** Een mogelijke kop- en voetregel van een pagina, en of die op genoeg pagina's terugkomt. */
 export type RunningLines = {
   top: Line | null;
@@ -102,7 +105,12 @@ export type RunningLines = {
 function runningCandidates(page: PageText): { top: Line | null; bot: Line | null } {
   const none = { top: null, bot: null };
   if (page.items.length < 2) return none;
-  const yTol = (median(page.items.map((i) => i.fh)) || 10) * 0.5;
+  const body = median(page.items.map((i) => i.fh)) || 10;
+  const yTol = body * 0.5;
+  // Een regel in een duidelijk grotere letter dan de lopende tekst is een titel, geen kop- of
+  // voettekst: "Hoofdstuk 1", "Hoofdstuk 2"… bovenaan elke pagina zou anders (met de cijfers als #)
+  // als terugkerende kop wegvallen. Een kop van 12 pt boven tekst van 11 pt telt nog wel als kop.
+  const small = (line: Line) => Math.max(...line.items.map((i) => i.fh)) <= body * RUNNING_MAX_SIZE;
   const lines = groupLines(page.items, yTol);
   if (lines.length < 3) return none;
   const gaps: number[] = [];
@@ -113,8 +121,9 @@ function runningCandidates(page: PageText): { top: Line | null; bot: Line | null
   const last = lines[lines.length - 1]!;
   const prev = lines[lines.length - 2]!;
   return {
-    top: first.y > page.h * 0.85 && first.y - lines[1]!.y > typ * 1.7 ? first : null,
-    bot: last.y < page.h * 0.15 && prev.y - last.y > typ * 1.7 ? last : null,
+    top:
+      first.y > page.h * 0.85 && first.y - lines[1]!.y > typ * 1.7 && small(first) ? first : null,
+    bot: last.y < page.h * 0.15 && prev.y - last.y > typ * 1.7 && small(last) ? last : null,
   };
 }
 

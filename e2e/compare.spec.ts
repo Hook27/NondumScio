@@ -343,6 +343,67 @@ test.describe('PDF’s vergelijken: instellingen', () => {
   });
 });
 
+/**
+ * Een document met bovenaan elke pagina een hoofdstuktitel in 20 pt ("Hoofdstuk 1", "Hoofdstuk 2"…),
+ * tekst in 11 pt en onderaan een klein paginanummer. `extra` komt als laatste alinea op pagina 3.
+ */
+async function chapters(name: string, extra?: string) {
+  const doc = await PDFDocument.create();
+  const font = await doc.embedFont(StandardFonts.Helvetica);
+  for (let no = 1; no <= 3; no++) {
+    const page = doc.addPage([595, 842]);
+    page.drawText(`Hoofdstuk ${no}`, { x: 71, y: 780, size: 20, font });
+    // Elke alinea over twee regels (regelafstand 14,5 pt, 22,4 pt tussen alinea's, zoals Word).
+    const paragraphs = [
+      [`De tekst van hoofdstuk ${no} loopt`, 'over twee regels.'],
+      ['Een tweede alinea, ook over', 'twee regels.'],
+    ];
+    if (extra && no === 3) paragraphs.push([extra, 'en hier het einde.']);
+    let y = 720;
+    for (const lines of paragraphs) {
+      for (const line of lines) {
+        page.drawText(line, { x: 71, y, size: 11, font });
+        y -= 14.5;
+      }
+      y -= 22.4 - 14.5;
+    }
+    page.drawText(`Pagina ${no} van 3`, { x: 260, y: 40, size: 9, font });
+  }
+  return { name, mimeType: 'application/pdf', buffer: Buffer.from(await doc.save()) };
+}
+
+test.describe('PDF’s vergelijken: kop- en voetteksten', () => {
+  test.skip(({ isMobile }) => isMobile, 'Geavanceerd is er alleen op de computer');
+
+  test('laat het paginanummer weg, maar een hoofdstuktitel in een grotere letter niet', async ({
+    page,
+  }) => {
+    await openPage(page, '/#/advanced/compare', { lang: 'nl' });
+    await page
+      .locator('#compare-file-a')
+      .setInputFiles([
+        await chapters('boek-a.pdf'),
+        await chapters('boek-b.pdf', 'Een nieuwe slotalinea.'),
+      ]);
+    await expect(page.getByText('1 toegevoegd')).toBeVisible(SLOW);
+    await page
+      .getByRole('group', { name: c.settings.title })
+      .getByRole('checkbox', { name: c.settings.onlyDiff })
+      .uncheck();
+    const table = page.getByRole('table');
+    // De titels staan er in A en in B; de paginanummers niet.
+    for (const no of [1, 2, 3]) {
+      await expect(
+        table.getByRole('cell', { name: `Pagina ${no} Hoofdstuk ${no}`, exact: true }),
+      ).toHaveCount(2);
+    }
+    await expect(table.getByText(/Pagina \d van 3/)).toHaveCount(0);
+    await expect(
+      page.getByText('A: 3 pagina’s, 9 alinea’s · B: 3 pagina’s, 10 alinea’s'),
+    ).toBeVisible();
+  });
+});
+
 test.describe('PDF’s vergelijken: documentprofiel', () => {
   test.skip(({ isMobile }) => isMobile, 'Geavanceerd is er alleen op de computer');
 
