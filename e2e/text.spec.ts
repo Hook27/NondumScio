@@ -356,6 +356,160 @@ test.describe('PDF → Platte tekst', () => {
   });
 });
 
+test.describe('PDF → Platte tekst: vakken per pagina en bewaren', () => {
+  test.skip(({ isMobile }) => isMobile, 'Geavanceerd is er alleen op de computer');
+
+  const z = p.zones;
+  const sv = p.save;
+  const zones = (page: Page) => page.getByRole('group', { name: z.title });
+  const labels = (page: Page) => zones(page).locator('.plaintext-zones__label');
+  const openBlock = (page: Page, title: string) =>
+    page.locator('summary', { hasText: title }).click();
+
+  test('eigen vakken voor één pagina, in een andere kleur, en een pagina helemaal lezen', async ({
+    page,
+  }) => {
+    await openArticle(page, 3);
+    await zones(page).getByRole('checkbox', { name: z.use }).check();
+    await draw(page, LEFT_BOX);
+
+    // Pagina 2: eigen vakken, de rechterkolom.
+    await page.getByRole('button', { name: p.preview.next }).click();
+    await zones(page).getByRole('checkbox', { name: z.own }).check();
+    await expect(zones(page).getByText(format(z.ownOn, { n: 2 }))).toBeVisible();
+    await zones(page).getByRole('button', { name: z.clearAll }).click();
+    await draw(page, RIGHT_BOX);
+    await expect(labels(page)).toHaveText(['Vak 1']);
+    // Oranje rand: de kleur van eigen vakken, niet die van de standaardvakken.
+    const colour = (selector: string) =>
+      page
+        .locator(selector)
+        .first()
+        .evaluate((el) => getComputedStyle(el).borderTopColor);
+    const own = await colour('.plaintext-zone--own');
+    await page.getByRole('button', { name: p.preview.previous }).click();
+    await expect(page.locator('.plaintext-zone--own')).toHaveCount(0);
+    expect(await colour('.plaintext-zone')).not.toBe(own);
+    await axe(page);
+
+    await extract(page);
+    await expect(output(page)).toHaveJSProperty(
+      'textContent',
+      [
+        column('Linker', 1).join(' '),
+        column('Rechter', 2).join(' '),
+        column('Linker', 3).join(' '),
+      ].join('\n\n'),
+    );
+
+    // Pagina 3 zonder vakken: overgeslagen, of helemaal gelezen.
+    await page.getByRole('button', { name: p.views.preview }).click();
+    await page.getByRole('button', { name: p.preview.last }).click();
+    await zones(page).getByRole('checkbox', { name: z.own }).check();
+    await zones(page).getByRole('button', { name: z.clearAll }).click();
+    await extract(page);
+    await expect(page.getByText(format(p.skippedPages, { list: 'pagina 3' }))).toBeVisible();
+    await zones(page).getByRole('checkbox', { name: z.readEmpty }).check();
+    await extract(page);
+    await expect
+      .poll(() => output(page).textContent())
+      .toContain(`Proefartikel over leesvakken\n\n${column('Linker', 3).join(' ')}`);
+  });
+
+  test('onthoudt de vakken per bestandsnaam, ook na herladen', async ({ page }) => {
+    await openArticle(page, 2);
+    await zones(page).getByRole('checkbox', { name: z.use }).check();
+    await draw(page, RIGHT_BOX);
+    await page
+      .getByRole('group', { name: s.title })
+      .getByRole('checkbox', { name: s.dehyphen })
+      .uncheck();
+
+    await page.reload();
+    await page.locator('#plaintext-file').setInputFiles(await article('artikel.pdf', 2));
+    await expect(
+      page.locator('section.plaintext-slot').getByText(/instellingen hersteld$/),
+    ).toBeVisible(SLOW);
+    await expect(zones(page).getByRole('checkbox', { name: z.use })).toBeChecked();
+    await expect(labels(page)).toHaveText(['Vak 1']);
+    await expect(
+      page.getByRole('group', { name: s.title }).getByRole('checkbox', { name: s.dehyphen }),
+    ).not.toBeChecked();
+    await extract(page);
+    await expect(output(page)).toHaveJSProperty(
+      'textContent',
+      `${column('Rechter', 1).join(' ')}\n\n${column('Rechter', 2).join(' ')}`,
+    );
+  });
+
+  test('opslaan en laden als .json, ook een bestand van de losse extractor', async ({ page }) => {
+    await openArticle(page, 2);
+    await zones(page).getByRole('checkbox', { name: z.use }).check();
+    await draw(page, LEFT_BOX);
+    await openBlock(page, sv.title);
+    const [download] = await Promise.all([
+      page.waitForEvent('download'),
+      page.getByRole('button', { name: sv.export }).click(),
+    ]);
+    expect(download.suggestedFilename()).toBe('artikel_instellingen.json');
+    const saved = JSON.parse(readFileSync((await download.path())!, 'utf-8'));
+    expect(saved).toMatchObject({ v: 2, pdf: 'artikel.pdf', options: { useCrop: true } });
+    expect(saved.zones.d).toHaveLength(1);
+    await axe(page);
+
+    // Een bestand zoals de extractor het maakt: de rechterkolom als vak, pagina 2 overslaan.
+    const [left, top, right, bottom] = RIGHT_BOX;
+    const original = {
+      v: 2,
+      pdf: 'artikel.pdf',
+      zones: {
+        d: [{ x0: left / 595, y0: (842 - top) / 842, x1: right / 595, y1: (842 - bottom) / 842 }],
+        p: { '2': [] },
+      },
+      joinOverride: {},
+      options: { useCrop: true, columns: true, dehyphen: true, joinLines: true, paraGap: '1.6' },
+      meta: { title: '', author: '', subject: '', date: '' },
+    };
+    await page.locator('#plaintext-settings-file').setInputFiles({
+      name: 'uit-de-extractor.json',
+      mimeType: 'application/json',
+      buffer: Buffer.from(JSON.stringify(original)),
+    });
+    await expect(
+      page.getByText(format(sv.imported, { name: 'uit-de-extractor.json' })),
+    ).toBeVisible();
+    await expect(page.getByRole('slider', { name: s.gap })).toHaveValue('1.6');
+    await extract(page);
+    await expect(output(page)).toHaveJSProperty('textContent', column('Rechter', 1).join(' '));
+    await expect(page.getByText(format(p.skippedPages, { list: 'pagina 2' }))).toBeVisible();
+  });
+
+  test('onthouden instellingen vergeten, na een vraag', async ({ page }) => {
+    await openArticle(page, 1);
+    await zones(page).getByRole('checkbox', { name: z.use }).check();
+    await draw(page, LEFT_BOX);
+    const remembered = () =>
+      page.evaluate(
+        () => Object.keys(localStorage).filter((k) => k.startsWith('nondumscio:plaintext:')).length,
+      );
+    expect(await remembered()).toBe(1);
+    await openBlock(page, sv.title);
+    await page.getByRole('button', { name: sv.forget }).click();
+    const dialog = page.getByRole('dialog', { name: sv.forgetTitle });
+    await expect(dialog).toBeVisible();
+    await axe(page);
+    await dialog.getByRole('button', { name: sv.cancel }).click();
+    expect(await remembered()).toBe(1);
+    await page.getByRole('button', { name: sv.forget }).click();
+    await page.getByRole('dialog').getByRole('button', { name: sv.forgetConfirm }).click();
+    await expect(page.getByText(sv.forgottenOne)).toBeVisible();
+    await expect(page.getByRole('dialog')).toHaveCount(0);
+    expect(await remembered()).toBe(0);
+    // Wat open staat, blijft staan.
+    await expect(labels(page)).toHaveText(['Vak 1']);
+  });
+});
+
 test.describe('PDF → Platte tekst op een scherm met schaal 150 %', () => {
   test.skip(({ isMobile }) => isMobile, 'Geavanceerd is er alleen op de computer');
   test.use({ viewport: { width: 1366, height: 768 }, deviceScaleFactor: 1.5 });
@@ -409,8 +563,13 @@ test.describe('PDF → Platte tekst op een scherm met schaal 150 %', () => {
       p.extract,
       p.preview.fitPage,
       p.preview.fitWidth,
+      p.zones.allOwn,
     ];
     for (const name of names) {
+      expect(await lines(page.getByRole('button', { name, exact: true })), name).toBe(1);
+    }
+    await page.locator('summary', { hasText: p.save.title }).click();
+    for (const name of [p.save.export, p.save.import, p.save.forget]) {
       expect(await lines(page.getByRole('button', { name, exact: true })), name).toBe(1);
     }
     await extract(page);

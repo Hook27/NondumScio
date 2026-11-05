@@ -7,10 +7,20 @@ import { PdfLoadError } from '../pdf/loader';
 import {
   DEFAULT_TEXT_OPTIONS,
   extractText,
+  hasOwnZones,
   type Extraction,
   type TextOptions,
   type Zone,
 } from './extract';
+import {
+  fromSettings,
+  loadStored,
+  saveStored,
+  settingsFileName,
+  toSettings,
+  type Extra,
+  type Settings,
+} from './settings';
 
 /** Een gelezen PDF. */
 export type TextDoc = {
@@ -34,10 +44,13 @@ export type TextView = 'preview' | 'result';
 export type Fit = 'page' | 'width';
 
 /** De blokken links die je kunt in- en uitklappen. */
-export type TextBlock = 'zones' | 'clean';
+export type TextBlock = 'zones' | 'clean' | 'save';
 
 /** Hoeveel stappen terug "Ongedaan" kan, zoals in de extractor. */
 export const UNDO_LIMIT = 60;
+
+/** De vakken van een moment: de standaardvakken en de eigen sets, voor Ongedaan. */
+export type ZoneSnapshot = { zones: Zone[]; pages: Record<number, Zone[]> };
 
 export type TextState = {
   slot: TextSlot;
@@ -47,10 +60,18 @@ export type TextState = {
   options: TextOptions;
   /** Leesvakken gebruiken: alleen lezen wat in de vakken staat. */
   useZones: boolean;
-  /** De leesvakken, in leesvolgorde; ze gelden voor alle pagina's. */
+  /** De standaardvakken, in leesvolgorde: voor elke pagina zonder eigen set. */
   zones: Zone[];
+  /** Eigen vakken per pagina (paginanummer → vakken). */
+  pages: Record<number, Zone[]>;
+  /** Pagina's zonder vakken toch helemaal lezen. */
+  readEmpty: boolean;
   /** Eerdere vakken, voor Ongedaan (de laatste het eerst). */
-  undo: Zone[][];
+  undo: ZoneSnapshot[];
+  /** Wat de extractor ook bewaart maar hier (nog) niet gebruikt wordt. */
+  extra: Extra;
+  /** De instellingen van deze PDF zijn bij het openen uit de opslag teruggehaald. */
+  restored: boolean;
   view: TextView;
   /** De pagina in het voorbeeld (vanaf 1). */
   page: number;
@@ -67,20 +88,26 @@ export type TextState = {
 
 const EMPTY: TextSlot = { status: 'empty' };
 
+const NO_EXTRA: Extra = { options: {} };
+
 const INITIAL: TextState = {
   slot: EMPTY,
   tooMany: false,
   options: DEFAULT_TEXT_OPTIONS,
   useZones: false,
   zones: [],
+  pages: {},
+  readEmpty: false,
   undo: [],
+  extra: NO_EXTRA,
+  restored: false,
   view: 'preview',
   page: 1,
   fit: 'page',
   zoom: 100,
   result: null,
   stale: false,
-  blocks: { zones: true, clean: true },
+  blocks: { zones: true, clean: true, save: false },
 };
 
 /**
@@ -112,6 +139,25 @@ export function useTextState(): TextState {
   return state;
 }
 
+/** Wat er van de stand bewaard wordt. */
+const settingsOf = (s: TextState): Settings => ({
+  options: s.options,
+  useZones: s.useZones,
+  zones: s.zones,
+  pages: s.pages,
+  readEmpty: s.readEmpty,
+  extra: s.extra,
+});
+
+/**
+ * Iets aan de instellingen of vakken veranderen: de tekst is dan niet meer bij, en de instellingen
+ * van deze PDF worden onthouden (op bestandsnaam), zoals in de extractor.
+ */
+function change(next: Partial<TextState>) {
+  setState({ ...next, stale: state.result !== null });
+  if (state.slot.status === 'ready') saveStored(state.slot.doc.file.name, settingsOf(state));
+}
+
 /** Het plaatje niet langer vasthouden, en de PDF sluiten als die voor het voorbeeld open was. */
 function release(slot: TextSlot) {
   if (slot.status !== 'ready') return;
@@ -124,7 +170,10 @@ function setSlot(slot: TextSlot, extra: Partial<TextState> = {}) {
   setState({
     slot,
     zones: [],
+    pages: {},
     undo: [],
+    extra: NO_EXTRA,
+    restored: false,
     view: 'preview',
     page: 1,
     fit: 'page',
@@ -158,9 +207,12 @@ async function load(file: File) {
       if (url) URL.revokeObjectURL(url);
       return;
     }
-    // Alleen de PDF: de vakken en het voorbeeld zijn net bij het begin van het lezen leeggemaakt.
-    release(state.slot);
-    setState({ slot: { status: 'ready', doc: { file, pageCount, pages, thumb: url } } });
+    // Eerder onthouden instellingen voor deze PDF terughalen, zoals in de extractor.
+    const stored = fromSettings(loadStored(file.name), settingsOf(state));
+    setState({
+      slot: { status: 'ready', doc: { file, pageCount, pages, thumb: url } },
+      ...(stored ? { ...stored, restored: true } : {}),
+    });
   } catch (error) {
     put({
       status: 'error',
@@ -179,7 +231,7 @@ export function openFiles(files: readonly File[]): Promise<void> {
 
 /**
  * De PDF en de vakken weghalen; wat nog gelezen wordt, komt er niet meer bij. De instellingen
- * blijven; "Leesvakken gebruiken" gaat uit, zoals bij Reset in de extractor.
+ * blijven, en wat er voor deze PDF onthouden is ook; "Leesvakken gebruiken" gaat uit.
  */
 export function clearText(): void {
   lastRead++;
@@ -187,46 +239,102 @@ export function clearText(): void {
   setSlot(EMPTY, { tooMany: false, useZones: false });
 }
 
-/** Na het extraheren: is wat je nu instelt anders dan waarmee de tekst gemaakt is? */
-const staleAfter = () => ({ stale: state.result !== null });
-
 /** Een instelling veranderen. De tekst verandert pas bij opnieuw extraheren. */
-export function setOptions(change: Partial<TextOptions>): void {
-  setState({ options: { ...state.options, ...change }, ...staleAfter() });
+export function setOptions(next: Partial<TextOptions>): void {
+  change({ options: { ...state.options, ...next } });
 }
 
 /** Leesvakken aan of uit; aan zet het voorbeeld voor, om ze te kunnen tekenen. */
 export function setUseZones(useZones: boolean): void {
-  setState({ useZones, ...(useZones ? { view: 'preview' as const } : {}), ...staleAfter() });
+  change({ useZones, ...(useZones ? { view: 'preview' as const } : {}) });
 }
 
-/** Nieuwe vakken; de vorige kunnen terug met Ongedaan. */
-export function setZones(zones: Zone[]): void {
-  setState({
-    zones,
-    undo: [...state.undo, state.zones].slice(-UNDO_LIMIT),
-    ...staleAfter(),
+/** Pagina's zonder vakken toch helemaal lezen (of overslaan). */
+export function setReadEmpty(readEmpty: boolean): void {
+  change({ readEmpty });
+}
+
+/** Heeft de pagina in het voorbeeld eigen vakken? */
+export const ownPage = (s: TextState = state): boolean => hasOwnZones(s, s.page);
+
+/** De vakken die je op de pagina in het voorbeeld ziet en bewerkt: de eigen set of de standaard. */
+export const editingZones = (s: TextState = state): Zone[] =>
+  ownPage(s) ? s.pages[s.page]! : s.zones;
+
+/** De vakken veranderen; wat er was, kan terug met Ongedaan. */
+function changeZones(next: ZoneSnapshot) {
+  change({
+    ...next,
+    undo: [...state.undo, { zones: state.zones, pages: state.pages }].slice(-UNDO_LIMIT),
   });
+}
+
+/** Nieuwe vakken voor de set die je nu bewerkt: de eigen set van deze pagina, of de standaard. */
+export function setZones(zones: Zone[]): void {
+  changeZones(
+    ownPage()
+      ? { zones: state.zones, pages: { ...state.pages, [state.page]: zones } }
+      : { zones, pages: state.pages },
+  );
 }
 
 /** Eén vak weghalen (de andere schuiven een nummer op). */
 export function removeZone(index: number): void {
-  setZones(state.zones.filter((_, i) => i !== index));
+  setZones(editingZones().filter((_, i) => i !== index));
 }
 
-/** Alle vakken weghalen. */
+/** Alle vakken weghalen uit de set die je nu bewerkt. */
 export function clearZones(): void {
-  if (state.zones.length > 0) setZones([]);
+  if (editingZones().length > 0) setZones([]);
+}
+
+/**
+ * Deze pagina eigen vakken geven (beginnend met een kopie van wat er nu geldt), of de eigen set
+ * weghalen zodat de standaardvakken weer gelden.
+ */
+export function setOwnPage(own: boolean): void {
+  if (own === ownPage()) return;
+  const pages = { ...state.pages };
+  if (own) pages[state.page] = editingZones().map((zone) => ({ ...zone }));
+  else delete pages[state.page];
+  changeZones({ zones: state.zones, pages });
+}
+
+/** Elke pagina die nog geen eigen vakken heeft, krijgt een kopie van de standaardvakken. */
+export function ownAllPages(): void {
+  if (state.slot.status !== 'ready') return;
+  const pages = { ...state.pages };
+  for (let no = 1; no <= state.slot.doc.pageCount; no++)
+    if (!hasOwnZones(state, no)) pages[no] = state.zones.map((zone) => ({ ...zone }));
+  changeZones({ zones: state.zones, pages });
 }
 
 /** De vorige vakken terug. Alleen als de leesvakken aan staan, zoals in de extractor. */
 export function undoZones(): void {
   if (!state.useZones || state.undo.length === 0) return;
-  setState({
-    zones: state.undo[state.undo.length - 1]!,
-    undo: state.undo.slice(0, -1),
-    ...staleAfter(),
+  const previous = state.undo[state.undo.length - 1]!;
+  change({ ...previous, undo: state.undo.slice(0, -1) });
+}
+
+/** Instellingen uit een bestand toepassen (en onthouden). Geeft false als het geen instellingen zijn. */
+export function importSettings(raw: unknown): boolean {
+  const next = fromSettings(raw, settingsOf(state));
+  if (!next) return false;
+  change({
+    ...next,
+    undo: [...state.undo, { zones: state.zones, pages: state.pages }].slice(-UNDO_LIMIT),
   });
+  return true;
+}
+
+/** De instellingen van nu, om als bestand op te slaan (in het formaat van de extractor). */
+export function exportSettings(): { name: string; json: string } | null {
+  if (state.slot.status !== 'ready') return null;
+  const pdf = state.slot.doc.file.name;
+  return {
+    name: settingsFileName(pdf),
+    json: JSON.stringify(toSettings(pdf, settingsOf(state)), null, 2),
+  };
 }
 
 /** Een blok links open- of dichtklappen. */
@@ -257,8 +365,11 @@ export function setZoom(zoom: number): void {
 /** De tekst maken met de instellingen en vakken van nu, en de tekst tonen. */
 export function extract(): void {
   if (state.slot.status !== 'ready') return;
+  const setup = state.useZones
+    ? { zones: state.zones, pages: state.pages, readEmpty: state.readEmpty }
+    : null;
   setState({
-    result: extractText(state.slot.doc.pages, state.options, state.useZones ? state.zones : null),
+    result: extractText(state.slot.doc.pages, state.options, setup),
     view: 'result',
     stale: false,
   });

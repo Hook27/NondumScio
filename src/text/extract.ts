@@ -83,24 +83,46 @@ function zonesText(page: PageText, zones: readonly Zone[], opts: TextOptions): s
     .join('\n\n');
 }
 
+/** De leesvakken van een document: standaardvakken, eigen vakken per pagina, en lege pagina's. */
+export type ZoneSetup = {
+  /** De standaardvakken, voor elke pagina zonder eigen set. */
+  zones: readonly Zone[];
+  /** Eigen vakken per pagina (paginanummer → vakken). Een lege eigen set slaat de pagina over. */
+  pages: Readonly<Record<number, readonly Zone[]>>;
+  /** Een pagina zonder vakken toch helemaal lezen (anders wordt hij overgeslagen). */
+  readEmpty: boolean;
+};
+
+/** Heeft deze pagina eigen vakken (ook als die set leeg is)? */
+export const hasOwnZones = (setup: Pick<ZoneSetup, 'pages'>, no: number): boolean =>
+  Object.prototype.hasOwnProperty.call(setup.pages, no);
+
+/** De vakken die op een pagina gelden: de eigen set, anders de standaardvakken. */
+export const zonesFor = (setup: Pick<ZoneSetup, 'zones' | 'pages'>, no: number): readonly Zone[] =>
+  hasOwnZones(setup, no) ? setup.pages[no]! : setup.zones;
+
 /**
- * De tekst van alle pagina's. `zones` is null als de leesvakken uit staan: dan de hele pagina,
- * met kolommen en zonder terugkerende kop- en voetteksten (als die instellingen aan staan). Staan
- * de leesvakken aan maar is er geen vak, dan wordt de pagina overgeslagen, zoals in de extractor.
- * Pagina's zonder tekst komen er niet in, ook geen witregel.
+ * De tekst van alle pagina's. `setup` is null als de leesvakken uit staan: dan de hele pagina,
+ * met kolommen en zonder terugkerende kop- en voetteksten (als die instellingen aan staan). Met
+ * leesvakken: per pagina de vakken die daar gelden. Een pagina zonder vakken wordt overgeslagen,
+ * of met `readEmpty` helemaal gelezen (met kolommen, zonder kop/voet weglaten), zoals in de
+ * extractor. Pagina's zonder tekst komen er niet in, ook geen witregel.
  */
 export function extractText(
   pages: readonly PageText[],
   opts: TextOptions,
-  zones: readonly Zone[] | null = null,
+  setup: ZoneSetup | null = null,
 ): Extraction {
-  const running = zones === null && opts.strip ? analyseRunning(pages) : null;
+  const running = setup === null && opts.strip ? analyseRunning(pages) : null;
   const results = pages.map((page, index): PageResult => {
     if (page.items.length === 0) return { no: page.no, text: '', status: 'notext' };
-    if (zones === null)
+    if (setup === null)
       return { no: page.no, text: pageText(page, opts, running?.[index]), status: 'read' };
-    if (zones.length === 0) return { no: page.no, text: '', status: 'skipped' };
-    return { no: page.no, text: zonesText(page, zones, opts), status: 'read' };
+    const zones = zonesFor(setup, page.no);
+    if (zones.length > 0)
+      return { no: page.no, text: zonesText(page, zones, opts), status: 'read' };
+    if (!setup.readEmpty) return { no: page.no, text: '', status: 'skipped' };
+    return { no: page.no, text: layoutBlock(page.items, opts, opts.columns), status: 'read' };
   });
   const text = results
     .map((result) => result.text.trim())
