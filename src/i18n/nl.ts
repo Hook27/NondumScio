@@ -767,6 +767,14 @@ export const nl = {
       dehyphen: 'Afgebroken woorden herstellen',
       columns: 'Twee kolommen herkennen',
       strip: 'Terugkerende kop- en voetteksten weglaten',
+      structure: 'Opsommingen en koppen herkennen',
+      structureHint:
+        'Meer soorten opsommingstekens (a., i., 1.1, –) als losse punten onder elkaar, en een extra witregel boven koppen (Artikel, Hoofdstuk… of een korte losse regel).',
+      headingMarker: 'Kopmarkering {H} invoegen',
+      headingMarkerHint: 'Zet {H} vóór een herkende kop, als hint voor een taalmodel.',
+      tables: 'Tabellen herkennen',
+      tablesHint:
+        'Uitgelijnde cellen als tabel, met tabs ertussen. Werkt het best met een leesvak rond de tabel; twee kolommen herkennen gaat dan uit.',
       zonesOff: 'Kolommen en kop- en voetteksten: niet bij leesvakken.',
       zonesOffRead:
         'Kop- en voetteksten: niet bij leesvakken. Kolommen: alleen op pagina’s zonder vakken, die helemaal gelezen worden.',

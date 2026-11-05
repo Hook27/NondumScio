@@ -25,6 +25,18 @@ export type LayoutOptions = {
   joinLines: boolean;
   /** Hoeveel groter dan de gewone regelafstand een witregel tussen alinea's is. */
   gapFactor: number;
+  /**
+   * Opsommingen en koppen herkennen, zoals de pdf-tekst-extractor ("Opsommingen & koppen"): meer
+   * soorten opsommingstekens, een opsomming als één blok met enkele regelovergangen, en koppen
+   * (Artikel, Hoofdstuk… of een korte losse regel) met een extra witregel erboven. Uit: de oude,
+   * eenvoudigere opsommingsregel van de extractor. Niet opgegeven (zoals bij PDF's vergelijken):
+   * de uitgebreide opsommingsregel, maar geen koppen en elk blok met een witregel ertussen.
+   */
+  structure?: boolean;
+  /** Een herkende kop krijgt "{H} " vooraan (alleen met `structure`). */
+  headingMarker?: boolean;
+  /** Rasters van uitgelijnde cellen als tabel met tabs; dan geen kolomherkenning. */
+  tables?: boolean;
 };
 
 /**
@@ -252,6 +264,85 @@ function endsSentence(text: string): boolean {
   return /[.:;!?…]["'”’)\]]?$/.test(text.trim());
 }
 
+/**
+ * De oude, eenvoudige opsommingsregel van de extractor (als "Opsommingen & koppen" uit staat):
+ * alleen •, -, *, ●, ▪ en "1." of "1)".
+ */
+function isBulletOld(text: string): boolean {
+  return /^\s*([•\-*●▪]|\d{1,2}[.)])\s/.test(text);
+}
+
+/** Een kop met een vast woord vooraan en een nummer: "Artikel 5", "Hoofdstuk II", "Bijlage B". */
+export function isKeywordHeading(text: string): boolean {
+  return /^(Artikel|Hoofdstuk|Bijlage|Paragraaf|Sectie|Afdeling|Titel|Boek|Deel|Annex)\s+([0-9]+(?:[.–-][0-9]+)*|[IVXLCDM]+|[A-Z])\b/i.test(
+    text.trim(),
+  );
+}
+
+/**
+ * Een korte losse regel die als kop telt, voorzichtig: hooguit 30 tekens en 5 woorden, zonder
+ * leesteken aan het eind, met een hoofdletter of cijfer vooraan, en gevolgd door een regel die
+ * minstens twee keer zo lang is.
+ */
+export function isGenericHeading(text: string, next: string): boolean {
+  const s = text.trim();
+  if (s.length < 2 || s.length > 30) return false;
+  if (s.split(/\s+/).length > 5) return false;
+  if (/[.,:;!?]$/.test(s)) return false;
+  if (!/^[A-ZÀ-Þ0-9]/.test(s)) return false;
+  return next.trim().length >= s.length * 2;
+}
+
+type Cell = { x: number; text: string };
+
+/**
+ * Een regel in cellen, gesplitst op brede tussenruimtes. pdf.js zet tussen ver uiteenstaande
+ * cellen onzichtbare spaties die het gat precies opvullen: die eerst weglaten, anders lijkt elke
+ * rij één cel.
+ */
+function lineCells(line: LaidLine): Cell[] {
+  const items = line.items.filter((i) => i.str.trim() !== '');
+  if (items.length === 0) return [];
+  const fh = line.fh || 10;
+  const groups: Piece[][] = [];
+  let group: Piece[] = [items[0]!];
+  for (let i = 1; i < items.length; i++) {
+    const before = items[i - 1]!;
+    if (items[i]!.x - (before.x + before.w) > fh * 2) {
+      groups.push(group);
+      group = [items[i]!];
+    } else group.push(items[i]!);
+  }
+  groups.push(group);
+  return groups.map((g) => ({ x: g[0]!.x, text: buildLineText(g) }));
+}
+
+/** Rijen van cellen als tabel: kolommen op gedeelde x-posities, cellen met een tab ertussen. */
+function buildTable(rows: readonly Cell[][], fh: number): string {
+  const tol = Math.max(fh * 1.5, 8);
+  const xs = rows.flatMap((row) => row.map((cell) => cell.x)).sort((a, b) => a - b);
+  const cols: number[] = [];
+  for (const x of xs) if (cols.length === 0 || x - cols[cols.length - 1]! > tol) cols.push(x);
+  return rows
+    .map((row) => {
+      const cells = cols.map(() => '');
+      for (const cell of row) {
+        let best = 0;
+        let distance = Infinity;
+        cols.forEach((cx, ci) => {
+          const d = Math.abs(cx - cell.x);
+          if (d < distance) {
+            distance = d;
+            best = ci;
+          }
+        });
+        cells[best] = cells[best] ? `${cells[best]} ${cell.text}` : cell.text;
+      }
+      return cells.join('\t');
+    })
+    .join('\n');
+}
+
 /** De tekststukjes van één pagina als tekst met alinea's (of losse regels zonder `joinLines`). */
 export function layoutBlock(
   input: readonly Piece[],
@@ -265,7 +356,8 @@ export function layoutBlock(
   const maxX = Math.max(...items.map((i) => i.x + i.w));
 
   const raw = groupLines(items, yTol);
-  const gx = allowColumns ? detectGutter(raw, minX, maxX) : null;
+  // Bij tabellen geen kolommen: de kolommen van een tabel zouden anders als goot tellen.
+  const gx = allowColumns && !opts.tables ? detectGutter(raw, minX, maxX) : null;
 
   let lines: LaidLine[] = [];
   for (const r of raw) {
@@ -333,17 +425,54 @@ export function layoutBlock(
   const edges = new Map([...ends].map(([key, x1s]) => [key, quantile(x1s, 0.9)]));
   const endsShort = (line: LaidLine) => line.x1 < edges.get(line.col ?? '_')! - line.fh * 2;
 
-  const out: string[] = [];
+  // Opsommingen en koppen: alleen als `structure` is opgegeven (Platte tekst); de vergelijker
+  // houdt zijn eigen regels.
+  const structure = opts.structure === true;
+  const bulletRule = opts.structure === false ? isBulletOld : isBullet;
+
+  // Tabellen: een reeks van minstens twee regels die elk in twee of meer cellen uiteenvallen.
+  const cells = opts.tables ? lines.map(lineCells) : [];
+  const inTable = lines.map((_, i) => (cells[i]?.length ?? 0) >= 2);
+  for (let i = 0; i < lines.length;) {
+    if (!inTable[i]) {
+      i++;
+      continue;
+    }
+    let j = i;
+    while (j < lines.length && inTable[j]) j++;
+    if (j - i < 2) for (let k = i; k < j; k++) inTable[k] = false;
+    i = j;
+  }
+
+  type Block = { text: string; bullet: boolean; heading: boolean };
+  const out: Block[] = [];
   let cur = '';
+  let curBullet = false;
+  let curHeading = false;
   const pushCur = () => {
-    if (cur !== '') out.push(cur);
+    if (cur !== '') out.push({ text: cur, bullet: curBullet, heading: curHeading });
     cur = '';
   };
+  const startBlock = (text: string, next: string) => {
+    cur = text;
+    curBullet = structure && isBullet(text);
+    curHeading = structure && (isKeywordHeading(text) || isGenericHeading(text, next));
+  };
   for (let i = 0; i < lines.length; i++) {
+    if (inTable[i]) {
+      pushCur();
+      let j = i;
+      while (j < lines.length && inTable[j]) j++;
+      const fh = median(lines.slice(i, j).map((l) => l.fh)) || 10;
+      out.push({ text: buildTable(cells.slice(i, j), fh), bullet: false, heading: false });
+      i = j - 1;
+      continue;
+    }
     const line = lines[i]!;
     const text = line.text;
+    const next = i + 1 < lines.length ? lines[i + 1]!.text : '';
     if (cur === '') {
-      cur = text;
+      startBlock(text, next);
       continue;
     }
     const prev = lines[i - 1]!;
@@ -357,17 +486,18 @@ export function layoutBlock(
     // wijst: de vorige regel sluit af met een leesteken of eindigt vóór de rechtermarge, of er
     // staat direct ervoor of erna een opsommingspunt (dan zitten we in een lijst). Een grote
     // witruimte (bigGap) breekt sowieso al.
-    const next = i + 1 < lines.length ? lines[i + 1]!.text : '';
     const bulletBreak =
-      isBullet(text) &&
+      bulletRule(text) &&
       (!/^\s*\d/.test(text) ||
         endsSentence(prev.text) ||
         endsShort(prev) ||
-        isBullet(prev.text) ||
-        isBullet(next));
-    if (movedUp || bigGap || indent || bulletBreak) {
+        bulletRule(prev.text) ||
+        bulletRule(next));
+    // Een kop met een vast woord begint altijd een nieuw blok, en na een kop ook.
+    const keywordHeading = structure && isKeywordHeading(text);
+    if (movedUp || bigGap || indent || bulletBreak || keywordHeading || curHeading) {
       pushCur();
-      cur = text;
+      startBlock(text, next);
     } else if (opts.dehyphen && /[A-Za-zÀ-ÿ]-$/.test(cur)) {
       cur = cur.replace(/-$/, '') + text.replace(/^\s+/, '');
     } else {
@@ -375,7 +505,23 @@ export function layoutBlock(
     }
   }
   pushCur();
-  return out.filter((t) => t.trim() !== '').join('\n\n');
+
+  // Samenstellen: een witregel tussen blokken; opeenvolgende opsommingspunten met een enkele
+  // regelovergang; een kop met een extra witregel erboven (en eventueel "{H} " ervoor).
+  const blocks = out.filter((block) => block.text.trim() !== '');
+  return blocks
+    .map((block, i) => {
+      const before =
+        i === 0
+          ? ''
+          : block.heading
+            ? '\n\n\n'
+            : block.bullet && blocks[i - 1]!.bullet
+              ? '\n'
+              : '\n\n';
+      return before + (block.heading && opts.headingMarker ? '{H} ' : '') + block.text;
+    })
+    .join('');
 }
 
 /** De tekst van een pagina, zonder de meelopende kop- en voetregel als `strip` aanstaat. */

@@ -757,6 +757,14 @@ export const en: Messages = {
       dehyphen: 'Restore hyphenated words',
       columns: 'Recognise two columns',
       strip: 'Leave out recurring headers and footers',
+      structure: 'Recognise lists and headings',
+      structureHint:
+        'More kinds of list markers (a., i., 1.1, –) as separate items one below the other, and an extra blank line above headings (Article, Chapter… or a short separate line).',
+      headingMarker: 'Insert heading marker {H}',
+      headingMarkerHint: 'Puts {H} before a recognised heading, as a hint for a language model.',
+      tables: 'Recognise tables',
+      tablesHint:
+        'Aligned cells as a table, with tabs in between. Works best with a reading zone around the table; recognising two columns is then off.',
       zonesOff: 'Columns and headers and footers: not with reading zones.',
       zonesOffRead:
         'Headers and footers: not with reading zones. Columns: only on pages without zones, which are read in full.',

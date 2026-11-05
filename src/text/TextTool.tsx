@@ -17,7 +17,6 @@ import {
   resizeZone,
   type Extraction,
   type Handle,
-  type TextOptions,
   type Zone,
 } from './extract';
 import {
@@ -333,22 +332,51 @@ function ZoneSettings() {
   );
 }
 
+/** De aan- en uitzetters van de tekstopschoning. */
+type BooleanOption =
+  'joinLines' | 'dehyphen' | 'columns' | 'strip' | 'structure' | 'headingMarker' | 'tables';
+
+/** Bij welke vinkjes een uitleg staat (de naam van de tekst). */
+const HINTS = {
+  structure: 'structureHint',
+  headingMarker: 'headingMarkerHint',
+  tables: 'tablesHint',
+} as const satisfies Partial<Record<BooleanOption, string>>;
+
 /** Hoe de tekst wordt opgebouwd; het werkt bij de volgende keer extraheren. */
 function Settings() {
   const { t, language } = useI18n();
   const s = t.plainText.settings;
   const { options, useZones, readEmpty } = useTextState();
-  const check = (key: keyof TextOptions & ('strip' | 'columns' | 'dehyphen' | 'joinLines')) => (
-    <label key={key} class="compare-settings__check">
+  // Wanneer een vinkje niets doet (en dus uit staat):
+  // - kolommen en kop/voet gaan over de hele pagina; met leesvakken bepaal je dat zelf;
+  // - bij tabellen geen kolommen (de kolommen van een tabel zouden als goot tellen);
+  // - opsommingen, koppen en tabellen alleen als regels worden samengevoegd, zoals in de extractor.
+  const off: Record<BooleanOption, boolean> = {
+    joinLines: false,
+    dehyphen: false,
+    columns: (useZones && !readEmpty) || options.tables,
+    strip: useZones,
+    structure: !options.joinLines,
+    headingMarker: !options.joinLines || !options.structure,
+    tables: !options.joinLines,
+  };
+  const check = (key: BooleanOption, extra = '') => (
+    <label key={key} class={`compare-settings__check${extra}`}>
       <input
         type="checkbox"
         checked={options[key]}
-        // Kolommen en kop/voet gaan over de hele pagina; met leesvakken bepaal je dat zelf.
-        disabled={useZones && (key === 'strip' || (key === 'columns' && !readEmpty))}
+        disabled={off[key]}
+        aria-describedby={key in HINTS ? `plaintext-${key}-hint` : undefined}
         onChange={(event) => setOptions({ [key]: event.currentTarget.checked })}
       />
       {s[key]}
     </label>
+  );
+  const hint = (key: BooleanOption & keyof typeof HINTS, extra = '') => (
+    <p id={`plaintext-${key}-hint`} class={`compare-settings__hint${extra}`}>
+      {s[HINTS[key]]}
+    </p>
   );
   return (
     <Block id="clean" title={s.title}>
@@ -379,6 +407,12 @@ function Settings() {
       {check('dehyphen')}
       {check('columns')}
       {check('strip')}
+      {check('structure')}
+      {hint('structure')}
+      {check('headingMarker', ' plaintext__sub')}
+      {hint('headingMarker', ' plaintext__sub')}
+      {check('tables')}
+      {hint('tables')}
       {useZones && <p class="compare-settings__hint">{readEmpty ? s.zonesOffRead : s.zonesOff}</p>}
     </Block>
   );

@@ -30,7 +30,18 @@ export type Extra = {
 };
 
 /** De opties van de extractor die hier een eigen plek hebben; de rest gaat in `extra`. */
-const KNOWN = ['useCrop', 'columns', 'dehyphen', 'joinLines', 'paraGap', 'readEmpty', 'strip'];
+const KNOWN = [
+  'useCrop',
+  'columns',
+  'dehyphen',
+  'joinLines',
+  'paraGap',
+  'readEmpty',
+  'structure',
+  'headingMarker',
+  'tables',
+  'strip',
+];
 
 const isObject = (value: unknown): value is Record<string, unknown> =>
   typeof value === 'object' && value !== null && !Array.isArray(value);
@@ -85,6 +96,9 @@ export function fromSettings(raw: unknown, base: Settings): Settings | null {
       gapFactor: options.paraGap
         ? readGap(options.paraGap, base.options.gapFactor)
         : base.options.gapFactor,
+      structure: flag('structure', base.options.structure),
+      headingMarker: flag('headingMarker', base.options.headingMarker),
+      tables: flag('tables', base.options.tables),
     },
     useZones: flag('useCrop', base.useZones),
     zones: readZones(zones.d),
@@ -114,6 +128,9 @@ export function toSettings(pdf: string, settings: Settings) {
       // In de extractor is dit de waarde van de schuif: een tekst.
       paraGap: String(options.gapFactor),
       readEmpty: settings.readEmpty,
+      structure: options.structure,
+      headingMarker: options.headingMarker,
+      tables: options.tables,
       ...extra.options,
       // Alleen hier: de extractor kent dit niet en slaat het over.
       strip: options.strip,
