@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+  RUNNING_MAX_SIZE,
   analyseRunning,
   isBullet,
   layoutBlock,
@@ -174,6 +175,58 @@ describe('kop- en voetteksten', () => {
     const running = analyseRunning(pages);
     expect(running.map((r) => r.dropTop)).toEqual([false, false, false]);
     expect(running.map((r) => r.dropBot)).toEqual([true, true, true]);
+  });
+
+  it('laat een titel in een grotere letter staan, ook als hij met een ander nummer terugkomt', () => {
+    // Zoals een document met bovenaan elke pagina "Hoofdstuk 1", "Hoofdstuk 2"… in 20 pt boven
+    // tekst van 11 pt: met de cijfers als # lijkt het een terugkerende kop.
+    const pages = [1, 2, 3].map((no) =>
+      page(no, [
+        piece(`Hoofdstuk ${no}`, 50, 800, 20),
+        ...lines(['Lorem ipsum dolor sit amet.', 'Tweede regel.', 'Derde regel.'], 700).map(
+          (item) => ({ ...item, fh: 11 }),
+        ),
+        piece(`Pagina ${no} van 3`, 50, 40, 9),
+      ]),
+    );
+    const running = analyseRunning(pages);
+    expect(running.map((r) => [r.dropTop, r.dropBot])).toEqual([
+      [false, true],
+      [false, true],
+      [false, true],
+    ]);
+    expect(pageText(pages[1]!, OPTS, running[1]).split('\n\n')[0]).toBe('Hoofdstuk 2');
+  });
+
+  it('ziet een kop in een iets grotere letter (12 boven 11 pt) nog wel als kop', () => {
+    const pages = [1, 2, 3].map((no) =>
+      page(no, [
+        piece('Rapport 2026', 50, 800, 11 * RUNNING_MAX_SIZE),
+        ...lines(['Eerste regel.', 'Tweede regel.', 'Derde regel.'], 700).map((item) => ({
+          ...item,
+          fh: 11,
+        })),
+      ]),
+    );
+    expect(analyseRunning(pages).map((r) => r.dropTop)).toEqual([true, true, true]);
+    // Net iets groter: een titel, die blijft staan.
+    const bigger = pages.map((p) => ({
+      ...p,
+      items: p.items.map((i) =>
+        i.str === 'Rapport 2026' ? { ...i, fh: 11 * RUNNING_MAX_SIZE + 0.1 } : i,
+      ),
+    }));
+    expect(analyseRunning(bigger).map((r) => r.dropTop)).toEqual([false, false, false]);
+  });
+
+  it('laat een voet in een grotere letter ook staan', () => {
+    const pages = [1, 2, 3].map((no) =>
+      page(no, [
+        ...lines(['Eerste regel.', 'Tweede regel.', 'Derde regel.'], 700),
+        piece(`Slotwoord ${no}`, 50, 40, 18),
+      ]),
+    );
+    expect(analyseRunning(pages).map((r) => r.dropBot)).toEqual([false, false, false]);
   });
 
   it('ziet de eerste tekstregel niet als kop als hij dicht bij de tekst staat', () => {
