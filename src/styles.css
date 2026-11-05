@@ -925,7 +925,8 @@ h1 {
 
 /* Twee uitlegalinea's onder elkaar: met wat ruimte ertussen. */
 .workspace.rename .annotate__hint + .annotate__hint,
-.workspace.compare .annotate__hint + .annotate__hint {
+.workspace.compare .annotate__hint + .annotate__hint,
+.workspace.plaintext .annotate__hint + .annotate__hint {
   margin-top: 0.5rem;
 }
 
@@ -1412,6 +1413,30 @@ h1 {
   margin: 0 0 0.35rem;
   color: var(--text);
   font-weight: 600;
+}
+
+/* PDF → Platte tekst (Geavanceerd): de tekst zoals hij in het tekstbestand komt, in een vaste
+   letterbreedte, met lange regels afgebroken op de breedte van het vak. */
+.plaintext__output {
+  margin: 0;
+  padding: 0.9rem 1rem;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 0.85rem;
+  line-height: 1.55;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+}
+
+/* De gevoeligheid hoort bij "regels samenvoegen": iets ingesprongen eronder. */
+.plaintext__gap {
+  margin: 0.5rem 0 0 1.5rem;
+}
+
+.plaintext__gap + .compare-settings__hint {
+  margin-left: 1.5rem;
 }
 
 /* De verschillen naast elkaar: twee even brede kolommen, elk stuk op een eigen rij. */
@@ -2332,6 +2357,11 @@ h1 {
 
   /* PDF's vergelijken: een smal linkervak, zodat de tekst van A en B naast elkaar past. */
   .workspace.compare {
+    grid-template-columns: minmax(16rem, 20rem) minmax(0, 1fr);
+  }
+
+  /* PDF → Platte tekst: hetzelfde smalle linkervak, zodat de tekst de ruimte heeft. */
+  .workspace.plaintext {
     grid-template-columns: minmax(16rem, 20rem) minmax(0, 1fr);
   }
 

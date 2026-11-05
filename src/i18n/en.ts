@@ -713,10 +713,49 @@ export const en: Messages = {
     noTextAnd: ' and ',
     noTextAll: 'For this document, the text comparison therefore says nothing.',
   },
+  plainText: {
+    toolbar: 'Plain text',
+    slot: {
+      title: 'PDF',
+      hint: 'The PDF you want the text from.',
+      choose: 'Choose a PDF',
+      replace: 'Another PDF',
+    },
+    tooMany: 'You chose more than one PDF: only the first one is read.',
+    clear: 'Clear',
+    copy: 'Copy text',
+    copied: 'The text has been copied.',
+    copyFailed: 'Copying did not work. Select the text and copy it yourself.',
+    download: 'Download text',
+    downloaded: 'Downloaded as {name}.',
+    settings: {
+      title: 'Settings',
+      joinLines: 'Join lines into paragraphs',
+      gap: 'Paragraph sensitivity',
+      gapHint:
+        'Lower: a new paragraph sooner. Higher: more lines together in one paragraph. Only when lines are joined.',
+      strip: 'Leave out recurring headers and footers',
+      columns: 'Recognise two columns',
+      dehyphen: 'Restore hyphenated words',
+    },
+    title: 'Text',
+    placeholder: 'Choose a PDF to get the text out of it.',
+    meta: '{chars} · {read} of {pages} read',
+    average: 'on average {n} characters per page',
+    noTextPages:
+      'No text layer on {list}: possibly a scan or an image. No text is recognised there (no OCR).',
+    lowPages: 'Hardly any text on {list}.',
+    pageOne: 'page {n}',
+    pageMany: 'pages {list}',
+    and: ' and ',
+    empty: 'No text was found in this PDF.',
+    about:
+      'The text from a PDF is a reconstruction of what is on the pages; images are skipped. Your file stays on your device.',
+  },
   advanced: {
     title: 'Advanced',
     description:
-      'Tools for the computer, such as renaming PDFs smartly based on their content or comparing two versions of a PDF.',
+      'Tools for the computer, such as renaming PDFs smartly based on their content, comparing two versions of a PDF or getting the text out of a PDF.',
     intro:
       'These tools work separately from the other tasks: you open your PDFs here on their own, and what you do here does not end up in the other tasks. They are only available on a computer.',
     desktopOnly:
@@ -732,6 +771,11 @@ export const en: Messages = {
       compare: {
         title: 'Compare PDFs',
         description: 'Compare two versions of a PDF: see which text was added, removed or changed.',
+      },
+      text: {
+        title: 'PDF → Plain text',
+        description:
+          'Get the text out of a PDF as plain text with paragraphs, to copy or download as a text file.',
       },
     },
   },

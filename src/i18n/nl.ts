@@ -723,10 +723,49 @@ export const nl = {
     noTextAnd: ' en ',
     noTextAll: 'Voor dit document zegt de tekstvergelijking dus niets.',
   },
+  plainText: {
+    toolbar: 'Platte tekst',
+    slot: {
+      title: 'PDF',
+      hint: 'De PDF waarvan je de tekst wilt hebben.',
+      choose: 'Kies een PDF',
+      replace: 'Andere PDF',
+    },
+    tooMany: 'Je koos meer dan één PDF: alleen de eerste wordt gelezen.',
+    clear: 'Wissen',
+    copy: 'Tekst kopiëren',
+    copied: 'De tekst is gekopieerd.',
+    copyFailed: 'Kopiëren lukte niet. Selecteer de tekst en kopieer hem zelf.',
+    download: 'Tekst downloaden',
+    downloaded: 'Gedownload als {name}.',
+    settings: {
+      title: 'Instellingen',
+      joinLines: 'Regels samenvoegen tot alinea’s',
+      gap: 'Alinea-gevoeligheid',
+      gapHint:
+        'Lager: sneller een nieuwe alinea. Hoger: meer regels samen in één alinea. Alleen als regels worden samengevoegd.',
+      strip: 'Terugkerende kop- en voetteksten weglaten',
+      columns: 'Twee kolommen herkennen',
+      dehyphen: 'Afgebroken woorden herstellen',
+    },
+    title: 'Tekst',
+    placeholder: 'Kies een PDF om de tekst eruit te halen.',
+    meta: '{chars} · {read} van {pages} gelezen',
+    average: 'gemiddeld {n} tekens per pagina',
+    noTextPages:
+      'Geen tekstlaag op {list}: mogelijk een scan of een afbeelding. Daar wordt geen tekst herkend (geen OCR).',
+    lowPages: 'Nauwelijks tekst op {list}.',
+    pageOne: 'pagina {n}',
+    pageMany: 'pagina’s {list}',
+    and: ' en ',
+    empty: 'Er is geen tekst gevonden in deze PDF.',
+    about:
+      'De tekst uit een PDF is een reconstructie van wat er op de pagina’s staat; afbeeldingen worden overgeslagen. Je bestand blijft op je apparaat.',
+  },
   advanced: {
     title: 'Geavanceerd',
     description:
-      'Gereedschap voor op de computer, zoals PDF’s slim hernoemen op basis van hun inhoud of twee versies van een PDF vergelijken.',
+      'Gereedschap voor op de computer, zoals PDF’s slim hernoemen op basis van hun inhoud, twee versies van een PDF vergelijken of de tekst uit een PDF halen.',
     intro:
       'Deze onderdelen werken los van de andere taken: je opent je PDF’s hier apart, en wat je hier doet, komt niet bij de andere taken terecht. Ze zijn alleen beschikbaar op een computer.',
     desktopOnly:
@@ -743,6 +782,11 @@ export const nl = {
         title: 'PDF’s vergelijken',
         description:
           'Vergelijk twee versies van een PDF: zie welke tekst is toegevoegd, verwijderd of gewijzigd.',
+      },
+      text: {
+        title: 'PDF → Platte tekst',
+        description:
+          'Haal de tekst uit een PDF als platte tekst met alinea’s, om te kopiëren of als tekstbestand te downloaden.',
       },
     },
   },

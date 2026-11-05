@@ -27,6 +27,12 @@ export type LayoutOptions = {
   gapFactor: number;
 };
 
+/**
+ * De grenzen van de alinea-gevoeligheid (`gapFactor`), zoals in de losse pdf-tekst-extractor. Hier,
+ * zodat PDF → Platte tekst ze kan gebruiken zonder de rest van het vergelijken mee te laden.
+ */
+export const GAP_FACTOR = { min: 1.1, max: 2.5, step: 0.1 } as const;
+
 type Line = { y: number; items: Piece[] };
 type Column = 'L' | 'R' | 'F' | null;
 type LaidLine = {

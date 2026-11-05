@@ -67,6 +67,7 @@ export function AdvancedToolPage({ id }: { id: AdvancedId }) {
 const tools: Record<AdvancedId, () => Promise<FunctionComponent>> = {
   rename: async () => (await import('../rename/RenameTool')).RenameTool,
   compare: async () => (await import('../compare/CompareTool')).CompareTool,
+  text: async () => (await import('../text/TextTool')).TextTool,
 };
 
 function Tool({ id }: { id: AdvancedId }) {
