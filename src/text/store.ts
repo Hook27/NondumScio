@@ -33,6 +33,9 @@ export type TextView = 'preview' | 'result';
 /** Passend in het vak: de hele pagina, of de breedte. */
 export type Fit = 'page' | 'width';
 
+/** De blokken links die je kunt in- en uitklappen. */
+export type TextBlock = 'zones' | 'clean';
+
 /** Hoeveel stappen terug "Ongedaan" kan, zoals in de extractor. */
 export const UNDO_LIMIT = 60;
 
@@ -58,6 +61,8 @@ export type TextState = {
   result: Extraction | null;
   /** Sinds het extraheren zijn de instellingen of de vakken veranderd. */
   stale: boolean;
+  /** Welke blokken links open staan; blijft staan bij Wissen. */
+  blocks: Record<TextBlock, boolean>;
 };
 
 const EMPTY: TextSlot = { status: 'empty' };
@@ -75,6 +80,7 @@ const INITIAL: TextState = {
   zoom: 100,
   result: null,
   stale: false,
+  blocks: { zones: true, clean: true },
 };
 
 /**
@@ -221,6 +227,11 @@ export function undoZones(): void {
     undo: state.undo.slice(0, -1),
     ...staleAfter(),
   });
+}
+
+/** Een blok links open- of dichtklappen. */
+export function setBlock(block: TextBlock, open: boolean): void {
+  if (state.blocks[block] !== open) setState({ blocks: { ...state.blocks, [block]: open } });
 }
 
 export function setView(view: TextView): void {

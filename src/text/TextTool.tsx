@@ -1,9 +1,9 @@
+import type { ComponentChildren } from 'preact';
 import { useEffect, useLayoutEffect, useRef, useState } from 'preact/hooks';
 import { GAP_FACTOR } from '../compare/layout';
 import { copyText } from '../compare/report';
 import { ZOOM_STEPS, renderPage, stepZoom, targetWidths } from '../compare/visual';
 import { Dropzone } from '../components/Dropzone';
-import { PaneHead } from '../components/WorkspaceParts';
 import { useI18n } from '../i18n/LanguageContext';
 import { format, plural } from '../i18n/format';
 import { formatFileSize } from '../lib/format';
@@ -28,6 +28,7 @@ import {
   removeZone,
   setFit,
   setOptions,
+  setBlock,
   setPage,
   setUseZones,
   setView,
@@ -36,6 +37,7 @@ import {
   undoZones,
   useTextState,
   type Fit,
+  type TextBlock,
   type TextDoc,
   type TextView,
 } from './store';
@@ -63,30 +65,22 @@ export function TextTool() {
   const p = t.plainText;
   const { view, tooMany } = useTextState();
   return (
-    <>
-      {/* Op een vaste plek boven het werkvak, zoals bij PDF's vergelijken. */}
-      <div class="compare-mode">
-        <ViewToggle />
+    <section class="workspace plaintext" aria-label={p.toolbar}>
+      <div class="workspace__tools">
+        <SlotView />
+        {tooMany && (
+          <p class="compare__note" role="status">
+            {p.tooMany}
+          </p>
+        )}
+        <ZoneSettings />
+        <Settings />
+        <ExtractBar />
       </div>
-      <section class="workspace plaintext" aria-label={p.toolbar}>
-        <div class="workspace__tools">
-          <SlotView />
-          {tooMany && (
-            <p class="compare__note" role="status">
-              {p.tooMany}
-            </p>
-          )}
-          <ClearButton />
-          <ZoneSettings />
-          <Settings />
-          <ExtractBar />
-          <p class="annotate__hint">{p.about}</p>
-        </div>
-        <div class="workspace__view" data-scroll-root>
-          {view === 'preview' ? <Preview /> : <Output />}
-        </div>
-      </section>
-    </>
+      <div class="workspace__view" data-scroll-root>
+        {view === 'preview' ? <Preview /> : <Output />}
+      </div>
+    </section>
   );
 }
 
@@ -96,7 +90,7 @@ function ViewToggle() {
   const v = t.plainText.views;
   const { view } = useTextState();
   return (
-    <div class="segmented" role="group" aria-label={v.label}>
+    <div class="segmented compare-view" role="group" aria-label={v.label}>
       {VIEWS.map((option) => (
         <button
           key={option}
@@ -112,33 +106,29 @@ function ViewToggle() {
   );
 }
 
-function ClearButton() {
-  const { t } = useI18n();
-  const p = t.plainText;
-  const { slot } = useTextState();
+/**
+ * De balk boven het rechtervak, op één plek voor beide weergaven: de keuze voorbeeld of resultaat,
+ * en wat daarbij hoort (bladeren en zoomen, of kopiëren en downloaden). Zo houdt de pagina zelf
+ * zoveel mogelijk ruimte, zoals in de losse extractor.
+ */
+function Bar({ children }: { children?: ComponentChildren }) {
   return (
-    <div class="toolbar toolbar--tools" role="toolbar" aria-label={p.toolbar}>
-      <div class="toolbar__group toolbar__group--wide">
-        <button
-          type="button"
-          class="button button--secondary"
-          disabled={slot.status === 'empty'}
-          onClick={clearText}
-        >
-          {p.clear}
-        </button>
-      </div>
+    <div class="plaintext-bar">
+      <ViewToggle />
+      {children}
     </div>
   );
 }
 
-/** De PDF: kiezen of slepen, en wat er gelezen is. */
+/**
+ * De PDF: kiezen of slepen, en Wissen, op één regel; daaronder wat er gelezen is. Geen plaatje van
+ * de eerste pagina: die staat rechts al groot.
+ */
 function SlotView() {
   const { t, language } = useI18n();
   const p = t.plainText;
   const c = t.compare;
   const { slot } = useTextState();
-  const doc = slot.status === 'ready' ? slot.doc : null;
   return (
     <Dropzone
       title={p.slot.title}
@@ -154,20 +144,29 @@ function SlotView() {
       accept="application/pdf,.pdf"
       chooseLabel={slot.status === 'empty' ? p.slot.choose : p.slot.replace}
       onFiles={(files) => void openFiles(files)}
-      extraClass={`compare-slot${doc?.thumb ? ' compare-slot--thumb' : ''}`}
+      extraClass="plaintext-slot"
     >
+      <button
+        type="button"
+        class="button button--secondary plaintext-slot__clear"
+        disabled={slot.status === 'empty'}
+        onClick={clearText}
+      >
+        {p.clear}
+      </button>
       {slot.status === 'reading' && (
-        <p class="compare-slot__meta" role="status">
+        <p class="plaintext-slot__meta" role="status">
           {slot.total > 0 ? format(c.reading, { n: slot.done, total: slot.total }) : c.readingStart}
         </p>
       )}
       {slot.status === 'error' && (
-        <p class="compare-slot__meta dropzone__error" role="alert">
+        <p class="plaintext-slot__meta dropzone__error" role="alert">
           {c.errors[slot.code]}
         </p>
       )}
-      {doc && <p class="compare-slot__meta">{docMeta(doc, t, language)}</p>}
-      {doc?.thumb && <img class="compare-slot__thumb" src={doc.thumb} alt="" />}
+      {slot.status === 'ready' && (
+        <p class="plaintext-slot__meta">{docMeta(slot.doc, t, language)}</p>
+      )}
     </Dropzone>
   );
 }
@@ -185,14 +184,41 @@ function docMeta(doc: TextDoc, t: Texts, language: string) {
     .join(' · ');
 }
 
+/**
+ * Een blok links dat je kunt in- en uitklappen, zoals de accordeons van de extractor. Hoe het staat,
+ * blijft bewaard zolang de pagina open is.
+ */
+function Block({
+  id,
+  title,
+  children,
+}: {
+  id: TextBlock;
+  title: string;
+  children: ComponentChildren;
+}) {
+  const { blocks } = useTextState();
+  return (
+    <details
+      class="plaintext-block"
+      open={blocks[id]}
+      onToggle={(event) => setBlock(id, event.currentTarget.open)}
+    >
+      <summary class="plaintext-block__title">{title}</summary>
+      <fieldset class="plaintext-block__body" aria-label={title}>
+        {children}
+      </fieldset>
+    </details>
+  );
+}
+
 /** Leesvakken aan of uit, de lijst met vakken, Ongedaan en Alle vakken wissen. */
 function ZoneSettings() {
   const { t } = useI18n();
   const z = t.plainText.zones;
   const { useZones, zones, undo } = useTextState();
   return (
-    <fieldset class="compare-settings">
-      <legend>{z.title}</legend>
+    <Block id="zones" title={z.title}>
       <label class="compare-settings__check">
         <input
           type="checkbox"
@@ -246,7 +272,8 @@ function ZoneSettings() {
           {z.clearAll}
         </button>
       </div>
-    </fieldset>
+      {useZones && <p class="compare-settings__hint">{z.drawHint}</p>}
+    </Block>
   );
 }
 
@@ -268,8 +295,7 @@ function Settings() {
     </label>
   );
   return (
-    <fieldset class="compare-settings">
-      <legend>{s.title}</legend>
+    <Block id="clean" title={s.title}>
       {check('joinLines')}
       <div class="compare-settings__range plaintext__gap">
         <label for="plaintext-gap">{s.gap}</label>
@@ -298,7 +324,7 @@ function Settings() {
       {check('columns')}
       {check('strip')}
       {useZones && <p class="compare-settings__hint">{s.zonesOff}</p>}
-    </fieldset>
+    </Block>
   );
 }
 
@@ -340,7 +366,7 @@ function Preview() {
   if (slot.status !== 'ready') {
     return (
       <>
-        <PaneHead title={p.preview.title} />
+        <Bar />
         <p class="compare__placeholder">
           {slot.status === 'reading' ? t.compare.readingStart : p.placeholder}
         </p>
@@ -464,8 +490,8 @@ function PageView({ doc }: { doc: TextDoc }) {
   const percent = Math.round((widths.css / size.w) * 100);
   return (
     <>
-      <PaneHead title={v.title} meta={format(v.page, { n: page, total: doc.pageCount })}>
-        <div class="plaintext-nav" role="group" aria-label={v.nav}>
+      <Bar>
+        <div class="plaintext-nav" role="group" aria-label={v.nav} title={v.keys}>
           <button
             type="button"
             class="button button--secondary"
@@ -484,6 +510,10 @@ function PageView({ doc }: { doc: TextDoc }) {
           >
             ‹
           </button>
+          <span class="plaintext-nav__page">
+            <span aria-hidden="true">{`${page} / ${doc.pageCount}`}</span>
+            <span class="visually-hidden">{format(v.page, { n: page, total: doc.pageCount })}</span>
+          </span>
           <button
             type="button"
             class="button button--secondary"
@@ -503,40 +533,39 @@ function PageView({ doc }: { doc: TextDoc }) {
             ››
           </button>
         </div>
-      </PaneHead>
-      <div class="plaintext-zoom" role="group" aria-label={v.zoom}>
-        <button
-          type="button"
-          class="button button--secondary"
-          aria-label={v.zoomOut}
-          disabled={zoom <= ZOOM_STEPS[0]}
-          onClick={() => setZoom(stepZoom(zoom, -1))}
-        >
-          −
-        </button>
-        <output class="plaintext-zoom__value">{`${percent}%`}</output>
-        <button
-          type="button"
-          class="button button--secondary"
-          aria-label={v.zoomIn}
-          disabled={zoom >= lastZoom}
-          onClick={() => setZoom(stepZoom(zoom, 1))}
-        >
-          +
-        </button>
-        {FITS.map((option) => (
+        <div class="plaintext-zoom" role="group" aria-label={v.zoom}>
           <button
-            key={option}
             type="button"
             class="button button--secondary"
-            aria-pressed={fit === option && zoom === 100}
-            onClick={() => setFit(option)}
+            aria-label={v.zoomOut}
+            disabled={zoom <= ZOOM_STEPS[0]}
+            onClick={() => setZoom(stepZoom(zoom, -1))}
           >
-            {option === 'page' ? v.fitPage : v.fitWidth}
+            −
           </button>
-        ))}
-      </div>
-      <p class="compare-settings__hint">{useZones ? t.plainText.zones.drawHint : v.keys}</p>
+          <output class="plaintext-zoom__value">{`${percent}%`}</output>
+          <button
+            type="button"
+            class="button button--secondary"
+            aria-label={v.zoomIn}
+            disabled={zoom >= lastZoom}
+            onClick={() => setZoom(stepZoom(zoom, 1))}
+          >
+            +
+          </button>
+          {FITS.map((option) => (
+            <button
+              key={option}
+              type="button"
+              class="button button--secondary"
+              aria-pressed={fit === option && zoom === 100}
+              onClick={() => setFit(option)}
+            >
+              {option === 'page' ? v.fitPage : v.fitWidth}
+            </button>
+          ))}
+        </div>
+      </Bar>
       <div class="plaintext-preview" ref={wrap}>
         {drawn && 'error' in drawn ? (
           <p class="compare-visual__msg">{v.error}</p>
@@ -717,7 +746,7 @@ function Output() {
   if (slot.status !== 'ready' || !result) {
     return (
       <>
-        <PaneHead title={p.views.result} />
+        <Bar />
         <p class="compare__placeholder">
           {slot.status === 'ready'
             ? p.resultPlaceholder
@@ -739,8 +768,8 @@ function Output() {
     .join(' · ');
   return (
     <>
-      <PaneHead title={p.views.result} meta={meta}>
-        <div class="toolbar__group">
+      <Bar>
+        <div class="plaintext-bar__actions">
           <button
             type="button"
             class="button button--secondary"
@@ -766,7 +795,8 @@ function Output() {
             {p.download}
           </button>
         </div>
-      </PaneHead>
+      </Bar>
+      <p class="plaintext-bar__meta">{meta}</p>
       {shown && (
         <p class="page-editor__saved" role="status">
           {shown}
@@ -785,6 +815,7 @@ function Output() {
       ) : (
         <p class="compare__placeholder">{p.empty}</p>
       )}
+      <p class="annotate__hint">{p.about}</p>
     </>
   );
 }

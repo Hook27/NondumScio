@@ -1439,6 +1439,139 @@ h1 {
   margin-left: 1.5rem;
 }
 
+/* De PDF op één regel: [Kies een PDF] [Wissen], daaronder de naam en wat er gelezen is. Slepen kan
+   nog steeds; de kop staat er alleen voor schermlezers. */
+.dropzone.plaintext-slot {
+  position: relative;
+  display: grid;
+  grid-template-columns: auto auto minmax(0, 1fr);
+  align-items: center;
+  gap: 0.3rem 0.5rem;
+  margin: 0 0 0.6rem;
+  padding: 0.5rem 0.6rem;
+  text-align: left;
+}
+
+.plaintext-slot .dropzone__title {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+}
+
+.plaintext-slot .dropzone__hint {
+  grid-column: 1 / -1;
+  grid-row: 2;
+  max-width: none;
+  margin: 0;
+  overflow: hidden;
+  font-size: 0.85rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.plaintext-slot .button {
+  grid-row: 1;
+  padding: 0.4rem 0.8rem;
+  white-space: nowrap;
+}
+
+.plaintext-slot__meta {
+  grid-column: 1 / -1;
+  margin: 0;
+  color: var(--text-muted);
+  font-size: 0.8rem;
+}
+
+.plaintext-slot__meta.dropzone__error {
+  color: var(--text);
+}
+
+/* Blokken links die in- en uitklappen, zoals de accordeons van de extractor. */
+.plaintext-block {
+  margin: 0 0 0.6rem;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+}
+
+.plaintext-block__title {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.45rem 0.8rem;
+  font-weight: 600;
+  list-style: none;
+  cursor: pointer;
+}
+
+.plaintext-block__title::-webkit-details-marker {
+  display: none;
+}
+
+.plaintext-block__title::after {
+  content: '▸';
+  color: var(--text-muted);
+  transition: transform 0.15s;
+}
+
+.plaintext-block[open] > .plaintext-block__title::after {
+  transform: rotate(90deg);
+}
+
+.plaintext-block__body {
+  min-width: 0;
+  margin: 0;
+  padding: 0 0.8rem 0.7rem;
+  border: 0;
+}
+
+.plaintext-block__body > .compare-settings__check:first-child {
+  margin-top: 0;
+}
+
+/* De balk boven het rechtervak: voorbeeld of resultaat, bladeren en zoomen (of kopiëren en
+   downloaden). Op een smal scherm loopt hij door op een tweede regel. */
+.plaintext-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.4rem 1rem;
+  padding: 4px 0 0.5rem;
+  background: var(--bg);
+}
+
+.plaintext-bar .segmented {
+  flex: 0 0 auto;
+  margin: 0;
+}
+
+.plaintext-bar__actions {
+  display: flex;
+  gap: 0.4rem;
+  margin-left: auto;
+}
+
+.plaintext-bar__actions .button {
+  padding: 0.35rem 0.8rem;
+  white-space: nowrap;
+}
+
+.plaintext-bar__meta {
+  margin: 0 0 0.6rem;
+  color: var(--text-muted);
+  font-size: 0.85rem;
+}
+
+.plaintext-nav__page {
+  min-width: 4.5rem;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 0.9rem;
+  text-align: center;
+}
+
 /* "Tekst extraheren": vast onderaan het linkervak, zoals in de losse extractor. */
 .plaintext__extract {
   position: sticky;
@@ -2575,6 +2708,13 @@ h1 {
   /* PDF → Platte tekst: hetzelfde smalle linkervak, zodat de tekst de ruimte heeft. */
   .workspace.plaintext {
     grid-template-columns: minmax(16rem, 20rem) minmax(0, 1fr);
+  }
+
+  /* De balk blijft staan als je bij ingezoomd voorbeeld of lange tekst omlaag schuift. */
+  .workspace__view .plaintext-bar {
+    position: sticky;
+    top: -4px;
+    z-index: 2;
   }
 
   /* Altijd ruimte voor de schuifbalk: anders wordt het vak smaller als hij verschijnt, tekent het

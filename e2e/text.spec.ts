@@ -188,9 +188,9 @@ test.describe('PDF → Platte tekst', () => {
       await expect(page.getByText(format(p.preview.page, { n: 1, total: 3 }))).toBeVisible();
       await expect.poll(() => ink(page)).toBeGreaterThan(100);
       await expect(output(page)).toHaveCount(0);
-      const slot = page.locator('section.compare-slot');
+      const slot = page.locator('section.plaintext-slot');
       await expect(slot.getByText(/^3 pagina’s · .* · 1 pagina zonder tekstlaag$/)).toBeVisible();
-      await expect(slot.locator('img.compare-slot__thumb')).toBeVisible();
+      await expect(slot.getByText('brief.pdf')).toBeVisible();
       await axe(page);
 
       await extract(page);
@@ -360,13 +360,37 @@ test.describe('PDF → Platte tekst op een scherm met schaal 150 %', () => {
   test.skip(({ isMobile }) => isMobile, 'Geavanceerd is er alleen op de computer');
   test.use({ viewport: { width: 1366, height: 768 }, deviceScaleFactor: 1.5 });
 
+  test('de pagina krijgt de ruimte: één balk erboven, en bij Hele pagina past hij', async ({
+    page,
+  }) => {
+    await openArticle(page, 2);
+    // De balk (voorbeeld/resultaat, bladeren, zoomen) staat op één regel (de keuze is iets hoger).
+    const tops = await page
+      .locator('.plaintext-bar > *')
+      .evaluateAll((items) => items.map((item) => Math.round(item.getBoundingClientRect().top)));
+    expect(Math.max(...tops) - Math.min(...tops), JSON.stringify(tops)).toBeLessThan(10);
+    // De pagina is minstens 60 % van de hoogte van het venster, en past er helemaal in.
+    const box = (await page.locator('.plaintext-preview__page').boundingBox())!;
+    expect(box.height).toBeGreaterThan(768 * 0.6);
+    expect(box.y + box.height).toBeLessThanOrEqual(768);
+    // Het PDF-vak en de blokken links staan niet over elkaar heen.
+    const slot = (await page.locator('.plaintext-slot').boundingBox())!;
+    const zones = (await page.locator('details.plaintext-block').first().boundingBox())!;
+    expect(zones.y).toBeGreaterThanOrEqual(slot.y + slot.height);
+    // Een blok klapt dicht met een klik op de kop.
+    await page.locator('summary', { hasText: p.zones.title }).click();
+    await expect(page.getByRole('checkbox', { name: p.zones.use })).toBeHidden();
+    await page.locator('summary', { hasText: p.zones.title }).click();
+    await expect(page.getByRole('checkbox', { name: p.zones.use })).toBeVisible();
+  });
+
   test('de knoppen passen op één regel', async ({ page }) => {
     await openPage(page, '/#/advanced/text', { lang: 'nl' });
     // Een gewone schuifbalk in het linkervak (17 px op Windows) kost breedte; de testbrowser toont
     // geen schuifbalken, dus die ruimte halen we hier zelf weg.
     await page.addStyleTag({ content: '.workspace__tools { padding-right: 23px !important; }' });
     await choose(page);
-    await expect(page.locator('img.compare-slot__thumb')).toBeVisible(SLOW);
+    await expect(page.locator('canvas.plaintext-preview__canvas')).toBeVisible(SLOW);
     await page.getByRole('checkbox', { name: p.zones.use }).check();
     const lines = (button: Locator) =>
       button.evaluate((element) => {

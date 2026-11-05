@@ -598,6 +598,42 @@ describe('PDF → Platte tekst: resultaat', () => {
   });
 });
 
+describe('PDF → Platte tekst: indeling', () => {
+  it('de blokken links klappen in en uit, en blijven zo staan (ook na Wissen)', async () => {
+    await open('brief.pdf');
+    const block = (title: string) =>
+      screen.getByText(title, { selector: 'summary' }).closest('details')!;
+    expect(block(p.zones.title).open).toBe(true);
+    expect(block(p.settings.title).open).toBe(true);
+    // Zoals de browser het doet als je op de kop klikt: dicht, en dan het toggle-event.
+    act(() => {
+      block(p.settings.title).open = false;
+      block(p.settings.title).dispatchEvent(new Event('toggle'));
+    });
+    expect(getTextState().blocks).toEqual({ zones: true, clean: false });
+    fireEvent.click(button(p.clear));
+    cleanup();
+    setup();
+    expect(block(p.settings.title).open).toBe(false);
+    expect(block(p.zones.title).open).toBe(true);
+  });
+
+  it('de balk rechts: voorbeeld of resultaat, met bladeren en zoomen of kopiëren en downloaden', async () => {
+    await open('artikel.pdf');
+    const bar = document.querySelector<HTMLElement>('.plaintext-bar')!;
+    expect(within(bar).getByRole('group', { name: p.views.label })).toBeTruthy();
+    expect(within(bar).getByRole('group', { name: p.preview.nav })).toBeTruthy();
+    expect(within(bar).getByRole('group', { name: p.preview.zoom })).toBeTruthy();
+    expect(within(bar).getByText('1 / 3')).toBeTruthy();
+    expect(within(bar).queryByRole('button', { name: p.copy })).toBeNull();
+    fireEvent.click(button(p.extract));
+    const result = document.querySelector<HTMLElement>('.plaintext-bar')!;
+    expect(within(result).getByRole('button', { name: p.copy })).toBeTruthy();
+    expect(within(result).getByRole('button', { name: p.download })).toBeTruthy();
+    expect(within(result).queryByRole('group', { name: p.preview.nav })).toBeNull();
+  });
+});
+
 describe('PDF → Platte tekst: wissen', () => {
   it('haalt de PDF en de vakken weg; de instellingen blijven, de leesvakken gaan uit', async () => {
     await open('artikel.pdf');
@@ -615,7 +651,9 @@ describe('PDF → Platte tekst: wissen', () => {
     expect(getTextState().result).toBeNull();
     expect(button(p.clear).disabled).toBe(true);
     expect(closeVisual).toHaveBeenCalled();
-    expect(within(document.querySelector('.compare-slot')!).getByText(p.slot.choose)).toBeTruthy();
+    expect(
+      within(document.querySelector('.plaintext-slot')!).getByText(p.slot.choose),
+    ).toBeTruthy();
   });
 
   it('tijdens het lezen: de PDF komt er niet meer bij', async () => {

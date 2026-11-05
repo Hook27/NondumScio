@@ -728,7 +728,7 @@ export const en: Messages = {
       title: 'Reading zones',
       use: 'Use reading zones',
       useHint:
-        'Draw one or more zones over the text on the preview. They are read in the order you draw them; the rest of the page is left out. The zones apply to all pages. One zone over the whole page = read the whole page.',
+        'Zones over the text, read in the order you draw them; the rest is left out. They apply to all pages.',
       empty: 'No zones yet: drag one on the preview.',
       item: 'Zone {n}',
       remove: 'Remove zone {n}',
@@ -746,14 +746,12 @@ export const en: Messages = {
       dehyphen: 'Restore hyphenated words',
       columns: 'Recognise two columns',
       strip: 'Leave out recurring headers and footers',
-      zonesOff:
-        'Columns and headers and footers not with reading zones: each zone is one column, and whatever is outside the zones is left out.',
+      zonesOff: 'Columns and headers and footers: not with reading zones.',
     },
     extract: 'Extract text',
     done: 'Done: {summary}.',
     stale: 'The settings or the zones have changed since extracting. Click Extract text again.',
     preview: {
-      title: 'Preview',
       page: 'Page {n} of {total}',
       nav: 'Browse',
       first: 'First page',

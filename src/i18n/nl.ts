@@ -738,7 +738,7 @@ export const nl = {
       title: 'Leesvakken',
       use: 'Leesvakken gebruiken',
       useHint:
-        'Teken op het voorbeeld één of meer vakken over de tekst. Ze worden gelezen in de volgorde waarin je ze tekent; de rest van de pagina vervalt. De vakken gelden voor alle pagina’s. Eén vak over de hele pagina = de hele pagina lezen.',
+        'Vakken over de tekst, gelezen in de volgorde waarin je ze tekent; de rest vervalt. Ze gelden voor alle pagina’s.',
       empty: 'Nog geen vakken: sleep er een op het voorbeeld.',
       item: 'Vak {n}',
       remove: 'Vak {n} wissen',
@@ -756,15 +756,13 @@ export const nl = {
       dehyphen: 'Afgebroken woorden herstellen',
       columns: 'Twee kolommen herkennen',
       strip: 'Terugkerende kop- en voetteksten weglaten',
-      zonesOff:
-        'Kolommen en kop- en voetteksten niet bij leesvakken: elk vak is één kolom, en wat buiten de vakken staat, vervalt.',
+      zonesOff: 'Kolommen en kop- en voetteksten: niet bij leesvakken.',
     },
     extract: 'Tekst extraheren',
     done: 'Klaar: {summary}.',
     stale:
       'De instellingen of de vakken zijn veranderd sinds het extraheren. Klik opnieuw op Tekst extraheren.',
     preview: {
-      title: 'Voorbeeld',
       page: 'Pagina {n} van {total}',
       nav: 'Bladeren',
       first: 'Eerste pagina',
