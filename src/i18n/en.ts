@@ -713,10 +713,85 @@ export const en: Messages = {
     noTextAnd: ' and ',
     noTextAll: 'For this document, the text comparison therefore says nothing.',
   },
+  plainText: {
+    toolbar: 'Plain text',
+    slot: {
+      title: 'PDF',
+      hint: 'The PDF you want the text from.',
+      choose: 'Choose a PDF',
+      replace: 'Another PDF',
+    },
+    tooMany: 'You chose more than one PDF: only the first one is read.',
+    clear: 'Clear',
+    views: { label: 'View', preview: 'Preview', result: 'Result' },
+    zones: {
+      title: 'Reading zones',
+      use: 'Use reading zones',
+      useHint:
+        'Zones over the text, read in the order you draw them; the rest is left out. They apply to all pages.',
+      empty: 'No zones yet: drag one on the preview.',
+      item: 'Zone {n}',
+      remove: 'Remove zone {n}',
+      undo: 'Undo',
+      clearAll: 'Remove all zones',
+      drawHint:
+        'Drag a zone over the text; then drag a zone, or its edges and corners. Ctrl+Z undoes.',
+    },
+    settings: {
+      title: 'Text clean-up',
+      joinLines: 'Join lines into paragraphs',
+      gap: 'Paragraph sensitivity',
+      gapHint:
+        'Lower: a new paragraph sooner. Higher: more lines together in one paragraph. Only when lines are joined.',
+      dehyphen: 'Restore hyphenated words',
+      columns: 'Recognise two columns',
+      strip: 'Leave out recurring headers and footers',
+      zonesOff: 'Columns and headers and footers: not with reading zones.',
+    },
+    extract: 'Extract text',
+    done: 'Done: {summary}.',
+    stale: 'The settings or the zones have changed since extracting. Click Extract text again.',
+    preview: {
+      page: 'Page {n} of {total}',
+      nav: 'Browse',
+      first: 'First page',
+      previous: 'Previous page',
+      next: 'Next page',
+      last: 'Last page',
+      zoom: 'Enlarge or reduce',
+      zoomOut: 'Zoom out',
+      zoomIn: 'Zoom in',
+      fitPage: 'Whole page',
+      fitWidth: 'Full width',
+      keys: 'Browse: ← → or Home and End, or with the scroll wheel at the top or bottom edge.',
+      canvas: 'Page {n}',
+      error: 'This page could not be drawn.',
+    },
+    copy: 'Copy text',
+    copied: 'The text has been copied.',
+    copyFailed: 'Copying did not work. Select the text and copy it yourself.',
+    download: 'Download text',
+    downloaded: 'Downloaded as {name}.',
+    placeholder: 'Choose a PDF to begin.',
+    resultPlaceholder: 'Click Extract text to see the text.',
+    meta: '{chars} · {read} of {pages} read',
+    average: 'on average {n} characters per page',
+    noZones:
+      'Reading zones are on, but no zone has been drawn yet: nothing was read. Draw a zone on the preview, or turn the reading zones off.',
+    noTextPages:
+      'No text layer on {list}: possibly a scan or an image. No text is recognised there (no OCR).',
+    lowPages: 'Hardly any text on {list}.',
+    pageOne: 'page {n}',
+    pageMany: 'pages {list}',
+    and: ' and ',
+    empty: 'No text was found.',
+    about:
+      'The text from a PDF is a reconstruction of what is on the pages; images are skipped. With a complicated layout (columns, boxes, tables) you decide with reading zones what is read, and in which order. Your file stays on your device.',
+  },
   advanced: {
     title: 'Advanced',
     description:
-      'Tools for the computer, such as renaming PDFs smartly based on their content or comparing two versions of a PDF.',
+      'Tools for the computer, such as renaming PDFs smartly based on their content, comparing two versions of a PDF or getting the text out of a PDF.',
     intro:
       'These tools work separately from the other tasks: you open your PDFs here on their own, and what you do here does not end up in the other tasks. They are only available on a computer.',
     desktopOnly:
@@ -732,6 +807,11 @@ export const en: Messages = {
       compare: {
         title: 'Compare PDFs',
         description: 'Compare two versions of a PDF: see which text was added, removed or changed.',
+      },
+      text: {
+        title: 'PDF → Plain text',
+        description:
+          'Get the text out of a PDF as plain text with paragraphs, to copy or download as a text file.',
       },
     },
   },

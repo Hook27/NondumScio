@@ -1,5 +1,7 @@
 import { analyseRunning, pageText, type PageText } from './layout';
 
+export { GAP_FACTOR } from './layout';
+
 /**
  * Twee teksten vergelijken: in stukken knippen (alinea's, zinnen of regels), de langste gemeenschappelijke
  * reeks zoeken (LCS) en wat overblijft als toegevoegd, verwijderd of gewijzigd tonen, met binnen een
@@ -26,9 +28,6 @@ export type CompareOptions = {
   /** Alinea-gevoeligheid: zoveel keer de gewone regelafstand is een witregel tussen alinea's. */
   gapFactor: number;
 };
-
-/** De grenzen van de alinea-gevoeligheid, zoals in de losse pdf-tekst-extractor. */
-export const GAP_FACTOR = { min: 1.1, max: 2.5, step: 0.1 } as const;
 
 /**
  * De standaardinstellingen van de losse pdf-vergelijker, op één na: de alinea-gevoeligheid is 1,3

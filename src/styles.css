@@ -925,7 +925,8 @@ h1 {
 
 /* Twee uitlegalinea's onder elkaar: met wat ruimte ertussen. */
 .workspace.rename .annotate__hint + .annotate__hint,
-.workspace.compare .annotate__hint + .annotate__hint {
+.workspace.compare .annotate__hint + .annotate__hint,
+.workspace.plaintext .annotate__hint + .annotate__hint {
   margin-top: 0.5rem;
 }
 
@@ -1412,6 +1413,375 @@ h1 {
   margin: 0 0 0.35rem;
   color: var(--text);
   font-weight: 600;
+}
+
+/* PDF → Platte tekst (Geavanceerd): de tekst zoals hij in het tekstbestand komt, in een vaste
+   letterbreedte, met lange regels afgebroken op de breedte van het vak. */
+.plaintext__output {
+  margin: 0;
+  padding: 0.9rem 1rem;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 0.85rem;
+  line-height: 1.55;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+}
+
+/* De gevoeligheid hoort bij "regels samenvoegen": iets ingesprongen eronder. */
+.plaintext__gap {
+  margin: 0.5rem 0 0 1.5rem;
+}
+
+.plaintext__gap + .compare-settings__hint {
+  margin-left: 1.5rem;
+}
+
+/* De PDF op één regel: [Kies een PDF] [Wissen], daaronder de naam en wat er gelezen is. Slepen kan
+   nog steeds; de kop staat er alleen voor schermlezers. */
+.dropzone.plaintext-slot {
+  position: relative;
+  display: grid;
+  grid-template-columns: auto auto minmax(0, 1fr);
+  align-items: center;
+  gap: 0.3rem 0.5rem;
+  margin: 0 0 0.6rem;
+  padding: 0.5rem 0.6rem;
+  text-align: left;
+}
+
+.plaintext-slot .dropzone__title {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+}
+
+.plaintext-slot .dropzone__hint {
+  grid-column: 1 / -1;
+  grid-row: 2;
+  max-width: none;
+  margin: 0;
+  overflow: hidden;
+  font-size: 0.85rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.plaintext-slot .button {
+  grid-row: 1;
+  padding: 0.4rem 0.8rem;
+  white-space: nowrap;
+}
+
+.plaintext-slot__meta {
+  grid-column: 1 / -1;
+  margin: 0;
+  color: var(--text-muted);
+  font-size: 0.8rem;
+}
+
+.plaintext-slot__meta.dropzone__error {
+  color: var(--text);
+}
+
+/* Blokken links die in- en uitklappen, zoals de accordeons van de extractor. */
+.plaintext-block {
+  margin: 0 0 0.6rem;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+}
+
+.plaintext-block__title {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.45rem 0.8rem;
+  font-weight: 600;
+  list-style: none;
+  cursor: pointer;
+}
+
+.plaintext-block__title::-webkit-details-marker {
+  display: none;
+}
+
+.plaintext-block__title::after {
+  content: '▸';
+  color: var(--text-muted);
+  transition: transform 0.15s;
+}
+
+.plaintext-block[open] > .plaintext-block__title::after {
+  transform: rotate(90deg);
+}
+
+.plaintext-block__body {
+  min-width: 0;
+  margin: 0;
+  padding: 0 0.8rem 0.7rem;
+  border: 0;
+}
+
+.plaintext-block__body > .compare-settings__check:first-child {
+  margin-top: 0;
+}
+
+/* De balk boven het rechtervak: voorbeeld of resultaat, bladeren en zoomen (of kopiëren en
+   downloaden). Op een smal scherm loopt hij door op een tweede regel. */
+.plaintext-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.4rem 1rem;
+  padding: 4px 0 0.5rem;
+  background: var(--bg);
+}
+
+.plaintext-bar .segmented {
+  flex: 0 0 auto;
+  margin: 0;
+}
+
+.plaintext-bar__actions {
+  display: flex;
+  gap: 0.4rem;
+  margin-left: auto;
+}
+
+.plaintext-bar__actions .button {
+  padding: 0.35rem 0.8rem;
+  white-space: nowrap;
+}
+
+.plaintext-bar__meta {
+  margin: 0 0 0.6rem;
+  color: var(--text-muted);
+  font-size: 0.85rem;
+}
+
+.plaintext-nav__page {
+  min-width: 4.5rem;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 0.9rem;
+  text-align: center;
+}
+
+/* "Tekst extraheren": vast onderaan het linkervak, zoals in de losse extractor. */
+.plaintext__extract {
+  position: sticky;
+  bottom: -1rem;
+  z-index: 1;
+  margin: 0 0 0.75rem;
+  padding: 0.6rem 0 0.75rem;
+  background: var(--bg);
+  border-top: 1px solid var(--border);
+}
+
+.plaintext__extract .button {
+  width: 100%;
+}
+
+.plaintext__done {
+  margin: 0.4rem 0 0;
+  color: var(--text-muted);
+  font-size: 0.85rem;
+}
+
+/* De lijst met leesvakken, met hun nummer zoals op het voorbeeld. */
+.plaintext-zones {
+  display: grid;
+  gap: 0.3rem;
+  margin: 0.5rem 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.plaintext-zones__item {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.2rem 0.4rem;
+  font-size: 0.9rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+}
+
+.plaintext-zones__num {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.4rem;
+  height: 1.4rem;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-weight: 700;
+  color: var(--accent-contrast);
+  background: var(--accent);
+  border-radius: 4px;
+}
+
+.plaintext-zones__label {
+  flex: 1;
+}
+
+.plaintext-zones__remove {
+  padding: 0 0.4rem;
+  font: inherit;
+  font-size: 1.1rem;
+  line-height: 1;
+  color: var(--text-muted);
+  background: none;
+  border: 1px solid transparent;
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+.plaintext-zones__remove:hover {
+  color: var(--text);
+  border-color: var(--border);
+}
+
+.plaintext-zones__empty {
+  margin: 0.5rem 0 0;
+  color: var(--text-muted);
+  font-size: 0.85rem;
+  font-style: italic;
+}
+
+.plaintext-zones__buttons {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  margin-top: 0.6rem;
+}
+
+.plaintext-zones__buttons .button,
+.plaintext-nav .button,
+.plaintext-zoom .button {
+  flex: 0 0 auto;
+  padding: 0.35rem 0.7rem;
+  white-space: nowrap;
+}
+
+/* Bladeren (in de kop van het vak) en zoomen. */
+.plaintext-nav,
+.plaintext-zoom {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.35rem;
+}
+
+.plaintext-zoom__value {
+  min-width: 3.2rem;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  text-align: center;
+}
+
+.plaintext-zoom .button[aria-pressed='true'] {
+  border-color: var(--accent);
+  box-shadow: inset 0 0 0 1px var(--accent);
+}
+
+/* Het voorbeeld: de pagina, met de leesvakken erover. Breder dan het vak: dan schuift het. */
+.plaintext-preview {
+  overflow: auto;
+}
+
+.plaintext-preview__page {
+  position: relative;
+  margin: 0 auto;
+  background: var(--paper);
+  box-shadow: var(--shadow);
+}
+
+.plaintext-preview__canvas {
+  display: block;
+}
+
+.plaintext-zones-layer {
+  position: absolute;
+  inset: 0;
+  cursor: crosshair;
+  user-select: none;
+}
+
+.plaintext-zone {
+  position: absolute;
+  border: 2px solid var(--accent);
+  background: color-mix(in srgb, var(--accent) 12%, transparent);
+  cursor: move;
+}
+
+.plaintext-zone__num {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  font:
+    700 3rem/1 system-ui,
+    sans-serif;
+  color: var(--accent);
+  opacity: 0.35;
+  pointer-events: none;
+}
+
+.plaintext-zone__handle {
+  position: absolute;
+  width: 12px;
+  height: 12px;
+  margin: -6px 0 0 -6px;
+  background: var(--accent);
+  border: 1px solid var(--paper);
+  border-radius: 2px;
+}
+
+.plaintext-zone__handle--nw {
+  left: 0;
+  top: 0;
+  cursor: nwse-resize;
+}
+.plaintext-zone__handle--n {
+  left: 50%;
+  top: 0;
+  cursor: ns-resize;
+}
+.plaintext-zone__handle--ne {
+  left: 100%;
+  top: 0;
+  cursor: nesw-resize;
+}
+.plaintext-zone__handle--e {
+  left: 100%;
+  top: 50%;
+  cursor: ew-resize;
+}
+.plaintext-zone__handle--se {
+  left: 100%;
+  top: 100%;
+  cursor: nwse-resize;
+}
+.plaintext-zone__handle--s {
+  left: 50%;
+  top: 100%;
+  cursor: ns-resize;
+}
+.plaintext-zone__handle--sw {
+  left: 0;
+  top: 100%;
+  cursor: nesw-resize;
+}
+.plaintext-zone__handle--w {
+  left: 0;
+  top: 50%;
+  cursor: ew-resize;
 }
 
 /* De verschillen naast elkaar: twee even brede kolommen, elk stuk op een eigen rij. */
@@ -2333,6 +2703,18 @@ h1 {
   /* PDF's vergelijken: een smal linkervak, zodat de tekst van A en B naast elkaar past. */
   .workspace.compare {
     grid-template-columns: minmax(16rem, 20rem) minmax(0, 1fr);
+  }
+
+  /* PDF → Platte tekst: hetzelfde smalle linkervak, zodat de tekst de ruimte heeft. */
+  .workspace.plaintext {
+    grid-template-columns: minmax(16rem, 20rem) minmax(0, 1fr);
+  }
+
+  /* De balk blijft staan als je bij ingezoomd voorbeeld of lange tekst omlaag schuift. */
+  .workspace__view .plaintext-bar {
+    position: sticky;
+    top: -4px;
+    z-index: 2;
   }
 
   /* Altijd ruimte voor de schuifbalk: anders wordt het vak smaller als hij verschijnt, tekent het

@@ -41,7 +41,8 @@ describe('vertalingen', () => {
     // Slim hernoemen), "Database", en bij PDF's vergelijken de samenvatting ("A: … · B: …"), het
     // korte paginalabel ("p3"), de kop onder elkaar ("A · … → B · …") en bij het beeld "Overlay",
     // "B over A", "Zoom", de maten ("A: … px · B: … px") en in het rapport de regel per document
-    // ("A: naam (pagina's, grootte)") zijn in beide talen gelijk.
+    // ("A: naam (pagina's, grootte)") zijn in beide talen gelijk, net als bij PDF → Platte tekst
+    // de kop van het vak met de PDF ("PDF").
     expect(same).toEqual([
       'appName',
       'convert.a4',
@@ -58,6 +59,7 @@ describe('vertalingen', () => {
       'compare.unifiedHead',
       'compare.summary',
       'compare.page',
+      'plainText.slot.title',
     ]);
   });
 });

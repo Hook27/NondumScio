@@ -723,10 +723,86 @@ export const nl = {
     noTextAnd: ' en ',
     noTextAll: 'Voor dit document zegt de tekstvergelijking dus niets.',
   },
+  plainText: {
+    toolbar: 'Platte tekst',
+    slot: {
+      title: 'PDF',
+      hint: 'De PDF waarvan je de tekst wilt hebben.',
+      choose: 'Kies een PDF',
+      replace: 'Andere PDF',
+    },
+    tooMany: 'Je koos meer dan één PDF: alleen de eerste wordt gelezen.',
+    clear: 'Wissen',
+    views: { label: 'Weergave', preview: 'Voorbeeld', result: 'Resultaat' },
+    zones: {
+      title: 'Leesvakken',
+      use: 'Leesvakken gebruiken',
+      useHint:
+        'Vakken over de tekst, gelezen in de volgorde waarin je ze tekent; de rest vervalt. Ze gelden voor alle pagina’s.',
+      empty: 'Nog geen vakken: sleep er een op het voorbeeld.',
+      item: 'Vak {n}',
+      remove: 'Vak {n} wissen',
+      undo: 'Ongedaan',
+      clearAll: 'Alle vakken wissen',
+      drawHint:
+        'Sleep een vak over de tekst; versleep daarna een vak, of zijn randen en hoeken. Ctrl+Z maakt ongedaan.',
+    },
+    settings: {
+      title: 'Tekstopschoning',
+      joinLines: 'Regels samenvoegen tot alinea’s',
+      gap: 'Alinea-gevoeligheid',
+      gapHint:
+        'Lager: sneller een nieuwe alinea. Hoger: meer regels samen in één alinea. Alleen als regels worden samengevoegd.',
+      dehyphen: 'Afgebroken woorden herstellen',
+      columns: 'Twee kolommen herkennen',
+      strip: 'Terugkerende kop- en voetteksten weglaten',
+      zonesOff: 'Kolommen en kop- en voetteksten: niet bij leesvakken.',
+    },
+    extract: 'Tekst extraheren',
+    done: 'Klaar: {summary}.',
+    stale:
+      'De instellingen of de vakken zijn veranderd sinds het extraheren. Klik opnieuw op Tekst extraheren.',
+    preview: {
+      page: 'Pagina {n} van {total}',
+      nav: 'Bladeren',
+      first: 'Eerste pagina',
+      previous: 'Vorige pagina',
+      next: 'Volgende pagina',
+      last: 'Laatste pagina',
+      zoom: 'Vergroten of verkleinen',
+      zoomOut: 'Uitzoomen',
+      zoomIn: 'Inzoomen',
+      fitPage: 'Hele pagina',
+      fitWidth: 'Hele breedte',
+      keys: 'Bladeren: ← → of Home en End, of met het scrollwiel aan de boven- of onderrand.',
+      canvas: 'Pagina {n}',
+      error: 'Deze pagina kon niet worden getekend.',
+    },
+    copy: 'Tekst kopiëren',
+    copied: 'De tekst is gekopieerd.',
+    copyFailed: 'Kopiëren lukte niet. Selecteer de tekst en kopieer hem zelf.',
+    download: 'Tekst downloaden',
+    downloaded: 'Gedownload als {name}.',
+    placeholder: 'Kies een PDF om te beginnen.',
+    resultPlaceholder: 'Klik op Tekst extraheren om de tekst te zien.',
+    meta: '{chars} · {read} van {pages} gelezen',
+    average: 'gemiddeld {n} tekens per pagina',
+    noZones:
+      'Leesvakken staan aan, maar er is nog geen vak getekend: er is niets gelezen. Teken een vak op het voorbeeld, of zet de leesvakken uit.',
+    noTextPages:
+      'Geen tekstlaag op {list}: mogelijk een scan of een afbeelding. Daar wordt geen tekst herkend (geen OCR).',
+    lowPages: 'Nauwelijks tekst op {list}.',
+    pageOne: 'pagina {n}',
+    pageMany: 'pagina’s {list}',
+    and: ' en ',
+    empty: 'Er is geen tekst gevonden.',
+    about:
+      'De tekst uit een PDF is een reconstructie van wat er op de pagina’s staat; afbeeldingen worden overgeslagen. Bij een ingewikkelde opmaak (kolommen, kaders, tabellen) bepaal je met leesvakken wat er gelezen wordt, en in welke volgorde. Je bestand blijft op je apparaat.',
+  },
   advanced: {
     title: 'Geavanceerd',
     description:
-      'Gereedschap voor op de computer, zoals PDF’s slim hernoemen op basis van hun inhoud of twee versies van een PDF vergelijken.',
+      'Gereedschap voor op de computer, zoals PDF’s slim hernoemen op basis van hun inhoud, twee versies van een PDF vergelijken of de tekst uit een PDF halen.',
     intro:
       'Deze onderdelen werken los van de andere taken: je opent je PDF’s hier apart, en wat je hier doet, komt niet bij de andere taken terecht. Ze zijn alleen beschikbaar op een computer.',
     desktopOnly:
@@ -743,6 +819,11 @@ export const nl = {
         title: 'PDF’s vergelijken',
         description:
           'Vergelijk twee versies van een PDF: zie welke tekst is toegevoegd, verwijderd of gewijzigd.',
+      },
+      text: {
+        title: 'PDF → Platte tekst',
+        description:
+          'Haal de tekst uit een PDF als platte tekst met alinea’s, om te kopiëren of als tekstbestand te downloaden.',
       },
     },
   },
