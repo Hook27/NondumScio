@@ -233,3 +233,60 @@ export function uniqueNames(names: readonly string[]): string[] {
     return unique;
   });
 }
+
+/** De grootte van een bestand en zijn aantal pagina's (voor de verwachte grootte van een deel). */
+export type FileSize = { size: number; pageCount: number };
+
+/**
+ * De grootte die je voor een deel zou verwachten: per bestand zijn grootte × het aandeel van zijn
+ * pagina's in het deel (bij één bestand: bron × aandeel pagina's, zoals het origineel). Eerst
+ * vermenigvuldigen, dan delen: zo valt de uitkomst precies samen met die van het origineel, ook op
+ * de grens van "3× zo groot".
+ */
+export function expectedSize(
+  pages: readonly PageItem[],
+  files: ReadonlyMap<number, FileSize>,
+): number {
+  const counts = new Map<number, number>();
+  for (const page of pages) counts.set(page.doc, (counts.get(page.doc) ?? 0) + 1);
+  let sum = 0;
+  for (const [doc, count] of counts) {
+    const file = files.get(doc);
+    if (file && file.pageCount > 0) sum += (file.size * count) / file.pageCount;
+  }
+  return sum;
+}
+
+/** Waarom een deel een ⚠ krijgt. */
+export type SizeCheck = { kind: 'untrimmed'; pages: number } | { kind: 'large'; expected: number };
+
+/** Ruim boven de verwachting: meer dan 3× zo groot én meer dan 256 kB groter. */
+const LARGE_FACTOR = 3;
+const LARGE_MARGIN = 256 * 1024;
+
+/**
+ * Of een deel onevenredig groot is, zoals in het origineel: eerst pagina's die niet uitgedund
+ * konden worden, anders een grootte ruim boven de verwachting.
+ */
+export function checkSize(size: number, expected: number, untrimmed: number): SizeCheck | null {
+  if (untrimmed > 0) return { kind: 'untrimmed', pages: untrimmed };
+  if (size > LARGE_FACTOR * expected && size - expected > LARGE_MARGIN) {
+    return { kind: 'large', expected };
+  }
+  return null;
+}
+
+/**
+ * Alle delen samen, als dat verdacht veel is: elk deel heeft een grootte (is gedownload), de
+ * grenspagina staat uit (anders zitten pagina's dubbel), en samen zijn ze meer dan 1,5 × de bron
+ * plus 1 MB. Anders `null`.
+ */
+export function checkTotal(
+  sizes: readonly (number | null)[],
+  source: number,
+  overlap: boolean,
+): number | null {
+  if (overlap || sizes.some((size) => size === null)) return null;
+  const sum = sizes.reduce<number>((total, size) => total + size!, 0);
+  return sum > 1.5 * source + 1024 * 1024 ? sum : null;
+}

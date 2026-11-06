@@ -2513,8 +2513,8 @@ h1 {
 
 .bookmark-table__row {
   display: grid;
-  grid-template-columns: 1.25rem 2.25rem minmax(0, 1fr) 4.75rem 3rem minmax(0, 1fr) auto;
-  grid-template-areas: 'check num title pages count name actions';
+  grid-template-columns: 1.25rem 2.25rem minmax(0, 1fr) 4.75rem 3rem 5.75rem minmax(0, 1fr) auto;
+  grid-template-areas: 'check num title pages count size name actions';
   align-items: center;
   gap: 0.25rem 0.5rem;
   padding: 0.3rem 0.4rem;
@@ -2582,6 +2582,23 @@ h1 {
   grid-area: name;
 }
 
+/* De grootte na het downloaden; rood met ⚠ als het deel onevenredig groot is. */
+.bookmark-table__size {
+  grid-area: size;
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+  white-space: nowrap;
+}
+
+.bookmark-table__size.is-large {
+  color: var(--removed-line);
+  font-weight: 600;
+}
+
+.bookmark-table__warn {
+  cursor: help;
+}
+
 .bookmark-table__name input {
   width: 100%;
   min-width: 0;
@@ -2626,10 +2643,10 @@ h1 {
 /* Smal vak: de bladwijzer met pagina's en aantal op de eerste regel, de naam met de knoppen eronder. */
 @container (max-width: 48rem) {
   .bookmark-table__row {
-    grid-template-columns: 1.25rem 2.25rem minmax(0, 1fr) 4.75rem 3rem;
+    grid-template-columns: 1.25rem 2.25rem minmax(0, 1fr) 5.75rem 5.5rem;
     grid-template-areas:
       'check num title pages count'
-      '. . name actions actions';
+      '. . name size actions';
   }
 
   .bookmark-table__actions {
@@ -2642,6 +2659,7 @@ h1 {
   }
 
   .bookmark-table__head .bookmark-table__name,
+  .bookmark-table__head .bookmark-table__size,
   .bookmark-table__head .bookmark-table__actions {
     position: absolute;
     width: 1px;

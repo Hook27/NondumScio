@@ -28,42 +28,44 @@ export async function makeOutlinePdf(
 ): Promise<Buffer> {
   const doc = await PDFDocument.create();
   const font = await doc.embedFont(StandardFonts.Helvetica);
-  const pages = Array.from({ length: count }, (_, i) => {
-    const page = doc.addPage([595, 842]);
-    page.drawText(`${label} ${i + 1}`, { x: 60, y: 760, size: 28, font });
-    return page;
-  });
-  if (outline) {
-    const context = doc.context;
-    const build = (items: OutlineItem[], parent: PDFRef) => {
-      const refs = items.map(() => context.nextRef());
-      items.forEach((item, i) => {
-        const dict: Record<string, unknown> = {
-          Title: PDFHexString.fromText(item.title),
-          Parent: parent,
-        };
-        if (i > 0) dict.Prev = refs[i - 1];
-        if (i < items.length - 1) dict.Next = refs[i + 1];
-        if (item.page !== undefined) dict.Dest = [pages[item.page]!.ref, 'Fit'];
-        if (item.uri) dict.A = { S: 'URI', URI: PDFString.of(item.uri) };
-        if (item.children) {
-          const sub = build(item.children, refs[i]!);
-          // Een negatief aantal: in een PDF-lezer staat dit deel ingeklapt.
-          Object.assign(dict, { First: sub.first, Last: sub.last, Count: -sub.count });
-        }
-        context.assign(refs[i]!, context.obj(dict as never));
-      });
-      return { first: refs[0]!, last: refs.at(-1)!, count: items.length };
-    };
-    const root = context.nextRef();
-    const top = build(outline, root);
-    context.assign(
-      root,
-      context.obj({ Type: 'Outlines', First: top.first, Last: top.last, Count: top.count }),
-    );
-    doc.catalog.set(PDFName.of('Outlines'), root);
+  for (let i = 0; i < count; i += 1) {
+    doc.addPage([595, 842]).drawText(`${label} ${i + 1}`, { x: 60, y: 760, size: 28, font });
   }
+  if (outline) addOutline(doc, outline);
   return Buffer.from(await doc.save());
+}
+
+/** Zet bladwijzers (volgens de PDF-norm) in een PDF die al pagina's heeft. */
+export function addOutline(doc: PDFDocument, outline: OutlineItem[]): void {
+  const context = doc.context;
+  const pages = doc.getPages();
+  const build = (items: OutlineItem[], parent: PDFRef) => {
+    const refs = items.map(() => context.nextRef());
+    items.forEach((item, i) => {
+      const dict: Record<string, unknown> = {
+        Title: PDFHexString.fromText(item.title),
+        Parent: parent,
+      };
+      if (i > 0) dict.Prev = refs[i - 1];
+      if (i < items.length - 1) dict.Next = refs[i + 1];
+      if (item.page !== undefined) dict.Dest = [pages[item.page]!.ref, 'Fit'];
+      if (item.uri) dict.A = { S: 'URI', URI: PDFString.of(item.uri) };
+      if (item.children) {
+        const sub = build(item.children, refs[i]!);
+        // Een negatief aantal: in een PDF-lezer staat dit deel ingeklapt.
+        Object.assign(dict, { First: sub.first, Last: sub.last, Count: -sub.count });
+      }
+      context.assign(refs[i]!, context.obj(dict as never));
+    });
+    return { first: refs[0]!, last: refs.at(-1)!, count: items.length };
+  };
+  const root = context.nextRef();
+  const top = build(outline, root);
+  context.assign(
+    root,
+    context.obj({ Type: 'Outlines', First: top.first, Last: top.last, Count: top.count }),
+  );
+  doc.catalog.set(PDFName.of('Outlines'), root);
 }
 
 export type ReadItem = { title: string; page: number | null; children: ReadItem[] };

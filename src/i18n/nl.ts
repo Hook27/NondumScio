@@ -144,7 +144,7 @@ export const nl = {
     // Op bladwijzers (alleen op de computer), zoals de losse tool "PDF → Splitsen op bladwijzers"
     bookmarks: 'Op bladwijzers',
     bookmarksHint:
-      'Op bladwijzers: elk deel loopt van de pagina van zijn bladwijzer tot de pagina vóór de volgende; pagina’s vóór de eerste bladwijzer vormen het deel “Voorwerk”. Bij “Splitsen op” kies je welke niveaus een deel beginnen. Begint een bladwijzer halverwege een pagina, zet dan “Grenspagina ook in vorig deel” aan: die pagina komt dan ook achteraan het vorige deel. Namen: volgnummer - bladwijzertitel.pdf; een / in de titel wordt -, de tekens \\ : * ? " < > | vervallen. Namen zijn per rij aan te passen; een andere splitsinstelling zet ze terug. Vink rijen uit om ze niet mee te nemen. Met “Submap per hoofdbladwijzer” komt elk deel in de ZIP in een map met de naam van zijn bladwijzer op niveau 1, als daar bladwijzers onder vallen; het voorwerk en losse hoofdbladwijzers blijven in de hoofdmap. Bij meer bestanden begint elk volgend bestand een nieuw deel. De bladwijzers zelf en koppelingen naar pagina’s buiten het deel gaan niet mee.',
+      'Op bladwijzers: elk deel loopt van de pagina van zijn bladwijzer tot de pagina vóór de volgende; pagina’s vóór de eerste bladwijzer vormen het deel “Voorwerk”. Bij “Splitsen op” kies je welke niveaus een deel beginnen. Begint een bladwijzer halverwege een pagina, zet dan “Grenspagina ook in vorig deel” aan: die pagina komt dan ook achteraan het vorige deel. Namen: volgnummer - bladwijzertitel.pdf; een / in de titel wordt -, de tekens \\ : * ? " < > | vervallen. Namen zijn per rij aan te passen; een andere splitsinstelling zet ze terug. Vink rijen uit om ze niet mee te nemen. Met “Submap per hoofdbladwijzer” komt elk deel in de ZIP in een map met de naam van zijn bladwijzer op niveau 1, als daar bladwijzers onder vallen; het voorwerk en losse hoofdbladwijzers blijven in de hoofdmap. Bij meer bestanden begint elk volgend bestand een nieuw deel. De bladwijzers zelf en koppelingen naar pagina’s buiten het deel gaan niet mee. Elk deel bevat alleen de afbeeldingen en lettertypen die zijn eigen pagina’s gebruiken; de kolom Grootte wordt gevuld bij het downloaden en toont ⚠ als een deel onevenredig groot is.',
     level: 'Splitsen op',
     levelAll: 'Alle bladwijzers',
     levelOne: 'Alleen niveau 1',
@@ -180,6 +180,7 @@ export const nl = {
       title: 'Bladwijzer',
       pages: 'Pagina’s',
       count: 'Aantal',
+      size: 'Grootte',
       name: 'Bestandsnaam',
       actions: 'Acties',
     },
@@ -192,6 +193,17 @@ export const nl = {
     previewPage: 'Pagina {n} van {total} (blz. {p})',
     views: { label: 'Weergave', parts: 'Delen', pages: 'Pagina’s' },
     unselected: 'Niet geselecteerd',
+    untrimmedOne:
+      '1 pagina kon niet worden uitgedund; dit deel kan gegevens van andere pagina’s bevatten.',
+    untrimmedOther:
+      '{n} pagina’s konden niet worden uitgedund; dit deel kan gegevens van andere pagina’s bevatten.',
+    expected: 'Ongeveer {size} verwacht op basis van het aantal pagina’s; controleer dit deel.',
+    largeOne:
+      '1 deel is onevenredig groot voor het aantal pagina’s (⚠ in de kolom Grootte). Controleer het vóór je het deelt.',
+    largeOther:
+      '{n} delen zijn onevenredig groot voor het aantal pagina’s (⚠ in de kolom Grootte). Controleer die vóór je ze deelt.',
+    totalLarge:
+      'Alle delen samen zijn {sum}, tegen {source} voor de bron. Mogelijk bevatten delen gegevens van andere pagina’s.',
   },
   convert: {
     actions: 'Omzetten',

@@ -2,9 +2,11 @@ import AxeBuilder from '@axe-core/playwright';
 import { readFileSync } from 'node:fs';
 import { expect, test, type Page } from '@playwright/test';
 import { unzipSync } from 'fflate';
+import { PDFDocument } from 'pdf-lib';
 import * as pdfjs from 'pdfjs-dist/legacy/build/pdf.mjs';
+import { makeSharedResourcesPdf } from '../src/pdf/testShared';
 import { downloadVia, messages, openPage } from './helpers';
-import { makeOutlinePdf, type OutlineItem } from './outline-fixtures';
+import { addOutline, makeOutlinePdf, type OutlineItem } from './outline-fixtures';
 
 const nl = messages.nl;
 const s = nl.split;
@@ -86,6 +88,49 @@ test.describe('splitsen op bladwijzers', () => {
       { title: 'Paragraaf 1.2', pages: ['Pagina 6', 'Pagina 7', 'Pagina 8'] },
       { title: 'Bijlage / A', pages: ['Pagina 9', 'Pagina 10'] },
     ]);
+  });
+
+  test('de grootte na het downloaden, met ⚠ bij een pagina die niet uitgedund kon worden', async ({
+    page,
+  }) => {
+    test.setTimeout(60_000);
+    // Een scan met één gedeelde lijst hulpbronnen; pagina 1 is niet te lezen (twijfel).
+    const doc = await PDFDocument.load(await makeSharedResourcesPdf(6, { unreadable: true }));
+    addOutline(doc, [
+      { title: 'Eerste brief', page: 0 },
+      { title: 'Tweede brief', page: 3 },
+    ]);
+    await openPage(page, '/#/split', { lang: 'nl' });
+    await page.locator('#pdf-file').setInputFiles({
+      name: 'scan.pdf',
+      mimeType: 'application/pdf',
+      buffer: Buffer.from(await doc.save()),
+    });
+    await expect(page.getByRole('list', { name: s.parts })).toBeVisible({ timeout: 30_000 });
+    await page.getByLabel(s.bookmarks).check();
+    await expect(rows(page)).toHaveCount(3, { timeout: 15_000 });
+    const size = (n: number) => rows(page).nth(n).locator('.bookmark-table__size');
+    await expect(size(1)).toHaveText('—');
+
+    const download = await downloadVia(
+      page,
+      page.getByRole('button', { name: 'Alle 2 delen downloaden (ZIP)' }),
+    );
+    const files = Object.values(unzipSync(new Uint8Array(readFileSync(await download.path()))));
+    // De kolom toont de echte grootte van elk deel in de ZIP.
+    for (const [i, file] of files.entries()) {
+      await expect(size(i + 1)).toContainText(
+        new Intl.NumberFormat('nl', { maximumFractionDigits: 1 }).format(file.length / 1024),
+      );
+    }
+    const why = s.untrimmedOne;
+    await expect(size(1)).toContainText('⚠');
+    await expect(size(1).locator('.bookmark-table__warn')).toHaveAttribute('data-tip', why);
+    await expect(size(2)).not.toContainText('⚠');
+    await expect(page.getByText(s.largeOne)).toBeVisible();
+    // De uitleg bij de muis.
+    await size(1).locator('.bookmark-table__warn').hover();
+    await expect(page.locator('.tooltip')).toHaveText(why);
   });
 
   test('een submap per hoofdbladwijzer in de ZIP', async ({ page }) => {
