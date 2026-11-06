@@ -88,6 +88,29 @@ test.describe('splitsen op bladwijzers', () => {
     ]);
   });
 
+  test('een submap per hoofdbladwijzer in de ZIP', async ({ page }) => {
+    await open(page);
+    await expect(rows(page)).toHaveCount(6, { timeout: 15_000 });
+    await page.getByLabel(s.zipLayout).selectOption({ label: s.zipFolders });
+    const download = await downloadVia(
+      page,
+      page.getByRole('button', { name: 'Alle 5 delen downloaden (ZIP)' }),
+    );
+    const files = unzipSync(new Uint8Array(readFileSync(await download.path())));
+    expect(Object.keys(files)).toEqual([
+      '01 - Voorwerk.pdf',
+      '02 - Inleiding.pdf',
+      'Hoofdstuk 1/03 - Paragraaf 1.1.pdf',
+      'Hoofdstuk 1/04 - Paragraaf 1.2.pdf',
+      '05 - Bijlage - A.pdf',
+    ]);
+    expect((await contents(files['Hoofdstuk 1/04 - Paragraaf 1.2.pdf']!)).pages).toEqual([
+      'Pagina 6',
+      'Pagina 7',
+      'Pagina 8',
+    ]);
+  });
+
   test('op niveau 1 met grenspagina, en een deel los downloaden', async ({ page }) => {
     await open(page);
     await expect(rows(page)).toHaveCount(6, { timeout: 15_000 });

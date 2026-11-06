@@ -9,6 +9,7 @@ import {
   fileNameOf,
   flattenMarks,
   maxDepth,
+  zipPath,
   type Mark,
   type Part,
 } from '../split/bookmarks';
@@ -29,7 +30,9 @@ export type BookmarkRow = Part & {
   name: string;
   /** Waaronder het deel wordt opgeslagen (de naam opgeschoond, met .pdf). */
   fileName: string;
-  /** Een ander deel dat meegaat, heeft dezelfde naam. */
+  /** Het pad in de ZIP: de naam, zo nodig in de map van de hoofdbladwijzer. */
+  path: string;
+  /** Een ander deel dat meegaat, heeft hetzelfde pad in de ZIP. */
   duplicate: boolean;
   /** De pagina's van het deel: plekken in het plan, vanaf 1. */
   positions: number[];
@@ -41,9 +44,15 @@ type Choice = { key: string; include: boolean[]; names: (string | null)[] };
  * De delen volgens de bladwijzers van de geopende bestanden, met wat je hebt aan- of uitgevinkt en
  * welke namen je hebt aangepast. Verandert het niveau, de grenspagina of het pagina-plan, dan
  * begint de keuze opnieuw (alles aan, voorgestelde namen); een ander voorvoegsel past alleen de
- * namen aan die je niet zelf hebt veranderd.
+ * namen aan die je niet zelf hebt veranderd. Met `folders` komt elk deel in de ZIP in de map van
+ * zijn hoofdbladwijzer; dat verandert niets aan de keuze.
  */
-export function useBookmarkSplit(level: number, overlap: boolean, prefix: string) {
+export function useBookmarkSplit(
+  level: number,
+  overlap: boolean,
+  prefix: string,
+  folders: boolean,
+) {
   const { pages, activeSources } = useDocument();
   const { t } = useI18n();
   const s = t.split;
@@ -82,9 +91,12 @@ export function useBookmarkSplit(level: number, overlap: boolean, prefix: string
   const fallback = s.untitledFile;
   const named = parts.map((part, index) => {
     const name = choice.names[index] ?? autoName(part.title, index, parts.length, prefix, fallback);
-    return { name, fileName: fileNameOf(name, fallback), include: choice.include[index]! };
+    const fileName = fileNameOf(name, fallback);
+    const path = zipPath(fileName, part.top, folders, fallback);
+    return { name, fileName, path, include: choice.include[index]! };
   });
-  const duplicates = duplicateNames(named.map((row) => (row.include ? row.fileName : null)));
+  // Dubbel is hetzelfde pad: dezelfde naam in een andere map mag.
+  const duplicates = duplicateNames(named.map((row) => (row.include ? row.path : null)));
   const rows: BookmarkRow[] = parts.map((part, index) => ({
     ...part,
     ...named[index]!,
@@ -113,25 +125,29 @@ export function useBookmarkSplit(level: number, overlap: boolean, prefix: string
 
 export type BookmarkSplit = ReturnType<typeof useBookmarkSplit>;
 
-/** Het niveau, de grenspagina en het voorvoegsel, onder de keuze "Op bladwijzers". */
+/** Het niveau, de grenspagina, het voorvoegsel en de indeling van de ZIP, onder "Op bladwijzers". */
 export function BookmarkOptions({
   marks,
   disabled,
   level,
   overlap,
   prefix,
+  folders,
   onLevel,
   onOverlap,
   onPrefix,
+  onFolders,
 }: {
   marks: readonly Mark[];
   disabled: boolean;
   level: number;
   overlap: boolean;
   prefix: string;
+  folders: boolean;
   onLevel: (level: number) => void;
   onOverlap: (overlap: boolean) => void;
   onPrefix: (prefix: string) => void;
+  onFolders: (folders: boolean) => void;
 }) {
   const { t } = useI18n();
   const s = t.split;
@@ -179,6 +195,19 @@ export function BookmarkOptions({
           disabled={disabled}
           onInput={(event) => onPrefix(event.currentTarget.value)}
         />
+      </div>
+      <div class="split-method__field">
+        <label for="split-zip">{s.zipLayout}</label>
+        <select
+          id="split-zip"
+          class="split-method__select"
+          value={folders ? 'folders' : 'flat'}
+          disabled={disabled}
+          onChange={(event) => onFolders(event.currentTarget.value === 'folders')}
+        >
+          <option value="flat">{s.zipFlat}</option>
+          <option value="folders">{s.zipFolders}</option>
+        </select>
       </div>
     </>
   );
