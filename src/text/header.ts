@@ -53,31 +53,51 @@ export const DUTCH_HEAD: HeadTexts = {
   },
 };
 
-/**
- * Een PDF-datum ("D:20180604090000+02'00'") als "4 juni 2018", in de taal van de app; leeg of
- * onleesbaar geeft "". Zoals `parsePdfDate` in de extractor: alleen de datum, zonder tijd.
- */
-export function pdfDateText(raw: string | undefined, language = 'nl'): string {
-  if (!raw) return '';
+/** Jaar, maand en dag uit een PDF-datum ("D:20180604090000+02'00'"), of null als het geen datum is. */
+function pdfDateParts(raw: string | undefined) {
+  if (!raw) return null;
   const m = /D?:?(\d{4})(\d{2})(\d{2})/.exec(raw);
-  if (!m) return '';
-  const month = Number(m[2]);
-  if (month < 1 || month > 12) return '';
-  const name = new Intl.DateTimeFormat(language, { month: 'long', timeZone: 'UTC' }).format(
-    Date.UTC(2000, month - 1, 1),
-  );
-  return `${Number(m[3])} ${name} ${Number(m[1])}`;
+  if (!m) return null;
+  const [year, month, day] = [m[1]!, m[2]!, m[3]!];
+  if (Number(month) < 1 || Number(month) > 12 || Number(day) < 1 || Number(day) > 31) return null;
+  return { year, month, day };
+}
+
+/**
+ * Een PDF-datum ("D:20180604090000+02'00'") als "2018-06-04" (ISO, in elke taal hetzelfde); leeg
+ * of onleesbaar geeft "". Zoals `parsePdfDate` in de extractor alleen de datum, zonder tijd, maar
+ * niet als "4 juni 2018": op verzoek van Jörg altijd zo.
+ */
+export function pdfDateText(raw: string | undefined): string {
+  const parts = pdfDateParts(raw);
+  return parts ? `${parts.year}-${parts.month}-${parts.day}` : '';
+}
+
+/**
+ * Een onthouden datum in de vorm van eerder ("4 juni 2018" of "4 June 2018", zoals het veld toen
+ * vanzelf gevuld werd) wordt de datum in ISO; een datum die je zelf getypt hebt, blijft staan.
+ */
+export function upgradeDate(date: string, raw: string | undefined): string {
+  const parts = pdfDateParts(raw);
+  if (!parts) return date;
+  const old = ['nl', 'en'].map((language) => {
+    const name = new Intl.DateTimeFormat(language, { month: 'long', timeZone: 'UTC' }).format(
+      Date.UTC(2000, Number(parts.month) - 1, 1),
+    );
+    return `${Number(parts.day)} ${name} ${Number(parts.year)}`;
+  });
+  return old.includes(date.trim()) ? pdfDateText(raw) : date;
 }
 
 const text = (value: unknown) => (typeof value === 'string' ? value : '');
 
 /** De velden zoals ze bij het openen van een PDF worden ingevuld (`populateMeta` in de extractor). */
-export function metaFromInfo(info: DocInfo, language = 'nl'): Meta {
+export function metaFromInfo(info: DocInfo): Meta {
   return {
     title: text(info.Title),
     author: text(info.Author),
     subject: text(info.Subject),
-    date: pdfDateText(text(info.CreationDate), language),
+    date: pdfDateText(text(info.CreationDate)),
   };
 }
 

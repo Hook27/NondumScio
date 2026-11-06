@@ -742,7 +742,7 @@ test.describe('PDF → Platte tekst: documentkop en metadata', () => {
     'Titel: Nieuwe huurovereenkomst',
     'Auteur: Woningstichting Voorbeeld',
     'Onderwerp: Huurverhoging',
-    'Datum: 1 januari 2026',
+    'Datum: 2026-01-01',
     '',
     `{p1} ${paragraphs.slice(0, 3).join('\n\n')}`,
     '',
@@ -774,7 +774,7 @@ test.describe('PDF → Platte tekst: documentkop en metadata', () => {
       await expect(field(page, h.fields.title)).toHaveValue('Nieuwe huurovereenkomst');
       await expect(field(page, h.fields.author)).toHaveValue('Woningstichting Voorbeeld');
       await expect(field(page, h.fields.subject)).toHaveValue('Huur');
-      await expect(field(page, h.fields.date)).toHaveValue('1 januari 2026');
+      await expect(field(page, h.fields.date)).toHaveValue('2026-01-01');
       await expect(block.getByText('PDF-producent (Producer): Testprinter')).toBeVisible();
       await expect(block.getByText('Toepassing (Creator): Tekstverwerker')).toBeVisible();
       await expect(block.getByRole('checkbox', { name: h.use })).not.toBeChecked();
@@ -953,7 +953,7 @@ test.describe('PDF → Platte tekst: batch', () => {
       const bText = await single(page, await B());
       expect(
         a.startsWith(
-          'Bestand: verslag-a.pdf\nTitel: Verslag A\nAuteur: Bewonerscommissie\nOnderwerp: Verslag\nDatum: 1 januari 2026\n\n{p1} ',
+          'Bestand: verslag-a.pdf\nTitel: Verslag A\nAuteur: Bewonerscommissie\nOnderwerp: Verslag\nDatum: 2026-01-01\n\n{p1} ',
         ),
       ).toBe(true);
 
@@ -994,7 +994,7 @@ test.describe('PDF → Platte tekst: batch', () => {
         'Titel: Verslag A',
         'Auteur: Bewonerscommissie',
         'Onderwerp: Verslag',
-        'Datum: 1 januari 2026',
+        'Datum: 2026-01-01',
         '',
         a,
         '',
@@ -1004,7 +1004,7 @@ test.describe('PDF → Platte tekst: batch', () => {
         'Titel: Verslag B',
         'Auteur: Bewonerscommissie',
         'Onderwerp: Verslag',
-        'Datum: 2 februari 2026',
+        'Datum: 2026-02-02',
         '',
         bText,
         '',

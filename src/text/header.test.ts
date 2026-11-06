@@ -7,6 +7,7 @@ import {
   buildHeader,
   metaFromInfo,
   pdfDateText,
+  upgradeDate,
   withHead,
   type HeadTexts,
 } from './header';
@@ -27,36 +28,18 @@ describe('de woorden', () => {
 });
 
 describe('pdfDateText', () => {
-  it('maakt van een PDF-datum een datum zoals in de extractor, zonder tijd', () => {
-    expect(pdfDateText("D:20180604090000+02'00'")).toBe('4 juni 2018');
-    expect(pdfDateText('D:20181231')).toBe('31 december 2018');
+  it('maakt van een PDF-datum een ISO-datum, zonder tijd', () => {
+    expect(pdfDateText("D:20180604090000+02'00'")).toBe('2018-06-04');
+    expect(pdfDateText('D:20181231')).toBe('2018-12-31');
     // Zonder "D:" ook, en de tijd en tijdzone tellen niet mee.
-    expect(pdfDateText('20240101235959Z')).toBe('1 januari 2024');
+    expect(pdfDateText('20240101235959Z')).toBe('2024-01-01');
   });
 
-  it('noemt de maanden zoals de extractor', () => {
-    const months = [
-      'januari',
-      'februari',
-      'maart',
-      'april',
-      'mei',
-      'juni',
-      'juli',
-      'augustus',
-      'september',
-      'oktober',
-      'november',
-      'december',
-    ];
-    months.forEach((name, i) => {
-      const mm = String(i + 1).padStart(2, '0');
-      expect(pdfDateText(`D:2019${mm}15`)).toBe(`15 ${name} 2019`);
-    });
-  });
-
-  it('in de taal van de app', () => {
-    expect(pdfDateText("D:20180604090000+02'00'", 'en')).toBe('4 June 2018');
+  it('in elke taal hetzelfde: er staat geen maandnaam in', () => {
+    for (let month = 1; month <= 12; month++) {
+      const mm = String(month).padStart(2, '0');
+      expect(pdfDateText(`D:2019${mm}05`)).toBe(`2019-${mm}-05`);
+    }
   });
 
   it('leeg of onleesbaar geeft niets (en niet de ruwe tekst)', () => {
@@ -66,6 +49,28 @@ describe('pdfDateText', () => {
     expect(pdfDateText('D:2018-06-04')).toBe('');
     expect(pdfDateText('D:20181304')).toBe('');
     expect(pdfDateText('D:20180004')).toBe('');
+    expect(pdfDateText('D:20180600')).toBe('');
+    expect(pdfDateText('D:20180632')).toBe('');
+    expect(pdfDateText('D:20180631')).toBe('2018-06-31');
+  });
+});
+
+describe('upgradeDate', () => {
+  const RAW = "D:20180604090000+02'00'";
+  it('een datum zoals het veld eerder vanzelf gevuld werd, wordt ISO', () => {
+    expect(upgradeDate('4 juni 2018', RAW)).toBe('2018-06-04');
+    expect(upgradeDate('4 June 2018', RAW)).toBe('2018-06-04');
+    expect(upgradeDate(' 4 juni 2018 ', RAW)).toBe('2018-06-04');
+  });
+
+  it('een zelf getypte datum, of een andere dag, blijft staan', () => {
+    expect(upgradeDate('5 juni 2018', RAW)).toBe('5 juni 2018');
+    expect(upgradeDate('begin juni', RAW)).toBe('begin juni');
+    expect(upgradeDate('', RAW)).toBe('');
+    expect(upgradeDate('2018-06-04', RAW)).toBe('2018-06-04');
+    // Zonder datum in de PDF valt er niets te vergelijken.
+    expect(upgradeDate('4 juni 2018', undefined)).toBe('4 juni 2018');
+    expect(upgradeDate('4 juni 2018', 'onbekend')).toBe('4 juni 2018');
   });
 });
 
@@ -79,7 +84,7 @@ describe('metaFromInfo', () => {
         CreationDate: "D:20180604090000+02'00'",
         Producer: 'Word',
       }),
-    ).toEqual(META);
+    ).toEqual({ ...META, date: '2018-06-04' });
   });
 
   it('wat er niet is of geen tekst is, blijft leeg', () => {
@@ -89,8 +94,8 @@ describe('metaFromInfo', () => {
     );
   });
 
-  it('de datum in de taal van de app', () => {
-    expect(metaFromInfo({ CreationDate: 'D:20200501' }, 'en').date).toBe('1 May 2020');
+  it('de datum in ISO', () => {
+    expect(metaFromInfo({ CreationDate: 'D:20200501' }).date).toBe('2020-05-01');
   });
 });
 

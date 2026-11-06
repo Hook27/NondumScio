@@ -35,7 +35,7 @@ import {
   type Extra,
   type Settings,
 } from './settings';
-import { EMPTY_META, metaFromInfo, type HeadTexts, type Meta } from './header';
+import { EMPTY_META, metaFromInfo, upgradeDate, type HeadTexts, type Meta } from './header';
 import { printedPages, type ConcordanceTexts, type Join, type Printed } from './pages';
 
 /** Een gelezen PDF. */
@@ -252,7 +252,7 @@ function setSlot(slot: TextSlot, extra: Partial<TextState> = {}) {
 /** Het nummer van de laatste keer lezen, zodat een PDF die nog gelezen wordt een later gekozen PDF niet overschrijft. */
 let lastRead = 0;
 
-async function load(file: File, language: string) {
+async function load(file: File) {
   const token = ++lastRead;
   const current = () => lastRead === token;
   const put = (slot: TextSlot) => {
@@ -273,9 +273,12 @@ async function load(file: File, language: string) {
       return;
     }
     // De gegevens uit de PDF in de velden; eerder onthouden instellingen voor deze PDF (met de
-    // velden zoals ze toen waren) gaan voor, zoals in de extractor.
-    const meta = metaFromInfo(info, language);
+    // velden zoals ze toen waren) gaan voor, zoals in de extractor. Een onthouden datum in de vorm
+    // van eerder ("4 juni 2018") wordt ISO.
+    const meta = metaFromInfo(info);
     const stored = fromSettings(loadStored(file.name), { ...settingsOf(state), meta });
+    if (stored)
+      stored.meta = { ...stored.meta, date: upgradeDate(stored.meta.date, info.CreationDate) };
     setState({
       slot: {
         status: 'ready',
@@ -293,14 +296,11 @@ async function load(file: File, language: string) {
   }
 }
 
-/**
- * Opent de gekozen PDF; bij meer dan één alleen de eerste. `language` is de taal van de app: de
- * datum uit de PDF komt zo in het veld ("4 juni 2018").
- */
-export function openFiles(files: readonly File[], language = 'nl'): Promise<void> {
+/** Opent de gekozen PDF; bij meer dan één alleen de eerste. */
+export function openFiles(files: readonly File[]): Promise<void> {
   const [first] = files;
   setState({ tooMany: files.length > 1 });
-  return first ? load(first, language) : Promise.resolve();
+  return first ? load(first) : Promise.resolve();
 }
 
 /**
@@ -407,6 +407,12 @@ export function undoZones(): void {
 export function importSettings(raw: unknown): boolean {
   const next = fromSettings(raw, settingsOf(state));
   if (!next) return false;
+  // Ook in een bestand van de extractor ("4 juni 2018"): de datum van de PDF wordt ISO.
+  if (state.slot.status === 'ready')
+    next.meta = {
+      ...next.meta,
+      date: upgradeDate(next.meta.date, state.slot.doc.info.CreationDate),
+    };
   change({
     ...next,
     undo: [...state.undo, { zones: state.zones, pages: state.pages }].slice(-UNDO_LIMIT),
@@ -545,14 +551,14 @@ const encode = (text: string) => new TextEncoder().encode(text);
  * (geen tekst, of niets gelezen), dan geen download, alleen de melding. De open PDF, de vakken en
  * het resultaat blijven ongemoeid, en de lijst blijft staan.
  */
-export async function runBatch(language = 'nl', texts?: BatchTexts): Promise<void> {
+export async function runBatch(texts?: BatchTexts): Promise<void> {
   const files = state.batchFiles.map((entry) => entry.file);
   if (state.batch.status === 'running' || files.length === 0) return;
   const opts = state.options;
   const combine = state.batchCombine;
   const ctx: BatchContext = texts
-    ? { language, concordance: texts.concordance, head: texts.head, words: texts.batch }
-    : { ...DUTCH_CONTEXT, language };
+    ? { concordance: texts.concordance, head: texts.head, words: texts.batch }
+    : DUTCH_CONTEXT;
   const names = zipNames(files.map((file) => file.name));
   const label = (i: number) => (combine ? files[i]!.name : names[i]!.label);
   const failed: BatchFailure[] = [];

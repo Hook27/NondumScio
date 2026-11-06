@@ -169,7 +169,7 @@ function SlotView() {
       inputId="plaintext-file"
       accept="application/pdf,.pdf"
       chooseLabel={slot.status === 'empty' ? p.slot.choose : p.slot.replace}
-      onFiles={(files) => void openFiles(files, language)}
+      onFiles={(files) => void openFiles(files)}
       extraClass="plaintext-slot"
     >
       <button
@@ -567,7 +567,7 @@ function PageSettings() {
  * batch meteen na het kiezen. Werkt los van de open PDF.
  */
 function BatchSettings() {
-  const { t, language } = useI18n();
+  const { t } = useI18n();
   const p = t.plainText;
   const b = p.batch;
   const { batchCombine, batch, batchFiles, useZones } = useTextState();
@@ -614,7 +614,7 @@ function BatchSettings() {
         class="button plaintext-batch__run"
         disabled={running || batchFiles.length === 0}
         onClick={() =>
-          void runBatch(language, {
+          void runBatch({
             concordance: p.concordance,
             head: { fields: p.header.fields, conventions: p.conventions },
             batch: { start: b.start, end: b.end },
