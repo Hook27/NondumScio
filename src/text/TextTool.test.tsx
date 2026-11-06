@@ -13,6 +13,7 @@ import { format } from '../i18n/format';
 import { PdfLoadError } from '../pdf/loader';
 import { downloadFile } from '../pdf/save';
 import { TextTool } from './TextTool';
+import { DEFAULT_TEXT_OPTIONS } from './extract';
 import { SETTINGS_PREFIX } from './settings';
 import {
   UNDO_LIMIT,
@@ -1063,6 +1064,55 @@ describe('PDF → Platte tekst: instellingen bewaren', () => {
       within(screen.getByRole('dialog')).getByRole('button', { name: p.save.forgetConfirm }),
     );
     expect(screen.getByText(p.save.forgottenNone)).toBeTruthy();
+  });
+
+  it('standaardinstellingen: na een vraag alle opties terug, de vakken en velden blijven', async () => {
+    await open('brief.pdf');
+    const s = p.settings;
+    const v = p.save;
+    // Alles anders dan de standaard.
+    for (const name of [s.dehyphen, s.columns, s.strip, s.structure, s.tables, p.pages.anchors])
+      fireEvent.click(check(name));
+    fireEvent.click(check(p.header.use));
+    fireEvent.click(check(p.header.conventions));
+    fireEvent.click(check(p.zones.use));
+    fireEvent.click(check(p.zones.readEmpty));
+    fireEvent.input(screen.getByRole('slider', { name: s.gap }), { target: { value: '2.2' } });
+    fireEvent.input(screen.getByRole('textbox', { name: p.header.fields.title }), {
+      target: { value: 'Eigen titel' },
+    });
+    await settle();
+    draw(...LEFT_BOX);
+    fireEvent.click(button(p.extract));
+    expect(getTextState().options).not.toEqual(DEFAULT_TEXT_OPTIONS);
+
+    // Annuleren laat alles staan.
+    fireEvent.click(button(v.defaults));
+    const dialog = screen.getByRole('dialog', { name: v.defaultsTitle });
+    fireEvent.click(within(dialog).getByRole('button', { name: v.cancel }));
+    expect(check(s.dehyphen).checked).toBe(false);
+
+    fireEvent.click(button(v.defaults));
+    fireEvent.click(
+      within(screen.getByRole('dialog')).getByRole('button', { name: v.defaultsConfirm }),
+    );
+    expect(screen.queryByRole('dialog')).toBeNull();
+    expect(screen.getByText(v.defaultsDone)).toBeTruthy();
+    expect(getTextState().options).toEqual(DEFAULT_TEXT_OPTIONS);
+    expect(getTextState().readEmpty).toBe(false);
+    expect(check(s.dehyphen).checked).toBe(true);
+    expect(check(p.header.use).checked).toBe(false);
+    expect(screen.getByRole<HTMLInputElement>('slider', { name: s.gap }).value).toBe('1.3');
+    // De vakken, de leesvakken zelf en de velden blijven; de tekst is niet meer bij.
+    expect(check(p.zones.use).checked).toBe(true);
+    expect(getTextState().zones).toHaveLength(1);
+    expect(getTextState().meta.title).toBe('Eigen titel');
+    expect(getTextState().stale).toBe(true);
+    // En zo onthouden voor deze PDF.
+    fireEvent.click(button(p.clear));
+    choose('brief.pdf');
+    await waitFor(() => expect(screen.getByText(/instellingen hersteld/)).toBeTruthy());
+    expect(getTextState().options).toEqual(DEFAULT_TEXT_OPTIONS);
   });
 
   it('meldt hoeveel PDF’s er vergeten zijn', async () => {

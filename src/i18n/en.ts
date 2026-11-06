@@ -863,6 +863,12 @@ export const en: Messages = {
       import: 'Load settings',
       imported: 'Settings loaded from {name}.',
       importFailed: '{name} could not be read as a settings file.',
+      defaults: 'Default settings',
+      defaultsTitle: 'Restore the default settings?',
+      defaultsText:
+        'The ticks and the paragraph sensitivity of Text clean-up, Document header and metadata and Page transitions, and also “Read pages without zones in full”, go back to the default. The zones, the details in the fields and the batch list stay as they are.',
+      defaultsConfirm: 'Restore',
+      defaultsDone: 'The settings are back to the default.',
       forget: 'Forget remembered settings',
       forgetTitle: 'Forget remembered settings?',
       forgetText:

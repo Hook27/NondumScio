@@ -871,6 +871,12 @@ export const nl = {
       import: 'Instellingen laden',
       imported: 'Instellingen geladen uit {name}.',
       importFailed: '{name} kon niet worden gelezen als instellingenbestand.',
+      defaults: 'Standaardinstellingen',
+      defaultsTitle: 'Standaardinstellingen terugzetten?',
+      defaultsText:
+        'De vinkjes en de alinea-gevoeligheid van Tekstopschoning, Documentkop en metadata en Pagina-overgangen, en ook “Pagina’s zonder vakken helemaal lezen”, gaan terug naar de standaard. De vakken, de gegevens in de velden en de lijst van de batch blijven staan.',
+      defaultsConfirm: 'Terugzetten',
+      defaultsDone: 'De instellingen staan weer op de standaard.',
       forget: 'Onthouden instellingen vergeten',
       forgetTitle: 'Onthouden instellingen vergeten?',
       forgetText:

@@ -336,6 +336,15 @@ export function setMeta(next: Partial<Meta>): void {
   change({ meta: { ...state.meta, ...next } });
 }
 
+/**
+ * De instellingen terug naar de standaard, zoals Reset in de extractor (zonder "Instellingen
+ * behouden"): alle vinkjes en de alinea-gevoeligheid, en pagina's zonder vakken overslaan. De
+ * vakken, de velden van de documentkop en de batch blijven staan; voor deze PDF wordt het onthouden.
+ */
+export function resetOptions(): void {
+  change({ options: DEFAULT_TEXT_OPTIONS, readEmpty: false });
+}
+
 /** Pagina's zonder vakken toch helemaal lezen (of overslaan). */
 export function setReadEmpty(readEmpty: boolean): void {
   change({ readEmpty });

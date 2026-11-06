@@ -38,6 +38,7 @@ import {
   moveBatchFileTo,
   removeBatchFile,
   removeZone,
+  resetOptions,
   runBatch,
   setBatchCombine,
   setFit,
@@ -765,7 +766,7 @@ function SaveSettings() {
   const { slot } = useTextState();
   const input = useRef<HTMLInputElement>(null);
   const [status, setStatus] = useState<string | null>(null);
-  const [confirming, setConfirming] = useState(false);
+  const [confirming, setConfirming] = useState<'defaults' | 'forget' | null>(null);
   const ready = slot.status === 'ready';
   return (
     <Block id="save" title={v.title}>
@@ -813,7 +814,18 @@ function SaveSettings() {
               );
           }}
         />
-        <button type="button" class="button button--secondary" onClick={() => setConfirming(true)}>
+        <button
+          type="button"
+          class="button button--secondary"
+          onClick={() => setConfirming('defaults')}
+        >
+          {v.defaults}
+        </button>
+        <button
+          type="button"
+          class="button button--secondary"
+          onClick={() => setConfirming('forget')}
+        >
           {v.forget}
         </button>
       </div>
@@ -822,16 +834,30 @@ function SaveSettings() {
           {status}
         </p>
       )}
-      {confirming && (
+      {confirming === 'defaults' && (
+        <ConfirmDialog
+          title={v.defaultsTitle}
+          text={v.defaultsText}
+          cancel={v.cancel}
+          confirm={v.defaultsConfirm}
+          onCancel={() => setConfirming(null)}
+          onConfirm={() => {
+            resetOptions();
+            setConfirming(null);
+            setStatus(v.defaultsDone);
+          }}
+        />
+      )}
+      {confirming === 'forget' && (
         <ConfirmDialog
           title={v.forgetTitle}
           text={v.forgetText}
           cancel={v.cancel}
           confirm={v.forgetConfirm}
-          onCancel={() => setConfirming(false)}
+          onCancel={() => setConfirming(null)}
           onConfirm={() => {
             const n = forgetStored();
-            setConfirming(false);
+            setConfirming(null);
             setStatus(n === 0 ? v.forgottenNone : plural(n, v.forgottenOne, v.forgotten));
           }}
         />
