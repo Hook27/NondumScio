@@ -8,7 +8,7 @@ import { format, plural } from '../i18n/format';
 import { initialPages, type PageItem } from '../pages/plan';
 import { PdfSaveError, buildPdf, downloadPdf, readSources, type SaveErrorCode } from '../pdf/save';
 import { dateFromName, mergeName, moveId, orderEntries, type MergeEntry } from './merge';
-import { PreviewDialog } from './PreviewDialog';
+import { PreviewDialog } from '../components/PreviewDialog';
 import { countPages } from './readText';
 import { proposeNames } from './recognize';
 import { clearRename, newId, setRenameState, useRenameState, type ExtraDoc } from './store';

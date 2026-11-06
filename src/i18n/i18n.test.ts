@@ -42,9 +42,10 @@ describe('vertalingen', () => {
     // korte paginalabel ("p3"), de kop onder elkaar ("A · … → B · …") en bij het beeld "Overlay",
     // "B over A", "Zoom", de maten ("A: … px · B: … px") en in het rapport de regel per document
     // ("A: naam (pagina's, grootte)") zijn in beide talen gelijk, net als bij PDF → Platte tekst
-    // de kop van het vak met de PDF ("PDF").
+    // de kop van het vak met de PDF ("PDF"), en bij Splitsen op bladwijzers de kolom "#".
     expect(same).toEqual([
       'appName',
+      'split.table.number',
       'convert.a4',
       'convert.letter',
       'redact.dpi200',

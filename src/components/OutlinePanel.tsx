@@ -15,7 +15,7 @@ import {
  * De bladwijzers per geopend bestand, zodra ze gelezen zijn. Wat al gelezen is, staat er meteen
  * (bij het wisselen van taak verschijnt het blok dan niet even later).
  */
-function useOutlines(sources: readonly Source[]): ReadonlyMap<number, OutlineEntry[]> {
+export function useOutlines(sources: readonly Source[]): ReadonlyMap<number, OutlineEntry[]> {
   const [outlines, setOutlines] = useState<ReadonlyMap<number, OutlineEntry[]>>(
     () =>
       new Map(

@@ -467,6 +467,21 @@ describe('buildParts (splitsen)', () => {
     expect(handed).toBe(2);
   });
 
+  it('geeft met titles elk deel een eigen titel; zonder titel blijft die van het bestand', async () => {
+    const plan = initialPages(3, 1);
+    const parts = await buildParts(
+      new Map([[1, await samplePdf(3, {}, { title: 'Bestand A' })]]),
+      [plan.slice(0, 1), plan.slice(1, 2), plan.slice(2)],
+      undefined,
+      [],
+      undefined,
+      undefined,
+      ['Inleiding', '', 'Bijlage / € 12,50'],
+    );
+    const results = await Promise.all(parts.map(describePdf));
+    expect(results.map((r) => r.title)).toEqual(['Inleiding', 'Bestand A', 'Bijlage / € 12,50']);
+  });
+
   it('staat dezelfde pagina in meer delen toe', async () => {
     const plan = initialPages(3, 1);
     const parts = await buildParts(new Map([[1, await samplePdf(3)]]), [plan, plan.slice(1, 2)]);
