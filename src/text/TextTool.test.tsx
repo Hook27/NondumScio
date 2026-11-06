@@ -2,6 +2,7 @@
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/preact';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { PageText, Piece } from '../compare/layout';
+import type { DocInfo } from '../compare/profile';
 import { readPdf } from '../compare/readPdf';
 import { copyText } from '../compare/report';
 import { closeVisual, renderPage } from '../compare/visual';
@@ -97,6 +98,19 @@ const DOCS: Record<string, PageText[] | Error> = {
   'kapot.pdf': new Error('kapot'),
 };
 
+/** De gegevens (metadata) per bestand, zoals pdf.js ze geeft; de rest heeft er geen. */
+const INFO: Record<string, DocInfo> = {
+  'brief.pdf': {
+    Title: 'Nieuwe huurovereenkomst',
+    Author: 'Woningstichting Voorbeeld',
+    Subject: 'Huur',
+    CreationDate: "D:20180604090000+02'00'",
+    Producer: 'Voorbeeld PDF 2.0',
+    Creator: 'Tekstverwerker',
+  },
+  'tweede.pdf': { Title: 'De tweede', CreationDate: 'D:20200501' },
+};
+
 /** Een "poortje" om het lezen van een bestand even vast te houden. */
 const gates: Record<string, Promise<void>> = {};
 
@@ -107,7 +121,7 @@ vi.mock('../compare/readPdf', () => ({
     if (gates[file.name]) await gates[file.name];
     if (pages instanceof Error) throw pages;
     onProgress?.(pages.length, pages.length);
-    return { pageCount: pages.length, pages, info: {}, thumb: null };
+    return { pageCount: pages.length, pages, info: INFO[file.name] ?? {}, thumb: null };
   }),
 }));
 
@@ -641,14 +655,32 @@ describe('PDF → Platte tekst: indeling', () => {
     await open('brief.pdf');
     const block = (title: string) =>
       screen.getByText(title, { selector: 'summary' }).closest('details')!;
+    // In de volgorde van de extractor (Instellingen bewaren is nieuw, onderaan).
+    expect([...document.querySelectorAll('summary')].map((s) => s.textContent)).toEqual([
+      p.zones.title,
+      p.settings.title,
+      p.header.title,
+      p.pages.title,
+      p.save.title,
+    ]);
     expect(block(p.zones.title).open).toBe(true);
     expect(block(p.settings.title).open).toBe(true);
+    // Zoals in de extractor: de documentkop en metadata standaard dicht.
+    expect(block(p.header.title).open).toBe(false);
+    expect(block(p.pages.title).open).toBe(true);
+    expect(block(p.save.title).open).toBe(false);
     // Zoals de browser het doet als je op de kop klikt: dicht, en dan het toggle-event.
     act(() => {
       block(p.settings.title).open = false;
       block(p.settings.title).dispatchEvent(new Event('toggle'));
     });
-    expect(getTextState().blocks).toEqual({ zones: true, clean: false, pages: true, save: false });
+    expect(getTextState().blocks).toEqual({
+      zones: true,
+      clean: false,
+      meta: false,
+      pages: true,
+      save: false,
+    });
     fireEvent.click(button(p.clear));
     cleanup();
     setup();
@@ -1203,5 +1235,227 @@ describe('PDF → Platte tekst: pagina-overgangen', () => {
     expect(output()!.textContent).toContain(
       '---\nPage concordance:\nPDF page 1 = no document page number (title page)\nPDF page 2 = document page 1',
     );
+  });
+});
+
+describe('PDF → Platte tekst: documentkop en metadata', () => {
+  const h = p.header;
+  const f = h.fields;
+  const field = (name: string) => screen.getByRole<HTMLInputElement>('textbox', { name });
+  const type = (name: string, value: string) => fireEvent.input(field(name), { target: { value } });
+  const HEADER = [
+    'Bestand: brief.pdf',
+    'Titel: Nieuwe huurovereenkomst',
+    'Auteur: Woningstichting Voorbeeld',
+    'Onderwerp: Huur',
+    'Datum: 4 juni 2018',
+  ].join('\n');
+
+  it('vult de velden met de gegevens uit de PDF; zonder PDF staan ze uit', async () => {
+    setup();
+    for (const name of [f.title, f.author, f.subject, f.date]) {
+      expect(field(name).disabled).toBe(true);
+      expect(field(name).value).toBe('');
+    }
+    expect(check(h.use).checked).toBe(false);
+    expect(check(h.conventions).checked).toBe(false);
+    choose('brief.pdf');
+    await waitFor(() => expect(field(f.title).value).toBe('Nieuwe huurovereenkomst'));
+    expect(field(f.title).disabled).toBe(false);
+    expect(field(f.author).value).toBe('Woningstichting Voorbeeld');
+    expect(field(f.subject).value).toBe('Huur');
+    expect(field(f.date).value).toBe('4 juni 2018');
+    expect(screen.getByText('PDF-producent (Producer): Voorbeeld PDF 2.0')).toBeTruthy();
+    expect(screen.getByText('Toepassing (Creator): Tekstverwerker')).toBeTruthy();
+  });
+
+  it('een PDF zonder gegevens: lege velden, en geen Producer of Creator', async () => {
+    await open('kort.pdf');
+    for (const name of [f.title, f.author, f.subject, f.date]) {
+      expect(field(name).value).toBe('');
+      expect(field(name).disabled).toBe(false);
+    }
+    expect(screen.queryByText(/Producer/)).toBeNull();
+    expect(screen.queryByText(/Creator/)).toBeNull();
+  });
+
+  it('de kop staat bovenaan de tekst, pas na opnieuw extraheren, met de velden zoals ze staan', async () => {
+    await open('brief.pdf');
+    fireEvent.click(button(p.extract));
+    expect(output()!.textContent).toBe(LETTER_TEXT);
+    fireEvent.click(check(h.use));
+    expect(screen.getByText(p.stale)).toBeTruthy();
+    expect(output()!.textContent).toBe(LETTER_TEXT);
+    fireEvent.click(button(p.extract));
+    expect(output()!.textContent).toBe(`${HEADER}\n\n${LETTER_TEXT}`);
+    // Een aangepast veld, en een leeg veld valt weg; ook dat pas bij opnieuw extraheren.
+    type(f.title, 'Huurcontract');
+    type(f.subject, '');
+    expect(getTextState().meta).toEqual({
+      title: 'Huurcontract',
+      author: 'Woningstichting Voorbeeld',
+      subject: '',
+      date: '4 juni 2018',
+    });
+    expect(screen.getByText(p.stale)).toBeTruthy();
+    fireEvent.click(button(p.extract));
+    expect(output()!.textContent).toBe(
+      `Bestand: brief.pdf\nTitel: Huurcontract\nAuteur: Woningstichting Voorbeeld\nDatum: 4 juni 2018\n\n${LETTER_TEXT}`,
+    );
+  });
+
+  it('het conventieblok staat vóór de kop; met {H} ook de regel over {H}', async () => {
+    await open('contract.pdf');
+    fireEvent.click(check(h.conventions));
+    fireEvent.click(button(p.extract));
+    const text = () => output()!.textContent!;
+    // Zonder pagina-ankers (zie beforeEach) geen regels over {p#} en de concordantie.
+    expect(text()).toBe(
+      [
+        '=== Conventies ===',
+        'Platte tekst geëxtraheerd uit een PDF; opmaak en afbeeldingen zijn weggelaten.',
+        '==================',
+        '',
+        'Partijen komen het volgende overeen over de woning aan de straat.',
+        '',
+        '',
+        'Artikel 1 Huurprijs',
+        '',
+        'De huur bedraagt vijfhonderd euro per maand, vooraf te betalen.',
+      ].join('\n'),
+    );
+    fireEvent.click(check(p.settings.headingMarker));
+    fireEvent.click(check(h.use));
+    fireEvent.click(button(p.extract));
+    expect(text()).toContain(
+      `\n${p.conventions.heading}\n==================\n\nBestand: contract.pdf\n\nPartijen komen`,
+    );
+    expect(text()).toContain('\n{H} Artikel 1 Huurprijs\n');
+  });
+
+  it('de velden horen bij de PDF: Wissen maakt ze leeg, een andere PDF vult ze; de vinkjes blijven', async () => {
+    await open('brief.pdf');
+    fireEvent.click(check(h.use));
+    fireEvent.click(check(h.conventions));
+    type(f.title, 'Eigen titel');
+    fireEvent.click(button(p.clear));
+    expect(field(f.title).value).toBe('');
+    expect(field(f.title).disabled).toBe(true);
+    expect(check(h.use).checked).toBe(true);
+    expect(check(h.conventions).checked).toBe(true);
+    expect(screen.queryByText(/Producer/)).toBeNull();
+    choose('tweede.pdf');
+    await waitFor(() => expect(field(f.title).value).toBe('De tweede'));
+    expect(field(f.author).value).toBe('');
+    expect(field(f.date).value).toBe('1 mei 2020');
+  });
+
+  it('worden onthouden en opgeslagen; onthouden velden gaan voor die uit de PDF', async () => {
+    await open('brief.pdf');
+    fireEvent.click(check(h.use));
+    type(f.title, 'Eigen titel');
+    fireEvent.click(button(p.save.export));
+    const [data] = vi.mocked(downloadFile).mock.calls[0]!;
+    const saved = JSON.parse(new TextDecoder().decode(data as Uint8Array));
+    expect(saved.options).toMatchObject({ metaHeader: true, conventions: false });
+    expect(saved.meta).toEqual({
+      title: 'Eigen titel',
+      author: 'Woningstichting Voorbeeld',
+      subject: 'Huur',
+      date: '4 juni 2018',
+    });
+    fireEvent.click(button(p.clear));
+    fireEvent.click(check(h.use));
+    expect(check(h.use).checked).toBe(false);
+    choose('brief.pdf');
+    await waitFor(() => expect(screen.getByText(/instellingen hersteld/)).toBeTruthy());
+    expect(field(f.title).value).toBe('Eigen titel');
+    expect(field(f.author).value).toBe('Woningstichting Voorbeeld');
+    expect(check(h.use).checked).toBe(true);
+  });
+
+  it('onthouden instellingen zonder gegevens (van vóór de documentkop): de velden uit de PDF', async () => {
+    localStorage.setItem(
+      `${SETTINGS_PREFIX}brief.pdf`,
+      JSON.stringify({
+        v: 2,
+        pdf: 'brief.pdf',
+        zones: { d: [], p: {} },
+        options: { dehyphen: false },
+      }),
+    );
+    await open('brief.pdf');
+    expect(screen.getByText(/instellingen hersteld/)).toBeTruthy();
+    expect(check(p.settings.dehyphen).checked).toBe(false);
+    expect(field(f.title).value).toBe('Nieuwe huurovereenkomst');
+    expect(field(f.date).value).toBe('4 juni 2018');
+  });
+
+  it('een instellingenbestand van de extractor zet ook de velden en de vinkjes', async () => {
+    await open('brief.pdf');
+    await loadSettings(
+      json('brief_instellingen.json', {
+        v: 2,
+        pdf: 'brief.pdf',
+        zones: { d: [], p: {} },
+        options: { metaHeader: true, conventions: true },
+        meta: { title: 'Uit het bestand', author: '', subject: 'Huur', date: '5 juni 2018' },
+      }),
+    );
+    expect(check(h.use).checked).toBe(true);
+    expect(check(h.conventions).checked).toBe(true);
+    expect(field(f.title).value).toBe('Uit het bestand');
+    expect(field(f.author).value).toBe('');
+    expect(field(f.date).value).toBe('5 juni 2018');
+  });
+
+  it('bladeren met de toetsen gebeurt niet terwijl je in een veld typt', async () => {
+    await open('artikel.pdf');
+    fireEvent.keyDown(field(f.title), { key: 'ArrowRight' });
+    expect(getTextState().page).toBe(1);
+    fireEvent.keyDown(document.body, { key: 'ArrowRight' });
+    expect(getTextState().page).toBe(2);
+  });
+
+  it('een PDF zonder enige tekst: ook geen kop, en niets te kopiëren', async () => {
+    await open('leeg.pdf');
+    fireEvent.click(check(h.use));
+    fireEvent.click(check(h.conventions));
+    fireEvent.click(button(p.extract));
+    expect(output()).toBeNull();
+    expect(screen.getByText(p.empty)).toBeTruthy();
+    expect(button(p.copy).disabled).toBe(true);
+    expect(getTextState().result!.text).toBe('');
+  });
+
+  it('in de taal van de app: de datum, de kop en het conventieblok', async () => {
+    render(
+      <LanguageProvider initial="en">
+        <TextTool />
+      </LanguageProvider>,
+    );
+    choose('brief.pdf');
+    const en = messages.en.plainText;
+    await waitFor(() => expect(field(en.header.fields.date).value).toBe('4 June 2018'));
+    fireEvent.click(screen.getByRole('checkbox', { name: en.header.use }));
+    fireEvent.click(screen.getByRole('checkbox', { name: en.header.conventions }));
+    fireEvent.click(screen.getByRole('button', { name: en.extract }));
+    expect(output()!.textContent).toBe(
+      [
+        '=== Conventions ===',
+        en.conventions.intro,
+        '===================',
+        '',
+        'File: brief.pdf',
+        'Title: Nieuwe huurovereenkomst',
+        'Author: Woningstichting Voorbeeld',
+        'Subject: Huur',
+        'Date: 4 June 2018',
+        '',
+        LETTER_TEXT,
+      ].join('\n'),
+    );
+    expect(screen.getByText('PDF producer (Producer): Voorbeeld PDF 2.0')).toBeTruthy();
+    expect(screen.getByText('Application (Creator): Tekstverwerker')).toBeTruthy();
   });
 });

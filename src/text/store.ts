@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'preact/hooks';
 import type { PageText } from '../compare/layout';
+import type { DocInfo } from '../compare/profile';
 import { readPdf } from '../compare/readPdf';
 import { closeVisual } from '../compare/visual';
 import type { LoadErrorCode } from '../pdf/detect';
@@ -21,6 +22,7 @@ import {
   type Extra,
   type Settings,
 } from './settings';
+import { EMPTY_META, metaFromInfo, type HeadTexts, type Meta } from './header';
 import { printedPages, type ConcordanceTexts, type Join, type Printed } from './pages';
 
 /** Een gelezen PDF. */
@@ -32,6 +34,8 @@ export type TextDoc = {
   thumb: string | null;
   /** Het afgedrukte paginanummer per pagina (herkend bij het openen). */
   printed: Printed;
+  /** De gegevens van het document (metadata), zoals pdf.js ze geeft. */
+  info: DocInfo;
 };
 
 export type TextSlot =
@@ -47,7 +51,7 @@ export type TextView = 'preview' | 'result';
 export type Fit = 'page' | 'width';
 
 /** De blokken links die je kunt in- en uitklappen. */
-export type TextBlock = 'zones' | 'clean' | 'pages' | 'save';
+export type TextBlock = 'zones' | 'clean' | 'meta' | 'pages' | 'save';
 
 /** Hoeveel stappen terug "Ongedaan" kan, zoals in de extractor. */
 export const UNDO_LIMIT = 60;
@@ -71,9 +75,11 @@ export type TextState = {
   readEmpty: boolean;
   /** De keuze per pagina-overgang: hoe pagina n aansluit op de vorige. */
   joins: Record<number, Join>;
+  /** De gegevens voor de documentkop: uit de PDF, aan te passen; ze horen bij de PDF. */
+  meta: Meta;
   /** Eerdere vakken, voor Ongedaan (de laatste het eerst). */
   undo: ZoneSnapshot[];
-  /** Wat de extractor ook bewaart maar hier (nog) niet gebruikt wordt. */
+  /** Opties uit een bestand die deze tool niet kent; ze gaan mee bij opslaan. */
   extra: Extra;
   /** De instellingen van deze PDF zijn bij het openen uit de opslag teruggehaald. */
   restored: boolean;
@@ -104,6 +110,7 @@ const INITIAL: TextState = {
   pages: {},
   readEmpty: false,
   joins: {},
+  meta: EMPTY_META,
   undo: [],
   extra: NO_EXTRA,
   restored: false,
@@ -113,7 +120,8 @@ const INITIAL: TextState = {
   zoom: 100,
   result: null,
   stale: false,
-  blocks: { zones: true, clean: true, pages: true, save: false },
+  // Zoals in de extractor: de documentkop en metadata dicht, de rest open (bewaren is nieuw).
+  blocks: { zones: true, clean: true, meta: false, pages: true, save: false },
 };
 
 /**
@@ -153,6 +161,7 @@ const settingsOf = (s: TextState): Settings => ({
   pages: s.pages,
   readEmpty: s.readEmpty,
   joins: s.joins,
+  meta: s.meta,
   extra: s.extra,
 });
 
@@ -179,6 +188,7 @@ function setSlot(slot: TextSlot, extra: Partial<TextState> = {}) {
     zones: [],
     pages: {},
     joins: {},
+    meta: EMPTY_META,
     undo: [],
     extra: NO_EXTRA,
     restored: false,
@@ -195,7 +205,7 @@ function setSlot(slot: TextSlot, extra: Partial<TextState> = {}) {
 /** Het nummer van de laatste keer lezen, zodat een PDF die nog gelezen wordt een later gekozen PDF niet overschrijft. */
 let lastRead = 0;
 
-async function load(file: File) {
+async function load(file: File, language: string) {
   const token = ++lastRead;
   const current = () => lastRead === token;
   const put = (slot: TextSlot) => {
@@ -205,7 +215,7 @@ async function load(file: File) {
   };
   put({ status: 'reading', name: file.name, done: 0, total: 0 });
   try {
-    const { pageCount, pages, thumb } = await readPdf(file, (done, total) => {
+    const { pageCount, pages, info, thumb } = await readPdf(file, (done, total) => {
       if (current()) setState({ slot: { status: 'reading', name: file.name, done, total } });
     });
     const url = thumb
@@ -215,13 +225,16 @@ async function load(file: File) {
       if (url) URL.revokeObjectURL(url);
       return;
     }
-    // Eerder onthouden instellingen voor deze PDF terughalen, zoals in de extractor.
-    const stored = fromSettings(loadStored(file.name), settingsOf(state));
+    // De gegevens uit de PDF in de velden; eerder onthouden instellingen voor deze PDF (met de
+    // velden zoals ze toen waren) gaan voor, zoals in de extractor.
+    const meta = metaFromInfo(info, language);
+    const stored = fromSettings(loadStored(file.name), { ...settingsOf(state), meta });
     setState({
       slot: {
         status: 'ready',
-        doc: { file, pageCount, pages, thumb: url, printed: printedPages(pages) },
+        doc: { file, pageCount, pages, thumb: url, printed: printedPages(pages), info },
       },
+      meta,
       ...(stored ? { ...stored, restored: true } : {}),
     });
   } catch (error) {
@@ -233,11 +246,14 @@ async function load(file: File) {
   }
 }
 
-/** Opent de gekozen PDF; bij meer dan één alleen de eerste. */
-export function openFiles(files: readonly File[]): Promise<void> {
+/**
+ * Opent de gekozen PDF; bij meer dan één alleen de eerste. `language` is de taal van de app: de
+ * datum uit de PDF komt zo in het veld ("4 juni 2018").
+ */
+export function openFiles(files: readonly File[], language = 'nl'): Promise<void> {
   const [first] = files;
   setState({ tooMany: files.length > 1 });
-  return first ? load(first) : Promise.resolve();
+  return first ? load(first, language) : Promise.resolve();
 }
 
 /**
@@ -266,6 +282,11 @@ export function setJoin(page: number, join: Join): void {
   if (join === 'auto') delete joins[page];
   else joins[page] = join;
   change({ joins });
+}
+
+/** Een veld van de documentkop aanpassen (titel, auteur, onderwerp of datum). */
+export function setMeta(next: Partial<Meta>): void {
+  change({ meta: { ...state.meta, ...next } });
 }
 
 /** Pagina's zonder vakken toch helemaal lezen (of overslaan). */
@@ -381,11 +402,14 @@ export function setZoom(zoom: number): void {
   setState({ zoom });
 }
 
+/** De woorden in de tekst, in de taal van de app: de paginaconcordantie, de kop en de conventies. */
+export type OutputTexts = { concordance: ConcordanceTexts; head: HeadTexts };
+
 /**
- * De tekst maken met de instellingen en vakken van nu, en de tekst tonen. `texts` zijn de woorden
- * van de paginaconcordantie, in de taal van de app.
+ * De tekst maken met de instellingen, vakken en gegevens van nu, en de tekst tonen. Zonder `texts`
+ * in het Nederlands, zoals in de extractor.
  */
-export function extract(texts?: ConcordanceTexts): void {
+export function extract(texts?: OutputTexts): void {
   if (state.slot.status !== 'ready') return;
   const setup = state.useZones
     ? { zones: state.zones, pages: state.pages, readEmpty: state.readEmpty }
@@ -394,7 +418,9 @@ export function extract(texts?: ConcordanceTexts): void {
     result: extractText(state.slot.doc.pages, state.options, setup, {
       printed: state.slot.doc.printed,
       joins: state.joins,
-      ...(texts ? { texts } : {}),
+      name: state.slot.doc.file.name,
+      meta: state.meta,
+      ...(texts ? { texts: texts.concordance, head: texts.head } : {}),
     }),
     view: 'result',
     stale: false,

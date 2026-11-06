@@ -6,13 +6,15 @@ import {
   type PageText,
   type Piece,
 } from '../compare/layout';
+import { DUTCH_HEAD, EMPTY_META, withHead, type HeadTexts, type Meta } from './header';
 import { DUTCH_CONCORDANCE, assemble, printedPages, type Assembly } from './pages';
 
 /**
  * PDF → Platte tekst: de tekstlaag van een PDF als lopende tekst, met dezelfde opmaakregels als
  * PDF's vergelijken (`../compare/layout`). Overgenomen uit de losse pdf-tekst-extractor: met
  * leesvakken wordt alleen gelezen wat in de vakken staat, vak voor vak; zonder vakken de hele
- * pagina; met pagina-ankers en doorlopende zinnen over de pagina-overgang (`./pages`).
+ * pagina; met pagina-ankers en doorlopende zinnen over de pagina-overgang (`./pages`), en
+ * bovenaan eventueel een conventieblok en een documentkop (`./header`).
  */
 
 /**
@@ -24,6 +26,10 @@ export type TextOptions = Required<LayoutOptions> & {
   anchors: boolean;
   /** Een zin die over de pagina-overgang doorloopt weer aan elkaar zetten. */
   crossPage: boolean;
+  /** Bovenaan een documentkop: bestandsnaam, titel, auteur, onderwerp en datum. */
+  header: boolean;
+  /** Bovenaan een korte uitleg van de markeringen ({p#}, {H}). */
+  conventions: boolean;
 };
 
 /**
@@ -46,6 +52,9 @@ export const DEFAULT_TEXT_OPTIONS: TextOptions = {
   // Zoals in de extractor: pagina-ankers en doorlopende zinnen aan.
   anchors: true,
   crossPage: true,
+  // Zoals in de extractor: geen documentkop en geen conventieblok.
+  header: false,
+  conventions: false,
 };
 
 /**
@@ -63,7 +72,7 @@ export type PageStatus = 'read' | 'notext' | 'skipped';
 export type PageResult = { no: number; text: string; status: PageStatus };
 
 export type Extraction = {
-  /** De hele tekst: de pagina's na elkaar, met een witregel ertussen. */
+  /** De hele tekst: eventueel het conventieblok en de kop, dan de pagina's na elkaar. */
   text: string;
   pages: PageResult[];
 };
@@ -118,6 +127,13 @@ export const zonesFor = (setup: Pick<ZoneSetup, 'zones' | 'pages'>, no: number):
   hasOwnZones(setup, no) ? setup.pages[no]! : setup.zones;
 
 /**
+ * Wat er naast de pagina's nodig is om de tekst samen te stellen: de afgedrukte paginanummers, de
+ * keuzes per overgang en de woorden van de concordantie (`./pages`), en voor de documentkop de
+ * naam van het bestand, de gegevens van de PDF en de woorden van de kop (`./header`).
+ */
+export type Assemble = Assembly & { name: string; meta: Meta; head: HeadTexts };
+
+/**
  * De tekst van alle pagina's. `setup` is null als de leesvakken uit staan: dan de hele pagina,
  * met kolommen en zonder terugkerende kop- en voetteksten (als die instellingen aan staan). Met
  * leesvakken: per pagina de vakken die daar gelden. Een pagina zonder vakken wordt overgeslagen,
@@ -128,7 +144,7 @@ export function extractText(
   pages: readonly PageText[],
   opts: TextOptions,
   setup: ZoneSetup | null = null,
-  assembly: Partial<Assembly> = {},
+  assembly: Partial<Assemble> = {},
 ): Extraction {
   const running = setup === null && opts.strip ? analyseRunning(pages) : null;
   const results = pages.map((page, index): PageResult => {
@@ -141,10 +157,15 @@ export function extractText(
     if (!setup.readEmpty) return { no: page.no, text: '', status: 'skipped' };
     return { no: page.no, text: layoutBlock(page.items, opts, opts.columns), status: 'read' };
   });
-  const text = assemble(results, opts, {
+  const body = assemble(results, opts, {
     printed: assembly.printed ?? printedPages(pages),
     joins: assembly.joins ?? {},
     texts: assembly.texts ?? DUTCH_CONCORDANCE,
+  });
+  const text = withHead(body, opts, {
+    name: assembly.name ?? '',
+    meta: assembly.meta ?? EMPTY_META,
+    texts: assembly.head ?? DUTCH_HEAD,
   });
   return { text, pages: results };
 }

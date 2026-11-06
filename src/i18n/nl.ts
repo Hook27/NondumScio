@@ -779,6 +779,24 @@ export const nl = {
       zonesOffRead:
         'Kop- en voetteksten: niet bij leesvakken. Kolommen: alleen op pagina’s zonder vakken, die helemaal gelezen worden.',
     },
+    header: {
+      title: 'Documentkop en metadata',
+      use: 'Documentkop boven de tekst',
+      useHint:
+        'Zet bovenaan de tekst: Bestand, Titel, Auteur, Onderwerp en Datum. Lege velden worden weggelaten.',
+      fields: {
+        file: 'Bestand',
+        title: 'Titel',
+        author: 'Auteur',
+        subject: 'Onderwerp',
+        date: 'Datum',
+      },
+      fieldsHint: 'De gegevens uit de PDF; pas ze hier zo nodig aan vóór het extraheren.',
+      producer: 'PDF-producent (Producer): {value}',
+      creator: 'Toepassing (Creator): {value}',
+      conventions: 'Conventieblok toevoegen',
+      conventionsHint: 'Een korte uitleg bovenaan de tekst over de markeringen, zoals {p#} en {H}.',
+    },
     pages: {
       title: 'Pagina-overgangen',
       anchors: 'Pagina-ankers {p#} invoegen',
@@ -796,6 +814,15 @@ export const nl = {
       page: 'PDF-pagina {n} = documentpagina {p}',
       none: 'PDF-pagina {n} = geen documentpaginanummer',
       titlePage: ' (titelblad)',
+    },
+    conventions: {
+      title: 'Conventies',
+      intro: 'Platte tekst geëxtraheerd uit een PDF; opmaak en afbeeldingen zijn weggelaten.',
+      anchors:
+        '{p#} = begin van PDF-pagina #. Kan midden in een zin staan als een alinea over de pagina-overgang doorloopt.',
+      concordance:
+        'Onderaan staat een paginaconcordantie die fysieke PDF-pagina’s koppelt aan afgedrukte documentpaginanummers.',
+      heading: '{H} = begin van een herkende kop, zoals een hoofdstuk- of artikeltitel.',
     },
     save: {
       title: 'Instellingen bewaren',

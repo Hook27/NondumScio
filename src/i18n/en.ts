@@ -769,6 +769,25 @@ export const en: Messages = {
       zonesOffRead:
         'Headers and footers: not with reading zones. Columns: only on pages without zones, which are read in full.',
     },
+    header: {
+      title: 'Document header and metadata',
+      use: 'Document header above the text',
+      useHint:
+        'Puts at the top of the text: File, Title, Author, Subject and Date. Empty fields are left out.',
+      fields: {
+        file: 'File',
+        title: 'Title',
+        author: 'Author',
+        subject: 'Subject',
+        date: 'Date',
+      },
+      fieldsHint: 'The details from the PDF; correct them here if needed before extracting.',
+      producer: 'PDF producer (Producer): {value}',
+      creator: 'Application (Creator): {value}',
+      conventions: 'Add conventions block',
+      conventionsHint:
+        'A short explanation at the top of the text of the markers, such as {p#} and {H}.',
+    },
     pages: {
       title: 'Page transitions',
       anchors: 'Insert page anchors {p#}',
@@ -786,6 +805,15 @@ export const en: Messages = {
       page: 'PDF page {n} = document page {p}',
       none: 'PDF page {n} = no document page number',
       titlePage: ' (title page)',
+    },
+    conventions: {
+      title: 'Conventions',
+      intro: 'Plain text extracted from a PDF; formatting and images have been left out.',
+      anchors:
+        '{p#} = start of PDF page #. Can be in the middle of a sentence when a paragraph continues across the page break.',
+      concordance:
+        'At the bottom is a page concordance that links physical PDF pages to printed document page numbers.',
+      heading: '{H} = start of a recognised heading, such as a chapter or article title.',
     },
     save: {
       title: 'Keep settings',

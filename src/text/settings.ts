@@ -1,13 +1,14 @@
 import { GAP_FACTOR } from '../compare/layout';
 import { browserStorage } from '../lib/storage';
 import { clampZone, type TextOptions, type Zone } from './extract';
+import { META_FIELDS, type Meta } from './header';
 import { JOINS, type Join } from './pages';
 
 /**
  * Instellingen bewaren: per PDF (op bestandsnaam) in de opslag van de browser, en als .json-bestand
  * om op te slaan en te laden. Het bestand heeft hetzelfde formaat als dat van de losse
- * pdf-tekst-extractor ("v: 2"), zodat instellingen van daar hier werken en andersom. Wat de
- * extractor kent maar deze tool (nog) niet, zoals pagina-ankers en tabellen, gaat ongewijzigd mee.
+ * pdf-tekst-extractor ("v: 2"), zodat instellingen van daar hier werken en andersom. Een optie die
+ * deze tool niet kent, gaat ongewijzigd mee.
  */
 
 /** Wat er bewaard wordt. */
@@ -21,14 +22,15 @@ export type Settings = {
   readEmpty: boolean;
   /** De keuze per pagina-overgang (aansluiting op de vorige pagina). */
   joins: Record<number, Join>;
-  /** Wat de extractor ook bewaart maar hier (nog) niet gebruikt wordt; gaat ongewijzigd mee. */
+  /** De gegevens voor de documentkop, zoals ze in de velden staan. */
+  meta: Meta;
+  /** Wat er in een bestand staat maar hier niet gebruikt wordt; gaat ongewijzigd mee. */
   extra: Extra;
 };
 
 export type Extra = {
-  /** Opties van de extractor die deze tool nog niet kent (documentkop, conventieblok). */
+  /** Opties die deze tool niet kent (bijvoorbeeld van een latere versie van de extractor). */
   options: Record<string, unknown>;
-  meta?: unknown;
 };
 
 /** De opties van de extractor die hier een eigen plek hebben; de rest gaat in `extra`. */
@@ -44,6 +46,8 @@ const KNOWN = [
   'tables',
   'anchors',
   'crossPage',
+  'metaHeader',
+  'conventions',
   'strip',
 ];
 
@@ -73,6 +77,20 @@ function readJoins(value: unknown): Record<number, Join> {
 
 const readZones = (value: unknown): Zone[] =>
   Array.isArray(value) ? value.map(readZone).filter((z): z is Zone => z !== null) : [];
+
+/**
+ * De gegevens voor de documentkop: elk veld dat een tekst is, vervangt wat er stond (zoals in de
+ * extractor); de rest blijft.
+ */
+function readMeta(value: unknown, base: Meta): Meta {
+  if (!isObject(value)) return base;
+  const meta = { ...base };
+  for (const field of META_FIELDS) {
+    const text = value[field];
+    if (typeof text === 'string') meta[field] = text;
+  }
+  return meta;
+}
 
 /** De alinea-gevoeligheid binnen de grenzen van de schuif, op 0,1 afgerond. */
 function readGap(value: unknown, fallback: number): number {
@@ -117,6 +135,8 @@ export function fromSettings(raw: unknown, base: Settings): Settings | null {
       tables: flag('tables', base.options.tables),
       anchors: flag('anchors', base.options.anchors),
       crossPage: flag('crossPage', base.options.crossPage),
+      header: flag('metaHeader', base.options.header),
+      conventions: flag('conventions', base.options.conventions),
     },
     useZones: flag('useCrop', base.useZones),
     zones: readZones(zones.d),
@@ -124,10 +144,8 @@ export function fromSettings(raw: unknown, base: Settings): Settings | null {
     readEmpty: flag('readEmpty', base.readEmpty),
     // Zoals de vakken: altijd vervangen, zoals in de extractor.
     joins: readJoins(raw.joinOverride),
-    extra: {
-      options: extraOptions,
-      meta: isObject(raw.meta) ? raw.meta : base.extra.meta,
-    },
+    meta: readMeta(raw.meta, base.meta),
+    extra: { options: extraOptions },
   };
 }
 
@@ -151,12 +169,15 @@ export function toSettings(pdf: string, settings: Settings) {
       crossPage: options.crossPage,
       structure: options.structure,
       headingMarker: options.headingMarker,
+      metaHeader: options.header,
+      conventions: options.conventions,
       tables: options.tables,
       ...extra.options,
       // Alleen hier: de extractor kent dit niet en slaat het over.
       strip: options.strip,
     },
-    ...(extra.meta !== undefined ? { meta: extra.meta } : {}),
+    // Zoals in de extractor: altijd alle vier de velden.
+    meta: { ...settings.meta },
   };
 }
 
