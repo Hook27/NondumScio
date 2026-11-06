@@ -129,6 +129,8 @@ describe('PreviewDialog: een PDF bekijken', () => {
     await waitFor(() => expect(shown).toEqual([6, 2]));
     expect(angles.slice(2)).toEqual([90, 90]);
     cleanup();
+    // Preact ruimt effecten soms net na het afbreken op: daar even op wachten.
+    await new Promise((resolve) => setTimeout(resolve, 50));
     // Die PDF is van het document: niet geopend en niet opgeruimd.
     expect(loadPdf).not.toHaveBeenCalled();
     expect(closePdf).not.toHaveBeenCalled();

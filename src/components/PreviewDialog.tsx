@@ -57,12 +57,14 @@ export function PreviewDialog({
   useEffect(() => {
     const element = dialog.current;
     if (!element) return;
-    const previous = document.activeElement;
+    const previous = document.activeElement as HTMLElement | null;
     if (typeof element.showModal === 'function') element.showModal();
     else element.setAttribute('open', '');
+    // Opruimen kan net na het afbreken lopen (Preact wacht soms een timer): dan geen globale
+    // `HTMLElement` of `document` meer gebruiken.
     return () => {
       if (element.open && typeof element.close === 'function') element.close();
-      if (previous instanceof HTMLElement && previous.isConnected) previous.focus();
+      if (previous?.isConnected && typeof previous.focus === 'function') previous.focus();
     };
   }, []);
 
