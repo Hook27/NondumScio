@@ -1416,10 +1416,18 @@ h1 {
 }
 
 /* PDF → Platte tekst (Geavanceerd): de tekst zoals hij in het tekstbestand komt, in een vaste
-   letterbreedte, met lange regels afgebroken op de breedte van het vak. */
+   letterbreedte, met lange regels afgebroken op de breedte van het vak. Aan te passen: het vak
+   groeit mee met de tekst (het rechtervak scrolt), en kan ook met de hand hoger. */
 .plaintext__output {
+  display: block;
+  box-sizing: border-box;
+  width: 100%;
+  min-height: 20rem;
   margin: 0;
   padding: 0.9rem 1rem;
+  color: var(--text);
+  field-sizing: content;
+  resize: vertical;
   font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
   font-size: 0.85rem;
   line-height: 1.55;

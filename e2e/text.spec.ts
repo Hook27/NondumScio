@@ -77,10 +77,10 @@ const TEXT = [
 ].join('\n\n');
 
 /**
- * De tekst zoals hij er staat. Vergelijk met `toHaveJSProperty('textContent', …)` of `textContent()`:
+ * De tekst zoals hij er staat. Vergelijk met `toHaveValue(…)` of `textContent()`:
  * `toHaveText` en `toContainText` voegen witruimte samen, en dan is een witregel gelijk aan een spatie.
  */
-const output = (page: Page) => page.locator('pre.plaintext__output');
+const output = (page: Page) => page.locator('textarea.plaintext__output');
 
 /**
  * Pagina-ankers en doorlopende alinea's uit (de standaard is aan): de tests hieronder kijken naar de
@@ -212,7 +212,7 @@ test.describe('PDF → Platte tekst', () => {
         'aria-pressed',
         'true',
       );
-      await expect(output(page)).toHaveJSProperty('textContent', TEXT);
+      await expect(output(page)).toHaveValue(TEXT);
       await expect(
         page.getByText(format(p.noTextPages, { list: format(p.pageOne, { n: 3 }) })),
       ).toBeVisible();
@@ -239,15 +239,14 @@ test.describe('PDF → Platte tekst', () => {
     await extract(page);
     const both = (no: number) =>
       `${column('Rechter', no).join(' ')}\n\n${column('Linker', no).join(' ')}`;
-    await expect(output(page)).toHaveJSProperty('textContent', `${both(1)}\n\n${both(2)}`);
+    await expect(output(page)).toHaveValue(`${both(1)}\n\n${both(2)}`);
 
     // Ctrl+Z haalt het laatste vak weg (in het voorbeeld); dan alleen nog de rechterkolom.
     await page.getByRole('button', { name: p.views.preview }).click();
     await page.keyboard.press('Control+z');
     await expect(zones.locator('.plaintext-zones__label')).toHaveText(['Vak 1']);
     await extract(page);
-    await expect(output(page)).toHaveJSProperty(
-      'textContent',
+    await expect(output(page)).toHaveValue(
       `${column('Rechter', 1).join(' ')}\n\n${column('Rechter', 2).join(' ')}`,
     );
   });
@@ -259,16 +258,13 @@ test.describe('PDF → Platte tekst', () => {
     // Het vak naar rechts schuiven: dan leest het de rechterkolom.
     await drag(page, [150, 650], [405, 650]);
     await extract(page);
-    await expect(output(page)).toHaveJSProperty('textContent', column('Rechter', 1).join(' '));
+    await expect(output(page)).toHaveValue(column('Rechter', 1).join(' '));
 
     // De onderrand omhoog, tot net onder de derde regel (y 676): alleen de eerste drie.
     await page.getByRole('button', { name: p.views.preview }).click();
     await drag(page, [432, 600], [432, 670]);
     await extract(page);
-    await expect(output(page)).toHaveJSProperty(
-      'textContent',
-      column('Rechter', 1).slice(0, 3).join(' '),
-    );
+    await expect(output(page)).toHaveValue(column('Rechter', 1).slice(0, 3).join(' '));
   });
 
   test('bladeren en zoomen', async ({ page }) => {
@@ -309,17 +305,17 @@ test.describe('PDF → Platte tekst', () => {
     await openPage(page, '/#/advanced/text', { lang: 'nl' });
     await choose(page);
     await extract(page);
-    await expect(output(page)).toHaveJSProperty('textContent', TEXT, SLOW);
+    await expect(output(page)).toHaveValue(TEXT, SLOW);
     const settings = page.getByRole('group', { name: s.title });
 
     // Kop- en voetteksten: pas na opnieuw extraheren staan ze erin.
     await settings.getByRole('checkbox', { name: s.strip }).uncheck();
     await expect(page.getByText(p.stale)).toBeVisible();
-    await expect(output(page)).toHaveJSProperty('textContent', TEXT);
+    await expect(output(page)).toHaveValue(TEXT);
     await extract(page);
     await expect(page.getByText(p.stale)).toHaveCount(0);
-    await expect(output(page)).toContainText('Woningstichting Voorbeeld');
-    await expect(output(page)).toContainText('Pagina 2 van 2');
+    await expect.poll(() => output(page).inputValue()).toContain('Woningstichting Voorbeeld');
+    await expect.poll(() => output(page).inputValue()).toContain('Pagina 2 van 2');
     await settings.getByRole('checkbox', { name: s.strip }).check();
 
     // De alinea-gevoeligheid: bij 2,5 wordt pagina 1 één alinea.
@@ -330,7 +326,7 @@ test.describe('PDF → Platte tekst', () => {
     await expect(settings.getByText('2,5')).toBeVisible();
     await extract(page);
     await expect
-      .poll(() => output(page).textContent())
+      .poll(() => output(page).inputValue())
       .toContain('Geachte heer Jansen, Hierbij ontvangt u');
 
     // Regels los: elke regel apart, en de gevoeligheid doet dan niet mee.
@@ -338,7 +334,7 @@ test.describe('PDF → Platte tekst', () => {
     await expect(slider).toBeDisabled();
     await extract(page);
     await expect
-      .poll(() => output(page).textContent())
+      .poll(() => output(page).inputValue())
       .toContain('Geachte heer Jansen,\nHierbij ontvangt u');
 
     // Wissen: de PDF is weg, de instellingen blijven.
@@ -352,7 +348,7 @@ test.describe('PDF → Platte tekst', () => {
     await openPage(page, '/#/advanced/text', { lang: 'nl' });
     await choose(page);
     await extract(page);
-    await expect(output(page)).toHaveJSProperty('textContent', TEXT, SLOW);
+    await expect(output(page)).toHaveValue(TEXT, SLOW);
 
     const [download] = await Promise.all([
       page.waitForEvent('download'),
@@ -367,6 +363,40 @@ test.describe('PDF → Platte tekst', () => {
     const copied = await page.evaluate(() => navigator.clipboard.readText());
     // Windows zet op het klembord CRLF in plaats van LF.
     expect(copied.replace(/\r\n/g, '\n')).toBe(TEXT);
+  });
+
+  test('de tekst aanpassen: kopiëren en downloaden nemen het mee, opnieuw extraheren zet terug', async ({
+    page,
+    context,
+  }) => {
+    await context.grantPermissions(['clipboard-read', 'clipboard-write']);
+    await openPage(page, '/#/advanced/text', { lang: 'nl' });
+    await choose(page);
+    await extract(page);
+    await expect(output(page)).toHaveValue(TEXT, SLOW);
+    // Aan het eind een regel erbij typen, en het begin aanpassen.
+    await output(page).click();
+    await page.keyboard.press('Control+End');
+    await page.keyboard.type('\n\nMijn eigen aantekening.');
+    const edited = `${TEXT}\n\nMijn eigen aantekening.`;
+    await expect(output(page)).toHaveValue(edited);
+    await expect(page.getByText(p.edited)).toBeVisible();
+    await axe(page);
+
+    const [download] = await Promise.all([
+      page.waitForEvent('download'),
+      page.getByRole('button', { name: p.download }).click(),
+    ]);
+    expect(readFileSync((await download.path())!, 'utf-8')).toBe(edited);
+    await page.getByRole('button', { name: p.copy }).click();
+    await expect(page.getByText(p.copied)).toBeVisible();
+    const copied = await page.evaluate(() => navigator.clipboard.readText());
+    expect(copied.replace(/\r\n/g, '\n')).toBe(edited);
+
+    // Opnieuw extraheren: de tekst zoals hij uit de PDF komt.
+    await extract(page);
+    await expect(output(page)).toHaveValue(TEXT);
+    await expect(page.getByText(p.edited)).toHaveCount(0);
   });
 });
 
@@ -407,8 +437,7 @@ test.describe('PDF → Platte tekst: vakken per pagina en bewaren', () => {
     await axe(page);
 
     await extract(page);
-    await expect(output(page)).toHaveJSProperty(
-      'textContent',
+    await expect(output(page)).toHaveValue(
       [
         column('Linker', 1).join(' '),
         column('Rechter', 2).join(' '),
@@ -426,7 +455,7 @@ test.describe('PDF → Platte tekst: vakken per pagina en bewaren', () => {
     await zones(page).getByRole('checkbox', { name: z.readEmpty }).check();
     await extract(page);
     await expect
-      .poll(() => output(page).textContent())
+      .poll(() => output(page).inputValue())
       .toContain(`Proefartikel over leesvakken\n\n${column('Linker', 3).join(' ')}`);
   });
 
@@ -450,8 +479,7 @@ test.describe('PDF → Platte tekst: vakken per pagina en bewaren', () => {
       page.getByRole('group', { name: s.title }).getByRole('checkbox', { name: s.dehyphen }),
     ).not.toBeChecked();
     await extract(page);
-    await expect(output(page)).toHaveJSProperty(
-      'textContent',
+    await expect(output(page)).toHaveValue(
       `${column('Rechter', 1).join(' ')}\n\n${column('Rechter', 2).join(' ')}`,
     );
   });
@@ -494,7 +522,7 @@ test.describe('PDF → Platte tekst: vakken per pagina en bewaren', () => {
     ).toBeVisible();
     await expect(page.getByRole('slider', { name: s.gap })).toHaveValue('1.6');
     await extract(page);
-    await expect(output(page)).toHaveJSProperty('textContent', column('Rechter', 1).join(' '));
+    await expect(output(page)).toHaveValue(column('Rechter', 1).join(' '));
     await expect(page.getByText(format(p.skippedPages, { list: 'pagina 2' }))).toBeVisible();
   });
 
@@ -581,8 +609,7 @@ test.describe('PDF → Platte tekst: opsommingen, koppen en tabellen', () => {
     await expect(settings.getByRole('checkbox', { name: s.tables })).not.toBeChecked();
 
     await extract(page);
-    await expect(output(page)).toHaveJSProperty(
-      'textContent',
+    await expect(output(page)).toHaveValue(
       [
         'Huurovereenkomst',
         '\n\nPartijen komen het volgende overeen over de woning.',
@@ -600,12 +627,12 @@ test.describe('PDF → Platte tekst: opsommingen, koppen en tabellen', () => {
     await settings.getByRole('checkbox', { name: s.tables }).check();
     await expect(settings.getByRole('checkbox', { name: s.columns })).toBeDisabled();
     await extract(page);
-    await expect.poll(() => output(page).textContent()).toMatch(/^\{H\} Huurovereenkomst\n\n/);
+    await expect.poll(() => output(page).inputValue()).toMatch(/^\{H\} Huurovereenkomst\n\n/);
     await expect
-      .poll(() => output(page).textContent())
+      .poll(() => output(page).inputValue())
       .toContain('\n\n\n{H} Artikel 1 Huurprijs\n\n');
     await expect
-      .poll(() => output(page).textContent())
+      .poll(() => output(page).inputValue())
       .toMatch(/\n\nPost\tBedrag\tTermijn\nHuur\t550\tmaand\nService\t45\tmaand$/);
     await axe(page);
 
@@ -613,7 +640,7 @@ test.describe('PDF → Platte tekst: opsommingen, koppen en tabellen', () => {
     await settings.getByRole('checkbox', { name: s.structure }).uncheck();
     await expect(settings.getByRole('checkbox', { name: s.headingMarker })).toBeDisabled();
     await extract(page);
-    const plain = (await output(page).textContent())!;
+    const plain = (await output(page).inputValue())!;
     expect(plain).not.toContain('{H}');
     expect(plain).toContain('Artikel 1 Huurprijs De huur bedraagt');
     expect(plain).toContain('\n\n• gas en water\n\n• de servicekosten');
@@ -676,7 +703,7 @@ test.describe('PDF → Platte tekst: pagina-overgangen', () => {
     await expect(block.getByText(g.joinFirst)).toBeVisible();
 
     await extract(page);
-    await expect(output(page)).toHaveJSProperty('textContent', TEXT);
+    await expect(output(page)).toHaveValue(TEXT);
 
     // In de balk: het afgedrukte paginanummer.
     await page.getByRole('button', { name: p.views.preview }).click();
@@ -692,13 +719,13 @@ test.describe('PDF → Platte tekst: pagina-overgangen', () => {
     await axe(page);
     await extract(page);
     await expect
-      .poll(() => output(page).textContent())
+      .poll(() => output(page).inputValue())
       .toContain('loopt door op de\n\n{p4} volgende pagina');
 
     // Zonder ankers: geen {p#} en geen concordantie.
     await block.getByRole('checkbox', { name: g.anchors }).uncheck();
     await extract(page);
-    const text = (await output(page).textContent())!;
+    const text = (await output(page).inputValue())!;
     expect(text).not.toContain('{p');
     expect(text).not.toContain('Paginaconcordantie');
     expect(text.split('\n\n')).toEqual([
@@ -785,7 +812,7 @@ test.describe('PDF → Platte tekst: documentkop en metadata', () => {
       await field(page, h.fields.subject).fill('Huurverhoging');
       await axe(page);
       await extract(page);
-      await expect(output(page)).toHaveJSProperty('textContent', EXPECTED);
+      await expect(output(page)).toHaveValue(EXPECTED);
       await axe(page);
     });
   }
@@ -863,7 +890,7 @@ test.describe('PDF → Platte tekst: batch', () => {
     await expect(page.locator('canvas.plaintext-preview__canvas')).toBeVisible(SLOW);
     await extract(page);
     await expect(output(page)).toBeVisible();
-    return (await output(page).textContent())!;
+    return (await output(page).inputValue())!;
   }
 
   async function openBatch(page: Page) {

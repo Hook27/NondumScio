@@ -127,6 +127,11 @@ export type TextState = {
   zoom: number;
   /** De tekst na "Tekst extraheren". */
   result: Extraction | null;
+  /**
+   * De tekst zoals je hem in het resultaat hebt aangepast, of null (niet aangepast). Kopiëren en
+   * downloaden nemen die mee; opnieuw extraheren zet hem terug, zoals in de extractor.
+   */
+  edited: string | null;
   /** Sinds het extraheren zijn de instellingen of de vakken veranderd. */
   stale: boolean;
   /** Welke blokken links open staan; blijft staan bij Wissen. */
@@ -163,6 +168,7 @@ const INITIAL: TextState = {
   fit: 'page',
   zoom: 100,
   result: null,
+  edited: null,
   stale: false,
   // Zoals in de extractor: de documentkop en metadata dicht, de rest open (bewaren is nieuw).
   blocks: { zones: true, clean: true, meta: false, pages: true, batch: false, save: false },
@@ -244,6 +250,7 @@ function setSlot(slot: TextSlot, extra: Partial<TextState> = {}) {
     fit: 'page',
     zoom: 100,
     result: null,
+    edited: null,
     stale: false,
     ...extra,
   });
@@ -475,9 +482,15 @@ export function extract(texts?: OutputTexts): void {
       meta: state.meta,
       ...(texts ? { texts: texts.concordance, head: texts.head } : {}),
     }),
+    edited: null,
     view: 'result',
     stale: false,
   });
+}
+
+/** De tekst in het resultaat aanpassen (alleen in het scherm; niet onthouden). */
+export function setEdited(edited: string): void {
+  setState({ edited });
 }
 
 /** De woorden van een batch, in de taal van de app: die van de tekst, en die om elk document. */
