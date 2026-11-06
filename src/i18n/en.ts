@@ -721,7 +721,8 @@ export const en: Messages = {
       choose: 'Choose a PDF',
       replace: 'Another PDF',
     },
-    tooMany: 'You chose more than one PDF: only the first one is read.',
+    tooMany:
+      'You chose more than one PDF: only the first one is read. For several PDFs at once: see Batch.',
     clear: 'Clear',
     views: { label: 'View', preview: 'Preview', result: 'Result' },
     zones: {
@@ -813,7 +814,40 @@ export const en: Messages = {
         '{p#} = start of PDF page #. Can be in the middle of a sentence when a paragraph continues across the page break.',
       concordance:
         'At the bottom is a page concordance that links physical PDF pages to printed document page numbers.',
+      concordanceBatch:
+        'For each source document there is a page concordance that links physical PDF pages to printed document page numbers.',
+      files: '"File N start/end: <name>" marks the start and end of each source document.',
       heading: '{H} = start of a recognised heading, such as a chapter or article title.',
+    },
+    batch: {
+      title: 'Batch (several PDFs)',
+      hint: 'Processes several PDFs one after another with the current settings above (without reading zones). Result: a .txt per file in a zip, or everything in one file.',
+      zonesHint:
+        'Recognising two columns and leaving out headers and footers work here as they are ticked, even when they are greyed out by the reading zones.',
+      combine: 'Combine into one file',
+      combineHint:
+        'On: one .txt with a "File N start/end" marker per document. Off: separate .txt files in a .zip.',
+      choose: 'Choose several PDFs',
+      start: 'File {n} start: {name}',
+      end: 'File {n} end: {name}',
+      reading: 'Processing {i}/{n}: {name}…',
+      readingPage: 'Processing {i}/{n}: {name}… page {page} of {pages}',
+      doneZip: 'Done: {ok} processed{failed}, as a zip.',
+      doneCombined: 'Done: {ok} processed{failed}, in one file.',
+      failedCount: ', {n} failed',
+      downloaded: 'Downloaded as {name}.',
+      failed: 'Failed: {list}.',
+      reasons: {
+        'not-pdf': 'not a PDF',
+        password: 'protected with a password',
+        damaged: 'damaged or unreadable',
+      },
+      noText: 'No text layer (possibly a scan): {list}.',
+      nothing: 'Nothing was downloaded: none of the PDFs had text.',
+      nothingRead: 'Nothing was downloaded: not a single PDF could be read.',
+      downloadFailed: 'Making the download failed. Nothing was downloaded.',
+      tooLarge:
+        'The ZIP would become too large (more than 4 GB or 65,535 files). Nothing was downloaded; do it in smaller parts.',
     },
     save: {
       title: 'Keep settings',

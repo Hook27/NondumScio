@@ -731,7 +731,8 @@ export const nl = {
       choose: 'Kies een PDF',
       replace: 'Andere PDF',
     },
-    tooMany: 'Je koos meer dan één PDF: alleen de eerste wordt gelezen.',
+    tooMany:
+      'Je koos meer dan één PDF: alleen de eerste wordt gelezen. Voor meerdere PDF’s tegelijk: zie Batch.',
     clear: 'Wissen',
     views: { label: 'Weergave', preview: 'Voorbeeld', result: 'Resultaat' },
     zones: {
@@ -822,7 +823,40 @@ export const nl = {
         '{p#} = begin van PDF-pagina #. Kan midden in een zin staan als een alinea over de pagina-overgang doorloopt.',
       concordance:
         'Onderaan staat een paginaconcordantie die fysieke PDF-pagina’s koppelt aan afgedrukte documentpaginanummers.',
+      concordanceBatch:
+        'Per brondocument staat een paginaconcordantie die fysieke PDF-pagina’s koppelt aan afgedrukte documentpaginanummers.',
+      files: '"Bestand N start/einde: <naam>" markeert het begin en einde van elk brondocument.',
       heading: '{H} = begin van een herkende kop, zoals een hoofdstuk- of artikeltitel.',
+    },
+    batch: {
+      title: 'Batch (meerdere PDF’s)',
+      hint: 'Verwerkt meerdere PDF’s achter elkaar met de huidige instellingen hierboven (zonder leesvakken). Resultaat: per bestand een .txt in een zip, of alles in één bestand.',
+      zonesHint:
+        'Twee kolommen herkennen en kop- en voetteksten weglaten werken hier zoals ze aangevinkt staan, ook als ze grijs zijn door de leesvakken.',
+      combine: 'Combineer in één bestand',
+      combineHint:
+        'Aan: één .txt met per document een "Bestand N start/einde"-markering. Uit: losse .txt-bestanden in een .zip.',
+      choose: 'Meerdere PDF’s kiezen',
+      start: 'Bestand {n} start: {name}',
+      end: 'Bestand {n} einde: {name}',
+      reading: 'Verwerken {i}/{n}: {name}…',
+      readingPage: 'Verwerken {i}/{n}: {name}… pagina {page} van {pages}',
+      doneZip: 'Klaar: {ok} verwerkt{failed}, als zip.',
+      doneCombined: 'Klaar: {ok} verwerkt{failed}, in één bestand.',
+      failedCount: ', {n} mislukt',
+      downloaded: 'Gedownload als {name}.',
+      failed: 'Mislukt: {list}.',
+      reasons: {
+        'not-pdf': 'geen PDF',
+        password: 'beveiligd met een wachtwoord',
+        damaged: 'beschadigd of niet te lezen',
+      },
+      noText: 'Geen tekstlaag (mogelijk een scan): {list}.',
+      nothing: 'Er is niets gedownload: geen van de PDF’s had tekst.',
+      nothingRead: 'Er is niets gedownload: geen enkele PDF kon worden gelezen.',
+      downloadFailed: 'Het maken van de download is mislukt. Er is niets gedownload.',
+      tooLarge:
+        'De ZIP zou te groot worden (meer dan 4 GB of 65.535 bestanden). Er is niets gedownload; doe het in kleinere stukken.',
     },
     save: {
       title: 'Instellingen bewaren',

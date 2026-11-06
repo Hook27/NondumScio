@@ -31,6 +31,8 @@ import {
   ownAllPages,
   ownPage,
   removeZone,
+  runBatch,
+  setBatchCombine,
   setFit,
   setMeta,
   setOptions,
@@ -45,6 +47,7 @@ import {
   setZoom,
   undoZones,
   useTextState,
+  type BatchStatus,
   type Fit,
   type TextBlock,
   type TextDoc,
@@ -89,6 +92,7 @@ export function TextTool() {
         <Settings />
         <MetaSettings />
         <PageSettings />
+        <BatchSettings />
         <SaveSettings />
         <ExtractBar />
       </div>
@@ -545,6 +549,118 @@ function PageSettings() {
           <p class="compare-settings__hint">{g.joinFirst}</p>
         ))}
     </Block>
+  );
+}
+
+/**
+ * Batch (meerdere PDF's), zoals in de extractor: PDF's kiezen, die achter elkaar worden gelezen met
+ * de instellingen hierboven (zonder leesvakken), en één download: een zip met per PDF een .txt, of
+ * alles in één bestand. Werkt los van de open PDF; tijdens het verwerken staat de knop uit.
+ */
+function BatchSettings() {
+  const { t, language } = useI18n();
+  const p = t.plainText;
+  const b = p.batch;
+  const { batchCombine, batch, useZones } = useTextState();
+  const input = useRef<HTMLInputElement>(null);
+  return (
+    <Block id="batch" title={b.title}>
+      <p class="compare-settings__hint">{b.hint}</p>
+      {useZones && <p class="compare-settings__hint">{b.zonesHint}</p>}
+      <label class="compare-settings__check">
+        <input
+          type="checkbox"
+          checked={batchCombine}
+          aria-describedby="plaintext-combine-hint"
+          onChange={(event) => setBatchCombine(event.currentTarget.checked)}
+        />
+        {b.combine}
+      </label>
+      <p id="plaintext-combine-hint" class="compare-settings__hint">
+        {b.combineHint}
+      </p>
+      <div class="plaintext-zones__buttons">
+        <button
+          type="button"
+          class="button button--secondary"
+          disabled={batch.status === 'running'}
+          onClick={() => input.current?.click()}
+        >
+          {b.choose}
+        </button>
+        <input
+          ref={input}
+          id="plaintext-batch-files"
+          class="visually-hidden"
+          type="file"
+          accept="application/pdf,.pdf"
+          multiple
+          tabIndex={-1}
+          aria-hidden="true"
+          onChange={(event) => {
+            const files = [...(event.currentTarget.files ?? [])];
+            event.currentTarget.value = '';
+            if (files.length === 0) return;
+            void runBatch(files, language, {
+              concordance: p.concordance,
+              head: { fields: p.header.fields, conventions: p.conventions },
+              batch: { start: b.start, end: b.end },
+            });
+          }}
+        />
+      </div>
+      <BatchMessage batch={batch} t={t} />
+    </Block>
+  );
+}
+
+/** Wat de batch doet of gedaan heeft: de voortgang, of wat er verwerkt, mislukt en gedownload is. */
+function BatchMessage({ batch, t }: { batch: BatchStatus; t: Texts }) {
+  const b = t.plainText.batch;
+  const box = useRef<HTMLDivElement>(null);
+  // Bij het begin en het eind in beeld: op een klein scherm staat de melding anders onder de vaste
+  // knop "Tekst extraheren", en zie je niet wat er gebeurd is.
+  useLayoutEffect(() => {
+    box.current?.scrollIntoView?.({ block: 'nearest' });
+  }, [batch.status]);
+  if (batch.status === 'idle') return null;
+  if (batch.status === 'running') {
+    const values = {
+      i: batch.i,
+      n: batch.total,
+      name: batch.name,
+      page: batch.page,
+      pages: batch.pages,
+    };
+    return (
+      <div ref={box} class="plaintext-batch__message" role="status">
+        <p class="plaintext__done">{format(batch.pages > 0 ? b.readingPage : b.reading, values)}</p>
+      </div>
+    );
+  }
+  const failedCount =
+    batch.failed.length > 0 ? format(b.failedCount, { n: batch.failed.length }) : '';
+  const done = format(batch.combine ? b.doneCombined : b.doneZip, {
+    ok: batch.ok,
+    failed: failedCount,
+  });
+  return (
+    <div ref={box} class="plaintext-batch__message" role="status">
+      <p class="plaintext__done">
+        {batch.download ? `${done} ${format(b.downloaded, { name: batch.download })}` : done}
+      </p>
+      {batch.problem && <p class="compare__warning">{b[batch.problem]}</p>}
+      {batch.failed.length > 0 && (
+        <p class="compare__note">
+          {format(b.failed, {
+            list: batch.failed.map((f) => `${f.label}: ${b.reasons[f.code]}`).join('; '),
+          })}
+        </p>
+      )}
+      {batch.noText.length > 0 && (
+        <p class="compare__note">{format(b.noText, { list: batch.noText.join(', ') })}</p>
+      )}
+    </div>
   );
 }
 

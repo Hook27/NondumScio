@@ -3,8 +3,21 @@ import type { PageText } from '../compare/layout';
 import type { DocInfo } from '../compare/profile';
 import { readPdf } from '../compare/readPdf';
 import { closeVisual } from '../compare/visual';
+import { ZipTooLargeError, zipWriter, type ZipWriter } from '../lib/zip';
 import type { LoadErrorCode } from '../pdf/detect';
 import { PdfLoadError } from '../pdf/loader';
+import { downloadFile } from '../pdf/save';
+import {
+  DUTCH_CONTEXT,
+  combineParts,
+  combinedHead,
+  combinedPart,
+  docText,
+  hasText,
+  zipNames,
+  type BatchContext,
+  type BatchWords,
+} from './batch';
 import {
   DEFAULT_TEXT_OPTIONS,
   extractText,
@@ -51,7 +64,30 @@ export type TextView = 'preview' | 'result';
 export type Fit = 'page' | 'width';
 
 /** De blokken links die je kunt in- en uitklappen. */
-export type TextBlock = 'zones' | 'clean' | 'meta' | 'pages' | 'save';
+export type TextBlock = 'zones' | 'clean' | 'meta' | 'pages' | 'batch' | 'save';
+
+/** Een PDF uit de batch die niet gelezen kon worden: hoe hij in de melding heet, en waarom. */
+export type BatchFailure = { label: string; code: LoadErrorCode };
+
+/** Waarom er na een batch niets gedownload is. */
+export type BatchProblem = 'nothing' | 'nothingRead' | 'tooLarge' | 'downloadFailed';
+
+/** De batch: nog niet gedaan, bezig (welke PDF, welke pagina), of klaar met wat er gebeurde. */
+export type BatchStatus =
+  | { status: 'idle' }
+  | { status: 'running'; i: number; total: number; name: string; page: number; pages: number }
+  | {
+      status: 'done';
+      combine: boolean;
+      /** Het aantal gelezen PDF's (ook zonder tekst). */
+      ok: number;
+      failed: BatchFailure[];
+      /** Gelezen PDF's zonder tekstlaag. */
+      noText: string[];
+      /** De naam van de download, of null als er niets gedownload is. */
+      download: string | null;
+      problem: BatchProblem | null;
+    };
 
 /** Hoeveel stappen terug "Ongedaan" kan, zoals in de extractor. */
 export const UNDO_LIMIT = 60;
@@ -95,6 +131,9 @@ export type TextState = {
   stale: boolean;
   /** Welke blokken links open staan; blijft staan bij Wissen. */
   blocks: Record<TextBlock, boolean>;
+  /** Batch in één bestand (of als zip). Wordt niet onthouden, zoals in de extractor. */
+  batchCombine: boolean;
+  batch: BatchStatus;
 };
 
 const EMPTY: TextSlot = { status: 'empty' };
@@ -121,7 +160,9 @@ const INITIAL: TextState = {
   result: null,
   stale: false,
   // Zoals in de extractor: de documentkop en metadata dicht, de rest open (bewaren is nieuw).
-  blocks: { zones: true, clean: true, meta: false, pages: true, save: false },
+  blocks: { zones: true, clean: true, meta: false, pages: true, batch: false, save: false },
+  batchCombine: false,
+  batch: { status: 'idle' },
 };
 
 /**
@@ -425,6 +466,96 @@ export function extract(texts?: OutputTexts): void {
     view: 'result',
     stale: false,
   });
+}
+
+/** De woorden van een batch, in de taal van de app: die van de tekst, en die om elk document. */
+export type BatchTexts = OutputTexts & { batch: BatchWords };
+
+/** Batch in één bestand of als zip. Hoort niet bij een PDF en wordt niet onthouden. */
+export function setBatchCombine(batchCombine: boolean): void {
+  setState({ batchCombine });
+}
+
+const encode = (text: string) => new TextEncoder().encode(text);
+
+/**
+ * Meerdere PDF's achter elkaar, met de instellingen van nu en zonder leesvakken, zoals in de
+ * extractor. Eén PDF tegelijk wordt gelezen en meteen verwerkt. Daarna één download: een zip met
+ * per PDF een .txt, of één .txt met alles. Is er niets bruikbaars (geen tekst, of niets gelezen),
+ * dan geen download, alleen de melding. De open PDF, de vakken en het resultaat blijven ongemoeid.
+ */
+export async function runBatch(
+  files: readonly File[],
+  language = 'nl',
+  texts?: BatchTexts,
+): Promise<void> {
+  if (state.batch.status === 'running' || files.length === 0) return;
+  const opts = state.options;
+  const combine = state.batchCombine;
+  const ctx: BatchContext = texts
+    ? { language, concordance: texts.concordance, head: texts.head, words: texts.batch }
+    : { ...DUTCH_CONTEXT, language };
+  const names = zipNames(files.map((file) => file.name));
+  const label = (i: number) => (combine ? files[i]!.name : names[i]!.label);
+  const failed: BatchFailure[] = [];
+  const noText: string[] = [];
+  const parts: string[] = [];
+  let ok = 0;
+  let usable = false;
+  let zip: ZipWriter | null = null;
+  let download: string | null = null;
+  let problem: BatchProblem | null = null;
+  const progress = (i: number, page: number, pages: number) =>
+    setState({
+      batch: {
+        status: 'running',
+        i: i + 1,
+        total: files.length,
+        name: files[i]!.name,
+        page,
+        pages,
+      },
+    });
+  try {
+    for (let i = 0; i < files.length; i++) {
+      const file = files[i]!;
+      progress(i, 0, 0);
+      let doc;
+      try {
+        const read = await readPdf(file, (done, total) => progress(i, done, total), {
+          thumb: false,
+        });
+        doc = { name: file.name, pages: read.pages, info: read.info };
+      } catch (error) {
+        failed.push({
+          label: label(i),
+          code: error instanceof PdfLoadError ? error.code : 'damaged',
+        });
+        continue;
+      }
+      ok++;
+      if (hasText(doc)) usable = true;
+      else noText.push(label(i));
+      if (combine) parts.push(combinedPart(i + 1, doc, opts, ctx));
+      else {
+        zip ??= await zipWriter();
+        zip.add(names[i]!.file, encode(docText(doc, opts, ctx)));
+      }
+    }
+    if (!usable) problem = ok === 0 ? 'nothingRead' : 'nothing';
+    else if (combine) {
+      download = 'batch_extract.txt';
+      const text = combineParts(combinedHead(opts, ctx), parts);
+      downloadFile(encode(text), download, 'text/plain;charset=utf-8');
+    } else {
+      download = 'batch_extract.zip';
+      downloadFile(zip!.finish(), download, 'application/zip');
+    }
+  } catch (error) {
+    download = null;
+    problem = error instanceof ZipTooLargeError ? 'tooLarge' : 'downloadFailed';
+  }
+  setState({ batch: { status: 'done', combine, ok, failed, noText, download, problem } });
 }
 
 /** Alleen voor tests: begin opnieuw. */

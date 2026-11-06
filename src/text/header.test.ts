@@ -155,6 +155,30 @@ describe('buildConventions', () => {
     expect(lines(NONE)).not.toContain(heading);
   });
 
+  it('voor een batch in één bestand: de concordantie per brondocument, en "Bestand N start/einde"', () => {
+    const c = DUTCH_HEAD.conventions;
+    // Zoals in de extractor: ankers, concordantie, de regel over de bestanden, dan {H}.
+    expect(
+      buildConventions({ ...NONE, anchors: true, headingMarker: true }, DUTCH_HEAD, true),
+    ).toBe(
+      [
+        '=== Conventies ===',
+        c.intro,
+        c.anchors,
+        'Per brondocument staat een paginaconcordantie die fysieke PDF-pagina’s koppelt aan afgedrukte documentpaginanummers.',
+        '"Bestand N start/einde: <naam>" markeert het begin en einde van elk brondocument.',
+        c.heading,
+        '==================',
+      ].join('\n'),
+    );
+    expect(buildConventions(NONE, DUTCH_HEAD, true).split('\n')).toEqual([
+      '=== Conventies ===',
+      c.intro,
+      c.files,
+      '==================',
+    ]);
+  });
+
   it('in de taal van de app; de slotregel is even breed als de titel', () => {
     const lines = buildConventions({ ...NONE, anchors: true, headingMarker: true }, ENGLISH).split(
       '\n',

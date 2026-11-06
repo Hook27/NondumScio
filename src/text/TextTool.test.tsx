@@ -3,6 +3,7 @@ import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testi
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { PageText, Piece } from '../compare/layout';
 import type { DocInfo } from '../compare/profile';
+import { unzipSync } from 'fflate';
 import { readPdf } from '../compare/readPdf';
 import { copyText } from '../compare/report';
 import { closeVisual, renderPage } from '../compare/visual';
@@ -13,7 +14,7 @@ import { PdfLoadError } from '../pdf/loader';
 import { downloadFile } from '../pdf/save';
 import { TextTool } from './TextTool';
 import { SETTINGS_PREFIX } from './settings';
-import { UNDO_LIMIT, getTextState, resetTextState, setOptions, undoZones } from './store';
+import { UNDO_LIMIT, getTextState, resetTextState, runBatch, setOptions, undoZones } from './store';
 
 /** Een pagina met alinea's (elk een lijst regels), met een witregel ertussen. */
 function page(no: number, paragraphs: string[][]): PageText {
@@ -151,6 +152,17 @@ vi.mock('../pdf/save', async (importOriginal) => ({
   ...(await importOriginal<typeof import('../pdf/save')>()),
   downloadFile: vi.fn(),
 }));
+
+// Met `zip.tiny` krijgt de ZIP een grens van één byte, zoals een ZIP die over de 4 GB zou gaan.
+const zip = vi.hoisted(() => ({ tiny: false }));
+vi.mock('../lib/zip', async (importOriginal) => {
+  const original = await importOriginal<typeof import('../lib/zip')>();
+  return {
+    ...original,
+    zipWriter: (limits?: typeof original.ZIP_LIMITS) =>
+      original.zipWriter(zip.tiny ? { bytes: 1, files: 1 } : limits),
+  };
+});
 
 const p = messages.nl.plainText;
 const c = messages.nl.compare;
@@ -661,6 +673,7 @@ describe('PDF → Platte tekst: indeling', () => {
       p.settings.title,
       p.header.title,
       p.pages.title,
+      p.batch.title,
       p.save.title,
     ]);
     expect(block(p.zones.title).open).toBe(true);
@@ -668,6 +681,7 @@ describe('PDF → Platte tekst: indeling', () => {
     // Zoals in de extractor: de documentkop en metadata standaard dicht.
     expect(block(p.header.title).open).toBe(false);
     expect(block(p.pages.title).open).toBe(true);
+    expect(block(p.batch.title).open).toBe(false);
     expect(block(p.save.title).open).toBe(false);
     // Zoals de browser het doet als je op de kop klikt: dicht, en dan het toggle-event.
     act(() => {
@@ -679,6 +693,7 @@ describe('PDF → Platte tekst: indeling', () => {
       clean: false,
       meta: false,
       pages: true,
+      batch: false,
       save: false,
     });
     fireEvent.click(button(p.clear));
@@ -1457,5 +1472,247 @@ describe('PDF → Platte tekst: documentkop en metadata', () => {
     );
     expect(screen.getByText('PDF producer (Producer): Voorbeeld PDF 2.0')).toBeTruthy();
     expect(screen.getByText('Application (Creator): Tekstverwerker')).toBeTruthy();
+  });
+});
+
+describe('PDF → Platte tekst: batch', () => {
+  const b = p.batch;
+  /** PDF's kiezen voor de batch, en wachten tot hij klaar is. */
+  async function batch(...names: string[]) {
+    fireEvent.change(document.querySelector('#plaintext-batch-files')!, {
+      target: { files: names.map(pdf) },
+    });
+    await waitFor(() => expect(getTextState().batch.status).toBe('done'));
+  }
+  const message = () => document.querySelector('.plaintext-batch__message')!.textContent;
+  /** De bestanden in de gedownloade ZIP, als tekst. */
+  async function zipped() {
+    const [data, name, type] = vi.mocked(downloadFile).mock.calls.at(-1)!;
+    expect(name).toBe('batch_extract.zip');
+    expect(type).toBe('application/zip');
+    const files = unzipSync(new Uint8Array(await (data as Blob).arrayBuffer()));
+    return Object.fromEntries(
+      Object.entries(files).map(([file, bytes]) => [file, new TextDecoder().decode(bytes)]),
+    );
+  }
+
+  it('het blok staat dicht, met Combineer uit; het werkt ook zonder open PDF', async () => {
+    setup();
+    const block = screen.getByText(b.title, { selector: 'summary' }).closest('details')!;
+    expect(block.open).toBe(false);
+    expect(check(b.combine).checked).toBe(false);
+    expect(button(b.choose).disabled).toBe(false);
+    await batch('brief.pdf', 'tweede.pdf');
+    expect(Object.keys(await zipped())).toEqual(['brief_extract.txt', 'tweede_extract.txt']);
+  });
+
+  it('als zip: per PDF een .txt; een kapotte PDF wordt overgeslagen en genoemd', async () => {
+    setup();
+    await batch('brief.pdf', 'kapot.pdf', 'tweede.pdf');
+    expect(await zipped()).toEqual({
+      'brief_extract.txt': LETTER_TEXT,
+      'tweede_extract.txt': 'De tweede PDF.',
+    });
+    expect(message()).toBe(
+      `${format(b.doneZip, { ok: 2, failed: format(b.failedCount, { n: 1 }) })} ${format(b.downloaded, { name: 'batch_extract.zip' })}` +
+        format(b.failed, { list: `kapot.pdf: ${b.reasons.damaged}` }),
+    );
+    // Zonder plaatje: dat is voor een batch niet nodig.
+    expect(readPdf).toHaveBeenCalledWith(expect.any(File), expect.any(Function), { thumb: false });
+  });
+
+  it('met de kop en het conventieblok per PDF, met de gegevens van die PDF', async () => {
+    setOptions({ header: true, conventions: true });
+    setup();
+    await batch('brief.pdf');
+    const text = (await zipped())['brief_extract.txt']!;
+    expect(text).toBe(
+      [
+        '=== Conventies ===',
+        p.conventions.intro,
+        '==================',
+        '',
+        'Bestand: brief.pdf',
+        'Titel: Nieuwe huurovereenkomst',
+        'Auteur: Woningstichting Voorbeeld',
+        'Onderwerp: Huur',
+        'Datum: 4 juni 2018',
+        '',
+        LETTER_TEXT,
+      ].join('\n'),
+    );
+  });
+
+  it('gelijke namen: allemaal een volgnummer; een mislukte houdt het zijne', async () => {
+    DOCS['Brief.PDF'] = DOCS['brief.pdf']!;
+    setup();
+    await batch('brief.pdf', 'Brief.PDF', 'tweede.pdf');
+    expect(Object.keys(await zipped())).toEqual([
+      'brief_extract (01).txt',
+      'Brief_extract (02).txt',
+      'tweede_extract.txt',
+    ]);
+    // Een mislukte met dezelfde naam: het nummer valt weg in de zip, de melding noemt het.
+    DOCS['dubbel.pdf'] = DOCS['brief.pdf']!;
+    vi.mocked(readPdf).mockImplementationOnce(async () => {
+      throw new PdfLoadError('password');
+    });
+    await batch('dubbel.pdf', 'dubbel.pdf');
+    expect(Object.keys(await zipped())).toEqual(['dubbel_extract (02).txt']);
+    expect(message()).toContain(
+      format(b.failed, { list: `dubbel.pdf (01): ${b.reasons.password}` }),
+    );
+    delete DOCS['Brief.PDF'];
+    delete DOCS['dubbel.pdf'];
+  });
+
+  it('in één bestand: "Bestand N start/einde" om elk document, het nummer is de plek in de keuze', async () => {
+    setOptions({ conventions: true });
+    setup();
+    fireEvent.click(check(b.combine));
+    await batch('kapot.pdf', 'brief.pdf', 'scan.pdf');
+    const [data, name, type] = vi.mocked(downloadFile).mock.calls.at(-1)!;
+    expect(name).toBe('batch_extract.txt');
+    expect(type).toBe('text/plain;charset=utf-8');
+    expect(new TextDecoder().decode(data as Uint8Array)).toBe(
+      [
+        '=== Conventies ===',
+        p.conventions.intro,
+        p.conventions.files,
+        '==================',
+        '',
+        'Bestand 2 start: brief.pdf',
+        'Titel: Nieuwe huurovereenkomst',
+        'Auteur: Woningstichting Voorbeeld',
+        'Onderwerp: Huur',
+        'Datum: 4 juni 2018',
+        '',
+        LETTER_TEXT,
+        '',
+        'Bestand 2 einde: brief.pdf',
+        '',
+        'Bestand 3 start: scan.pdf',
+        '',
+        'Alleen hier staat een hele zin met tekst.',
+        '',
+        'Bestand 3 einde: scan.pdf',
+      ].join('\n'),
+    );
+    expect(message()).toContain(
+      format(b.doneCombined, { ok: 2, failed: format(b.failedCount, { n: 1 }) }),
+    );
+  });
+
+  it('een PDF zonder tekstlaag: een leeg bestand in de zip, en de melding noemt hem', async () => {
+    setup();
+    await batch('brief.pdf', 'leeg.pdf');
+    expect(await zipped()).toEqual({ 'brief_extract.txt': LETTER_TEXT, 'leeg_extract.txt': '' });
+    expect(message()).toContain(format(b.noText, { list: 'leeg.pdf' }));
+  });
+
+  it('niets bruikbaars: geen download, alleen de melding', async () => {
+    setup();
+    await batch('leeg.pdf');
+    expect(downloadFile).not.toHaveBeenCalled();
+    expect(message()).toContain(b.nothing);
+    await batch('kapot.pdf', 'geheim.pdf');
+    expect(downloadFile).not.toHaveBeenCalled();
+    expect(message()).toContain(b.nothingRead);
+    expect(message()).toContain(
+      format(b.failed, {
+        list: `kapot.pdf: ${b.reasons.damaged}; geheim.pdf: ${b.reasons.password}`,
+      }),
+    );
+  });
+
+  it('een te grote zip: niets gedownload, met een melding', async () => {
+    zip.tiny = true;
+    try {
+      setup();
+      await batch('brief.pdf');
+      expect(downloadFile).not.toHaveBeenCalled();
+      expect(message()).toContain(b.tooLarge);
+    } finally {
+      zip.tiny = false;
+    }
+  });
+
+  it('tijdens het verwerken: de voortgang met de pagina, en de knop staat uit', async () => {
+    let release!: () => void;
+    gates['artikel.pdf'] = new Promise((resolve) => (release = resolve));
+    setup();
+    fireEvent.change(document.querySelector('#plaintext-batch-files')!, {
+      target: { files: [pdf('brief.pdf'), pdf('artikel.pdf')] },
+    });
+    await waitFor(() =>
+      expect(
+        screen.getByText(
+          format(b.readingPage, { i: 2, n: 2, name: 'artikel.pdf', page: 0, pages: 3 }),
+        ),
+      ).toBeTruthy(),
+    );
+    expect(button(b.choose).disabled).toBe(true);
+    // Nog een batch beginnen doet niets zolang hij bezig is.
+    await runBatch([pdf('tweede.pdf')]);
+    expect(readPdf).toHaveBeenCalledTimes(2);
+    release();
+    await waitFor(() => expect(getTextState().batch.status).toBe('done'));
+    expect(button(b.choose).disabled).toBe(false);
+    expect(Object.keys(await zipped())).toEqual(['brief_extract.txt', 'artikel_extract.txt']);
+    expect(downloadFile).toHaveBeenCalledTimes(1);
+  });
+
+  it('raakt de open PDF niet, onthoudt niets, en Combineer blijft staan bij Wissen', async () => {
+    await open('artikel.pdf');
+    fireEvent.click(check(p.zones.use));
+    await settle();
+    draw(...LEFT_BOX);
+    fireEvent.click(button(p.extract));
+    const before = getTextState();
+    localStorage.clear();
+    fireEvent.click(check(b.combine));
+    // Met leesvakken aan: de uitleg dat kolommen en kop/voet in de batch toch meedoen.
+    expect(screen.getByText(b.zonesHint)).toBeTruthy();
+    await batch('brief.pdf');
+    const after = getTextState();
+    expect(after.slot).toBe(before.slot);
+    expect(after.zones).toBe(before.zones);
+    expect(after.result).toBe(before.result);
+    expect(after.stale).toBe(false);
+    expect(localStorage.length).toBe(0);
+    fireEvent.click(button(p.clear));
+    expect(check(b.combine).checked).toBe(true);
+  });
+
+  it('meer dan één PDF bovenaan gekozen: de melding verwijst naar Batch', async () => {
+    setup();
+    choose('brief.pdf', 'tweede.pdf');
+    await waitFor(() => expect(screen.getByText(p.tooMany)).toBeTruthy());
+    expect(p.tooMany).toContain('Batch');
+  });
+
+  it('in de taal van de app', async () => {
+    render(
+      <LanguageProvider initial="en">
+        <TextTool />
+      </LanguageProvider>,
+    );
+    const en = messages.en.plainText;
+    fireEvent.click(screen.getByRole('checkbox', { name: en.batch.combine }));
+    await batch('brief.pdf');
+    const [data] = vi.mocked(downloadFile).mock.calls.at(-1)!;
+    expect(
+      new TextDecoder()
+        .decode(data as Uint8Array)
+        .split('\n')
+        .slice(0, 5),
+    ).toEqual([
+      'File 1 start: brief.pdf',
+      'Title: Nieuwe huurovereenkomst',
+      'Author: Woningstichting Voorbeeld',
+      'Subject: Huur',
+      'Date: 4 June 2018',
+    ]);
+    expect(message()).toContain(format(en.batch.doneCombined, { ok: 1, failed: '' }));
   });
 });

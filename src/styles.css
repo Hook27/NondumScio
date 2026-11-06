@@ -1628,6 +1628,11 @@ h1 {
   overflow-wrap: anywhere;
 }
 
+/* De melding van de batch schuift in beeld boven de vaste knop "Tekst extraheren". */
+.plaintext-batch__message {
+  scroll-margin-bottom: 6rem;
+}
+
 /* Het conventieblok staat los van de kop: een lijn ertussen, zoals in de extractor. */
 .compare-settings__check.plaintext-meta__conventions {
   margin-top: 0.6rem;
