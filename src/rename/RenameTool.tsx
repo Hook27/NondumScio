@@ -9,7 +9,7 @@ import { zipWriter } from '../lib/zip';
 import { downloadFile } from '../pdf/save';
 import { learn, recognize, suggestions, type DbKind, type RenameDb } from './database';
 import { DatabaseView } from './DatabaseView';
-import { PreviewDialog } from './PreviewDialog';
+import { PreviewDialog } from '../components/PreviewDialog';
 import { openScanReader, readLines, type ScanReader } from './readText';
 import { RenameMerge } from './RenameMerge';
 import { stamp } from './stamp';

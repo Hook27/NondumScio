@@ -29,7 +29,7 @@ vi.mock('../pdf/loader', async (importOriginal) => ({
   closePdf: vi.fn(),
 }));
 
-const p = messages.nl.rename.preview;
+const p = messages.nl.preview;
 const file = new File(['%PDF-1.7'], 'scan_001.pdf', { type: 'application/pdf' });
 
 function setup(onClose = vi.fn()) {
@@ -87,6 +87,53 @@ describe('PreviewDialog: een PDF bekijken', () => {
     cleanup();
     // Preact ruimt effecten soms net na het afbreken op.
     await waitFor(() => expect(closePdf).toHaveBeenCalledWith(pdf));
+  });
+
+  it('toont pagina’s uit een PDF die al open is, gedraaid en met hun eigen label', async () => {
+    const angles: number[] = [];
+    const shown: number[] = [];
+    const pdf = {
+      numPages: 9,
+      getPage: async (number: number) => ({
+        rotate: 90,
+        getViewport: ({ scale, rotation }: { scale: number; rotation: number }) => {
+          angles.push(rotation);
+          return { width: 595 * scale, height: 842 * scale };
+        },
+        render: () => {
+          shown.push(number);
+          return { promise: Promise.resolve(), cancel: () => {} };
+        },
+        cleanup: () => {},
+      }),
+    };
+    render(
+      <LanguageProvider initial="nl">
+        <PreviewDialog
+          title="04 - Bijlage.pdf"
+          pages={[
+            { pdf: pdf as never, pageNumber: 6, rotation: 270, label: 'eerste' },
+            { pdf: pdf as never, pageNumber: 2 },
+          ]}
+          onClose={() => {}}
+        />
+      </LanguageProvider>,
+    );
+    expect(screen.getByRole('dialog', { name: '04 - Bijlage.pdf' })).toBeTruthy();
+    expect(screen.getByText('eerste')).toBeTruthy();
+    await waitFor(() => expect(shown).toEqual([6]));
+    // De draaiing van de pagina zelf plus die uit het plan.
+    expect(angles).toEqual([0, 0]);
+    fireEvent.click(screen.getByRole('button', { name: p.next }));
+    expect(await screen.findByText('Pagina 2 van 2')).toBeTruthy();
+    await waitFor(() => expect(shown).toEqual([6, 2]));
+    expect(angles.slice(2)).toEqual([90, 90]);
+    cleanup();
+    // Preact ruimt effecten soms net na het afbreken op: daar even op wachten.
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    // Die PDF is van het document: niet geopend en niet opgeruimd.
+    expect(loadPdf).not.toHaveBeenCalled();
+    expect(closePdf).not.toHaveBeenCalled();
   });
 
   it('meldt een PDF die niet te tonen is', async () => {

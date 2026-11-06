@@ -2438,6 +2438,220 @@ h1 {
   opacity: 0.5;
 }
 
+/* Op bladwijzers: niveau, grenspagina en voorvoegsel. */
+.split-method__select,
+.split-method__prefix {
+  padding: 0.35rem 0.5rem;
+  background: var(--bg);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  font: inherit;
+}
+
+.split-method__prefix {
+  flex: 1;
+  min-width: 8rem;
+}
+
+.split-method select:disabled {
+  opacity: 0.5;
+}
+
+.split-method__check {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  cursor: pointer;
+}
+
+.split-method__check input {
+  width: 1rem;
+  height: 1rem;
+  accent-color: var(--accent);
+}
+
+/* De schakelaar Delen | Pagina's in de kop van het rechtervak: knoppen naar hun tekst. */
+.split-view {
+  margin: 0;
+}
+
+.split-view .segmented__button {
+  flex: 0 0 auto;
+  white-space: nowrap;
+}
+
+.split-summary {
+  margin: 0 0 0.6rem;
+  color: var(--text-muted);
+  font-size: 0.85rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.split-note {
+  margin: 0 0 0.6rem;
+  padding: 0.45rem 0.7rem;
+  background: var(--changed);
+  border: 1px solid var(--changed-line);
+  border-radius: var(--radius);
+  font-size: 0.85rem;
+}
+
+.split-note--error {
+  background: var(--removed);
+  border-color: var(--removed-line);
+}
+
+/*
+ * De tabel met delen (Op bladwijzers). Een raster per rij, zodat de kolommen gelijk blijven; in een
+ * smal vak komt de bestandsnaam op een tweede regel onder de bladwijzer.
+ */
+.bookmark-table {
+  container-type: inline-size;
+  font-size: 0.875rem;
+}
+
+.bookmark-table__row {
+  display: grid;
+  grid-template-columns: 1.25rem 2.25rem minmax(0, 1fr) 4.75rem 3rem minmax(0, 1fr) auto;
+  grid-template-areas: 'check num title pages count name actions';
+  align-items: center;
+  gap: 0.25rem 0.5rem;
+  padding: 0.3rem 0.4rem;
+  border-bottom: 1px solid var(--border);
+}
+
+.bookmark-table__head {
+  background: var(--bg);
+}
+
+.bookmark-table__head .bookmark-table__row {
+  color: var(--text-muted);
+  font-size: 0.75rem;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.bookmark-table__check {
+  grid-area: check;
+  display: flex;
+}
+
+.bookmark-table__check input {
+  width: 1rem;
+  height: 1rem;
+  margin: 0;
+  accent-color: var(--accent);
+}
+
+.bookmark-table__num,
+.bookmark-table__pages,
+.bookmark-table__count {
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+  white-space: nowrap;
+}
+
+.bookmark-table__num {
+  grid-area: num;
+}
+
+.bookmark-table__title {
+  grid-area: title;
+  /* Ingesprongen per niveau. */
+  padding-left: calc(var(--depth, 0) * 1.1rem);
+  overflow-wrap: anywhere;
+}
+
+.bookmark-table__also {
+  display: block;
+  color: var(--changed-line);
+  font-size: 0.8rem;
+}
+
+.bookmark-table__pages {
+  grid-area: pages;
+}
+
+.bookmark-table__count {
+  grid-area: count;
+}
+
+.bookmark-table__name {
+  grid-area: name;
+}
+
+.bookmark-table__name input {
+  width: 100%;
+  min-width: 0;
+  padding: 0.25rem 0.4rem;
+  background: var(--surface);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  font: inherit;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 0.8rem;
+}
+
+/* Dezelfde naam als een ander deel dat meegaat. */
+.bookmark-table__name input.is-duplicate {
+  border-color: var(--candidate);
+  box-shadow: inset 0 0 0 1px var(--candidate);
+}
+
+.bookmark-table__actions {
+  grid-area: actions;
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.3rem;
+}
+
+.bookmark-table__view {
+  padding: 0.2rem 0.55rem;
+  font-size: 0.8rem;
+}
+
+.bookmark-table__actions .button--icon {
+  width: 1.75rem;
+  height: 1.75rem;
+}
+
+/* Een deel dat niet meegaat: gedempt, behalve het vinkje. */
+.bookmark-table__row--off > :not(.bookmark-table__check) {
+  opacity: 0.55;
+}
+
+/* Smal vak: de bladwijzer met pagina's en aantal op de eerste regel, de naam met de knoppen eronder. */
+@container (max-width: 48rem) {
+  .bookmark-table__row {
+    grid-template-columns: 1.25rem 2.25rem minmax(0, 1fr) 4.75rem 3rem;
+    grid-template-areas:
+      'check num title pages count'
+      '. . name actions actions';
+  }
+
+  .bookmark-table__actions {
+    justify-content: flex-start;
+  }
+
+  /* De kolomkoppen op één regel; "Bestandsnaam" blijft er voor een schermlezer. */
+  .bookmark-table__head .bookmark-table__row {
+    grid-template-areas: 'check num title pages count';
+  }
+
+  .bookmark-table__head .bookmark-table__name,
+  .bookmark-table__head .bookmark-table__actions {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
+  }
+}
+
 .split-parts {
   display: grid;
   grid-template-columns: minmax(0, 1fr);
@@ -2866,6 +3080,11 @@ h1 {
     grid-template-columns: minmax(16rem, 20rem) minmax(0, 1fr);
   }
 
+  /* Splitsen op bladwijzers: een smaller linkervak, zodat de tabel met delen de ruimte heeft. */
+  .workspace.workspace--wide {
+    grid-template-columns: minmax(16rem, 20rem) minmax(0, 1fr);
+  }
+
   /* PDF → Platte tekst: hetzelfde smalle linkervak, zodat de tekst de ruimte heeft. */
   .workspace.plaintext {
     grid-template-columns: minmax(16rem, 20rem) minmax(0, 1fr);
@@ -2898,6 +3117,13 @@ h1 {
     z-index: 2;
     padding: 4px 0 0.5rem;
     background: var(--bg);
+  }
+
+  /* De kolomkoppen van de delen blijven onder de kop van het vak staan (zie `BookmarkTable`). */
+  .workspace__view .bookmark-table__head {
+    position: sticky;
+    top: var(--head-top, -4px);
+    z-index: 1;
   }
 }
 

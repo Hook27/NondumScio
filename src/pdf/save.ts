@@ -202,6 +202,8 @@ async function buildPlain(
  *
  * Met `onPart` gaat elk deel meteen daarheen (bijvoorbeeld een ZIP) en wordt het niet bewaard:
  * dan staan niet alle delen tegelijk in het geheugen, en is de teruggegeven lijst leeg.
+ *
+ * Met `titles` krijgt elk deel een eigen titel (bij splitsen op bladwijzers: die van de bladwijzer).
  */
 export async function buildParts(
   sources: SourceBytes,
@@ -210,6 +212,7 @@ export async function buildParts(
   annotations: readonly Annotation[] = [],
   redaction?: RedactionRun,
   onPart?: (bytes: Uint8Array, index: number) => void,
+  titles?: readonly string[],
 ): Promise<Uint8Array[]> {
   if (parts.length === 0 || parts.some((part) => part.length === 0)) {
     throw new PdfSaveError('failed');
@@ -222,7 +225,10 @@ export async function buildParts(
   const redacting = redaction?.wholeDocument ?? hasRedactions(parts.flat(), annotations);
   try {
     for (const [index, part] of parts.entries()) {
-      const bytes = await (await assemble(lib, docs, part, annotations)).save();
+      const out = await assemble(lib, docs, part, annotations);
+      const title = titles?.[index];
+      if (title) out.setTitle(title);
+      const bytes = await out.save();
       const done = await applyRedactions(bytes, part, annotations, redaction, redacting);
       if (onPart) onPart(done, index);
       else result.push(done);

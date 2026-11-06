@@ -17,14 +17,17 @@ export function Split({
   head,
   tools,
   view,
+  wide = false,
 }: {
   /** Boven de naam van het document, bijvoorbeeld een keuze tussen twee soorten omzetten. */
   head?: ComponentChildren;
   tools: ComponentChildren;
   view: ComponentChildren;
+  /** Een smaller linkervak, zodat rechts (bijvoorbeeld een tabel) meer ruimte heeft. */
+  wide?: boolean;
 }) {
   return (
-    <section class="workspace" aria-labelledby="document-title">
+    <section class={`workspace${wide ? ' workspace--wide' : ''}`} aria-labelledby="document-title">
       <div class="workspace__tools">
         {head}
         <DocumentBar />

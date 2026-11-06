@@ -830,7 +830,7 @@ describe('Slim hernoemen: bekijken', () => {
     const dialog = screen.getByRole('dialog', {
       name: '260312 gemeente utrecht aan.pdf · gemeente.pdf',
     });
-    fireEvent.click(within(dialog).getByRole('button', { name: r.preview.close }));
+    fireEvent.click(within(dialog).getByRole('button', { name: messages.nl.preview.close }));
     expect(screen.queryByRole('dialog')).toBeNull();
   });
 });
