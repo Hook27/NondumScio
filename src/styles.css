@@ -2513,7 +2513,10 @@ h1 {
 
 .bookmark-table__row {
   display: grid;
-  grid-template-columns: 1.25rem 2.25rem minmax(0, 1fr) 4.75rem 3rem 5.75rem minmax(0, 1fr) auto;
+  /* Alle kolommen vast of gelijk verdeeld (geen "auto"): elke rij is een eigen raster, en de kop
+     heeft geen knoppen; met "auto" zouden de kolommen van de kop daardoor verschuiven. De laatste
+     kolom past Bekijk en ⬇ (NL 5,44 rem). */
+  grid-template-columns: 1.25rem 2.25rem minmax(0, 1fr) 4.75rem 3rem 5.75rem minmax(0, 1fr) 5.75rem;
   grid-template-areas: 'check num title pages count size name actions';
   align-items: center;
   gap: 0.25rem 0.5rem;
@@ -2643,7 +2646,7 @@ h1 {
 /* Smal vak: de bladwijzer met pagina's en aantal op de eerste regel, de naam met de knoppen eronder. */
 @container (max-width: 48rem) {
   .bookmark-table__row {
-    grid-template-columns: 1.25rem 2.25rem minmax(0, 1fr) 5.75rem 5.5rem;
+    grid-template-columns: 1.25rem 2.25rem minmax(0, 1fr) 5.75rem 5.75rem;
     grid-template-areas:
       'check num title pages count'
       '. . name size actions';
