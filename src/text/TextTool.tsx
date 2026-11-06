@@ -41,6 +41,7 @@ import {
   resetOptions,
   runBatch,
   setBatchCombine,
+  setEdited,
   setFit,
   setMeta,
   setOptions,
@@ -80,8 +81,8 @@ const MIN_ZONE_PX = 8;
  * los van de gewone taken; de stand staat buiten het scherm (`store.ts`). Overgenomen uit de losse
  * pdf-tekst-extractor, met dezelfde werkwijze: eerst de PDF zien en vakken zetten, dan pas
  * "Tekst extraheren". Bewuste afwijkingen: zonder vakken gaan terugkerende kop- en voetteksten er
- * standaard uit, de alinea-gevoeligheid staat standaard op 1,3 (zie `DEFAULT_TEXT_OPTIONS`), en
- * de tekst is niet te bewerken in het scherm.
+ * standaard uit, en de alinea-gevoeligheid staat standaard op 1,3 (zie `DEFAULT_TEXT_OPTIONS`).
+ * Zoals in de extractor is de tekst in het resultaat aan te passen vóór kopiëren of downloaden.
  */
 export function TextTool() {
   const { t } = useI18n();
@@ -1305,7 +1306,7 @@ function pageList(pages: readonly number[], t: Texts) {
 function Output() {
   const { t, language } = useI18n();
   const p = t.plainText;
-  const { slot, result, stale } = useTextState();
+  const { slot, result, edited, stale } = useTextState();
   // Wat er met de tekst gebeurd is (gekopieerd, gedownload), bij welke tekst: bij een andere tekst
   // hoort de melding er niet meer bij. (Geen effect om hem te wissen, zie PDF's vergelijken.)
   const [status, setStatus] = useState<{ result: Extraction | null; text: string } | null>(null);
@@ -1326,6 +1327,8 @@ function Output() {
   const shown = status && status.result === result ? status.text : null;
   const q = quality(result.pages);
   const ready = result.text !== '';
+  // Wat je kopieert en downloadt: de tekst zoals hij in het vak staat, met je aanpassingen.
+  const text = edited ?? result.text;
   const meta = [
     summary(result, slot.doc, t, language),
     q.read > 0 && format(p.average, { n: q.average.toLocaleString(language) }),
@@ -1339,9 +1342,9 @@ function Output() {
           <button
             type="button"
             class="button button--secondary"
-            disabled={!ready}
+            disabled={text === ''}
             onClick={() =>
-              void copyText(result.text).then((ok) =>
+              void copyText(text).then((ok) =>
                 setStatus({ result, text: ok ? p.copied : p.copyFailed }),
               )
             }
@@ -1351,10 +1354,10 @@ function Output() {
           <button
             type="button"
             class="button button--secondary"
-            disabled={!ready}
+            disabled={text === ''}
             onClick={() => {
               const file = exportName(slot.doc.file.name);
-              downloadFile(new TextEncoder().encode(result.text), file, 'text/plain;charset=utf-8');
+              downloadFile(new TextEncoder().encode(text), file, 'text/plain;charset=utf-8');
               setStatus({ result, text: format(p.downloaded, { name: file }) });
             }}
           >
@@ -1369,6 +1372,7 @@ function Output() {
         </p>
       )}
       {stale && <p class="compare__note">{p.stale}</p>}
+      {edited !== null && edited !== result.text && <p class="compare__note">{p.edited}</p>}
       {q.skipped.length > 0 &&
         (q.read === 0 ? (
           <p class="compare__warning">{p.noZones}</p>
@@ -1382,7 +1386,13 @@ function Output() {
         <p class="compare__warning">{format(p.lowPages, { list: pageList(q.low, t) })}</p>
       )}
       {ready ? (
-        <pre class="plaintext__output">{result.text}</pre>
+        <textarea
+          class="plaintext__output"
+          aria-label={p.outputLabel}
+          spellcheck={false}
+          value={text}
+          onInput={(event) => setEdited(event.currentTarget.value)}
+        />
       ) : (
         <p class="compare__placeholder">{p.empty}</p>
       )}

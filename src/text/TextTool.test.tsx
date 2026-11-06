@@ -197,7 +197,7 @@ function choose(...names: string[]) {
 /** Effecten (toetsen, muis) lopen pas na het tekenen. */
 const settle = () => act(() => new Promise((resolve) => setTimeout(resolve, 60)));
 
-const output = () => document.querySelector('pre.plaintext__output');
+const output = () => document.querySelector<HTMLTextAreaElement>('textarea.plaintext__output');
 const button = (name: string) => screen.getByRole<HTMLButtonElement>('button', { name });
 const check = (name: string) => screen.getByRole<HTMLInputElement>('checkbox', { name });
 const pressed = (name: string) => button(name).getAttribute('aria-pressed');
@@ -277,7 +277,7 @@ describe('PDF → Platte tekst: beginnen', () => {
 
     fireEvent.click(button(p.extract));
     expect(pressed(p.views.result)).toBe('true');
-    expect(output()!.textContent).toBe(LETTER_TEXT);
+    expect(output()!.value).toBe(LETTER_TEXT);
     const chars = LETTER_TEXT.length;
     const done = `${chars} tekens · 1 van 1 pagina gelezen`;
     expect(screen.getByText(format(p.done, { summary: done }))).toBeTruthy();
@@ -324,7 +324,7 @@ describe('PDF → Platte tekst: beginnen', () => {
     release();
     await settle();
     fireEvent.click(button(p.extract));
-    expect(output()!.textContent).toBe('De tweede PDF.');
+    expect(output()!.value).toBe('De tweede PDF.');
   });
 
   it('een PDF die nog gelezen wordt en dan mislukt, geeft geen melding bij een later gekozen PDF', async () => {
@@ -433,10 +433,10 @@ describe('PDF → Platte tekst: leesvakken', () => {
     await open('artikel.pdf');
     // Zonder vakken: de hele pagina, kop en voet weggelaten, links en dan rechts.
     fireEvent.click(button(p.extract));
-    expect(output()!.textContent!.split('\n\n')[0]).toBe(
+    expect(output()!.value!.split('\n\n')[0]).toBe(
       `${rows('links', 1).join(' ')}\n\n${rows('rechts', 1).join(' ')}`.split('\n\n')[0],
     );
-    expect(output()!.textContent).not.toContain('Tijdschrift');
+    expect(output()!.value).not.toContain('Tijdschrift');
 
     fireEvent.click(check(p.zones.use));
     expect(pressed(p.views.preview)).toBe('true');
@@ -453,7 +453,7 @@ describe('PDF → Platte tekst: leesvakken', () => {
     fireEvent.click(button(p.extract));
     const pageText = (no: number) =>
       `${rows('rechts', no).join(' ')}\n\n${rows('links', no).join(' ')}`;
-    expect(output()!.textContent).toBe([1, 2, 3].map(pageText).join('\n\n'));
+    expect(output()!.value).toBe([1, 2, 3].map(pageText).join('\n\n'));
   });
 
   it('een te klein getekend vak telt niet', async () => {
@@ -476,7 +476,7 @@ describe('PDF → Platte tekst: leesvakken', () => {
     drag(zone, [150, 650], [420, 650]);
     expect(getTextState().zones).toHaveLength(1);
     fireEvent.click(button(p.extract));
-    expect(output()!.textContent!.split('\n\n')[0]).toBe(rows('rechts', 1).join(' '));
+    expect(output()!.value!.split('\n\n')[0]).toBe(rows('rechts', 1).join(' '));
 
     // De onderrand omhoog: alleen de bovenste twee regels.
     fireEvent.click(button(p.views.preview));
@@ -485,7 +485,7 @@ describe('PDF → Platte tekst: leesvakken', () => {
     const bottom = document.querySelector('.plaintext-zone__handle--s')!;
     drag(bottom, [430, 600], [430, 686]);
     fireEvent.click(button(p.extract));
-    expect(output()!.textContent!.split('\n\n')[0]).toBe(rows('rechts', 1).slice(0, 2).join(' '));
+    expect(output()!.value!.split('\n\n')[0]).toBe(rows('rechts', 1).slice(0, 2).join(' '));
   });
 
   it('ongedaan maken met de knop en met Ctrl+Z; vakken wissen', async () => {
@@ -507,7 +507,7 @@ describe('PDF → Platte tekst: leesvakken', () => {
     expect(zoneList()).toEqual(['Vak 1']);
     // Het overgebleven vak is het rechter.
     fireEvent.click(button(p.extract));
-    expect(output()!.textContent!.split('\n\n')[0]).toBe(rows('rechts', 1).join(' '));
+    expect(output()!.value!.split('\n\n')[0]).toBe(rows('rechts', 1).join(' '));
     fireEvent.click(button(p.views.preview));
     fireEvent.click(button(p.zones.clearAll));
     expect(screen.getByText(p.zones.empty)).toBeTruthy();
@@ -592,14 +592,14 @@ describe('PDF → Platte tekst: resultaat', () => {
   it('een andere instelling of een ander vak werkt pas bij opnieuw extraheren', async () => {
     await open('artikel.pdf');
     fireEvent.click(button(p.extract));
-    const before = output()!.textContent;
+    const before = output()!.value;
     expect(screen.queryByText(p.stale)).toBeNull();
     fireEvent.click(check(p.settings.strip));
     expect(screen.getByText(p.stale)).toBeTruthy();
-    expect(output()!.textContent).toBe(before);
+    expect(output()!.value).toBe(before);
     fireEvent.click(button(p.extract));
     expect(screen.queryByText(p.stale)).toBeNull();
-    expect(output()!.textContent).toContain('Tijdschrift voor proeven');
+    expect(output()!.value).toContain('Tijdschrift voor proeven');
 
     fireEvent.click(check(p.zones.use));
     fireEvent.click(button(p.views.result));
@@ -614,11 +614,11 @@ describe('PDF → Platte tekst: resultaat', () => {
     fireEvent.input(slider, { target: { value: '2.5' } });
     expect(screen.getByText('2,5')).toBeTruthy();
     fireEvent.click(button(p.extract));
-    expect(output()!.textContent).toBe(LETTER_TEXT.replace(/\n\n/g, ' '));
+    expect(output()!.value).toBe(LETTER_TEXT.replace(/\n\n/g, ' '));
     fireEvent.click(check(p.settings.joinLines));
     expect(slider.disabled).toBe(true);
     fireEvent.click(button(p.extract));
-    expect(output()!.textContent).toBe(LETTER.flat().join('\n'));
+    expect(output()!.value).toBe(LETTER.flat().join('\n'));
   });
 
   it('noemt pagina’s zonder tekstlaag en met nauwelijks tekst', async () => {
@@ -659,6 +659,37 @@ describe('PDF → Platte tekst: resultaat', () => {
     fireEvent.click(button(p.extract));
     fireEvent.click(button(p.copy));
     await waitFor(() => expect(screen.getByText(p.copyFailed)).toBeTruthy());
+  });
+
+  it('de tekst is aan te passen: kopiëren en downloaden nemen het mee, opnieuw extraheren zet terug', async () => {
+    await open('brief.pdf');
+    fireEvent.click(button(p.extract));
+    expect(output()!.value).toBe(LETTER_TEXT);
+    expect(screen.getByRole('textbox', { name: p.outputLabel })).toBe(output());
+    expect(screen.queryByText(p.edited)).toBeNull();
+    fireEvent.input(output()!, { target: { value: 'Mijn eigen tekst.' } });
+    expect(output()!.value).toBe('Mijn eigen tekst.');
+    expect(screen.getByText(p.edited)).toBeTruthy();
+    fireEvent.click(button(p.copy));
+    await waitFor(() => expect(copyText).toHaveBeenLastCalledWith('Mijn eigen tekst.'));
+    fireEvent.click(button(p.download));
+    const [data] = vi.mocked(downloadFile).mock.calls.at(-1)!;
+    expect(new TextDecoder().decode(data as Uint8Array)).toBe('Mijn eigen tekst.');
+    // Weer precies de tekst uit de PDF: geen melding over aanpassingen.
+    fireEvent.input(output()!, { target: { value: LETTER_TEXT } });
+    expect(screen.queryByText(p.edited)).toBeNull();
+    // Alles weggehaald: niets te kopiëren of te downloaden.
+    fireEvent.input(output()!, { target: { value: '' } });
+    expect(button(p.copy).disabled).toBe(true);
+    expect(button(p.download).disabled).toBe(true);
+    // Opnieuw extraheren zet de tekst terug.
+    fireEvent.click(button(p.extract));
+    expect(output()!.value).toBe(LETTER_TEXT);
+    expect(getTextState().edited).toBeNull();
+    // Een andere PDF begint ook zonder aanpassingen.
+    fireEvent.input(output()!, { target: { value: 'weer anders' } });
+    choose('tweede.pdf');
+    await waitFor(() => expect(getTextState().edited).toBeNull());
   });
 
   it('downloadt de tekst als <naam>_extract.txt', async () => {
@@ -808,7 +839,7 @@ describe('PDF → Platte tekst: vakken per pagina', () => {
     draw(...RIGHT_BOX);
 
     fireEvent.click(button(p.extract));
-    expect(output()!.textContent).toBe(
+    expect(output()!.value).toBe(
       [columnText('links', 1), columnText('rechts', 2), columnText('links', 3)].join('\n\n'),
     );
 
@@ -822,7 +853,7 @@ describe('PDF → Platte tekst: vakken per pagina', () => {
     fireEvent.click(button(p.preview.next));
     fireEvent.click(check(p.zones.own));
     fireEvent.click(button(p.extract));
-    expect(output()!.textContent).toBe([1, 2, 3].map((no) => columnText('links', no)).join('\n\n'));
+    expect(output()!.value).toBe([1, 2, 3].map((no) => columnText('links', no)).join('\n\n'));
   });
 
   it('een lege eigen set slaat de pagina over, of leest hem helemaal', async () => {
@@ -835,7 +866,7 @@ describe('PDF → Platte tekst: vakken per pagina', () => {
     fireEvent.click(button(p.zones.clearAll));
     fireEvent.click(button(p.extract));
     expect(screen.getByText(format(p.skippedPages, { list: 'pagina 2' }))).toBeTruthy();
-    expect(output()!.textContent).toBe([1, 3].map((no) => columnText('links', no)).join('\n\n'));
+    expect(output()!.value).toBe([1, 3].map((no) => columnText('links', no)).join('\n\n'));
 
     // Kolommen doen dan weer mee (voor die pagina's), kop/voet weglaten niet.
     expect(check(p.settings.columns).disabled).toBe(true);
@@ -845,7 +876,7 @@ describe('PDF → Platte tekst: vakken per pagina', () => {
     expect(screen.getByText(p.settings.zonesOffRead)).toBeTruthy();
     fireEvent.click(button(p.extract));
     expect(screen.queryByText(/Overgeslagen/)).toBeNull();
-    expect(output()!.textContent).toBe(
+    expect(output()!.value).toBe(
       [
         columnText('links', 1),
         // De hele pagina: kop, linkerkolom, rechterkolom en voet, elk een eigen alinea.
@@ -1136,7 +1167,7 @@ describe('PDF → Platte tekst: opsommingen, koppen en tabellen', () => {
     expect(check(s.headingMarker).checked).toBe(false);
     expect(check(s.tables).checked).toBe(false);
     fireEvent.click(button(p.extract));
-    expect(output()!.textContent).toBe(
+    expect(output()!.value).toBe(
       'Partijen komen het volgende overeen over de woning aan de straat.\n\n\nArtikel 1 Huurprijs\n\nDe huur bedraagt vijfhonderd euro per maand, vooraf te betalen.',
     );
   });
@@ -1145,11 +1176,11 @@ describe('PDF → Platte tekst: opsommingen, koppen en tabellen', () => {
     await open('contract.pdf');
     fireEvent.click(check(s.headingMarker));
     fireEvent.click(button(p.extract));
-    expect(output()!.textContent).toContain('\n\n\n{H} Artikel 1 Huurprijs\n\n');
+    expect(output()!.value).toContain('\n\n\n{H} Artikel 1 Huurprijs\n\n');
     fireEvent.click(check(s.structure));
     expect(check(s.headingMarker).disabled).toBe(true);
     fireEvent.click(button(p.extract));
-    expect(output()!.textContent!.split('\n\n')).toHaveLength(1);
+    expect(output()!.value!.split('\n\n')).toHaveLength(1);
   });
 
   it('wanneer een vinkje niets doet, staat het uit', async () => {
@@ -1197,7 +1228,7 @@ describe('PDF → Platte tekst: pagina-overgangen', () => {
     expect(check(g.anchors).checked).toBe(true);
     expect(check(g.crossPage).checked).toBe(true);
     fireEvent.click(button(p.extract));
-    expect(output()!.textContent).toBe(
+    expect(output()!.value).toBe(
       [
         '{p1} De titel van het boek.',
         '',
@@ -1220,7 +1251,7 @@ describe('PDF → Platte tekst: pagina-overgangen', () => {
     fireEvent.click(check(g.anchors));
     fireEvent.click(check(g.crossPage));
     fireEvent.click(button(p.extract));
-    expect(output()!.textContent).toBe(
+    expect(output()!.value).toBe(
       'De titel van het boek.\n\nHet voorwoord van het boek.\n\nEn dan loopt de zin door op de\n\nvolgende pagina en eindigt hier.',
     );
   });
@@ -1239,14 +1270,14 @@ describe('PDF → Platte tekst: pagina-overgangen', () => {
     fireEvent.change(select, { target: { value: 'break' } });
     expect(getTextState().joins).toEqual({ 4: 'break' });
     fireEvent.click(button(p.extract));
-    expect(output()!.textContent).toContain('op de\n\nvolgende pagina');
+    expect(output()!.value).toContain('op de\n\nvolgende pagina');
     // Pagina 2 aaneen met pagina 1.
     fireEvent.click(button(p.views.preview));
     fireEvent.click(button(p.preview.first));
     fireEvent.click(button(p.preview.next));
     fireEvent.change(screen.getByRole('combobox'), { target: { value: 'join' } });
     fireEvent.click(button(p.extract));
-    expect(output()!.textContent!.startsWith('De titel van het boek. Het voorwoord')).toBe(true);
+    expect(output()!.value!.startsWith('De titel van het boek. Het voorwoord')).toBe(true);
     // Terug naar automatisch: de keuze verdwijnt.
     fireEvent.click(button(p.views.preview));
     fireEvent.change(screen.getByRole('combobox'), { target: { value: 'auto' } });
@@ -1308,7 +1339,7 @@ describe('PDF → Platte tekst: pagina-overgangen', () => {
       ),
     );
     fireEvent.click(screen.getByRole('button', { name: en.extract }));
-    expect(output()!.textContent).toContain(
+    expect(output()!.value).toContain(
       '---\nPage concordance:\nPDF page 1 = no document page number (title page)\nPDF page 2 = document page 1',
     );
   });
@@ -1358,12 +1389,12 @@ describe('PDF → Platte tekst: documentkop en metadata', () => {
   it('de kop staat bovenaan de tekst, pas na opnieuw extraheren, met de velden zoals ze staan', async () => {
     await open('brief.pdf');
     fireEvent.click(button(p.extract));
-    expect(output()!.textContent).toBe(LETTER_TEXT);
+    expect(output()!.value).toBe(LETTER_TEXT);
     fireEvent.click(check(h.use));
     expect(screen.getByText(p.stale)).toBeTruthy();
-    expect(output()!.textContent).toBe(LETTER_TEXT);
+    expect(output()!.value).toBe(LETTER_TEXT);
     fireEvent.click(button(p.extract));
-    expect(output()!.textContent).toBe(`${HEADER}\n\n${LETTER_TEXT}`);
+    expect(output()!.value).toBe(`${HEADER}\n\n${LETTER_TEXT}`);
     // Een aangepast veld, en een leeg veld valt weg; ook dat pas bij opnieuw extraheren.
     type(f.title, 'Huurcontract');
     type(f.subject, '');
@@ -1375,7 +1406,7 @@ describe('PDF → Platte tekst: documentkop en metadata', () => {
     });
     expect(screen.getByText(p.stale)).toBeTruthy();
     fireEvent.click(button(p.extract));
-    expect(output()!.textContent).toBe(
+    expect(output()!.value).toBe(
       `Bestand: brief.pdf\nTitel: Huurcontract\nAuteur: Woningstichting Voorbeeld\nDatum: 2018-06-04\n\n${LETTER_TEXT}`,
     );
   });
@@ -1384,7 +1415,7 @@ describe('PDF → Platte tekst: documentkop en metadata', () => {
     await open('contract.pdf');
     fireEvent.click(check(h.conventions));
     fireEvent.click(button(p.extract));
-    const text = () => output()!.textContent!;
+    const text = () => output()!.value!;
     // Zonder pagina-ankers (zie beforeEach) geen regels over {p#} en de concordantie.
     expect(text()).toBe(
       [
@@ -1548,7 +1579,7 @@ describe('PDF → Platte tekst: documentkop en metadata', () => {
     fireEvent.click(screen.getByRole('checkbox', { name: en.header.use }));
     fireEvent.click(screen.getByRole('checkbox', { name: en.header.conventions }));
     fireEvent.click(screen.getByRole('button', { name: en.extract }));
-    expect(output()!.textContent).toBe(
+    expect(output()!.value).toBe(
       [
         '=== Conventions ===',
         en.conventions.intro,

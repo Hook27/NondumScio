@@ -900,6 +900,9 @@ export const en: Messages = {
       canvas: 'Page {n}',
       error: 'This page could not be drawn.',
     },
+    outputLabel: 'The text (editable)',
+    edited:
+      'You have edited the text. Copying and downloading include your edits; extracting again puts the text back.',
     copy: 'Copy text',
     copied: 'The text has been copied.',
     copyFailed: 'Copying did not work. Select the text and copy it yourself.',

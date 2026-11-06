@@ -909,6 +909,9 @@ export const nl = {
       canvas: 'Pagina {n}',
       error: 'Deze pagina kon niet worden getekend.',
     },
+    outputLabel: 'De tekst (aan te passen)',
+    edited:
+      'Je hebt de tekst aangepast. Kopiëren en downloaden nemen je aanpassingen mee; opnieuw extraheren zet de tekst terug.',
     copy: 'Tekst kopiëren',
     copied: 'De tekst is gekopieerd.',
     copyFailed: 'Kopiëren lukte niet. Selecteer de tekst en kopieer hem zelf.',
