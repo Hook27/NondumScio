@@ -61,6 +61,56 @@ describe('extractText', () => {
     );
   });
 
+  it('heeft standaard geen documentkop en geen conventieblok, zoals de extractor', () => {
+    expect(DEFAULT_TEXT_OPTIONS.header).toBe(false);
+    expect(DEFAULT_TEXT_OPTIONS.conventions).toBe(false);
+    const meta = { title: 'Brief', author: 'Jansen', subject: '', date: '4 juni 2018' };
+    const { text } = extractText([page(1, [['Een korte brief.']])], PLAIN, null, {
+      name: 'brief.pdf',
+      meta,
+    });
+    expect(text).toBe('Een korte brief.');
+  });
+
+  it('met documentkop en conventieblok: die bovenaan, met de naam en de gegevens', () => {
+    const meta = { title: 'Brief', author: 'Jansen', subject: '', date: '4 juni 2018' };
+    const pages = [page(1, [['Een korte brief.']])];
+    const opts = { ...DEFAULT_TEXT_OPTIONS, header: true, conventions: true };
+    expect(extractText(pages, opts, null, { name: 'brief.pdf', meta }).text).toBe(
+      [
+        '=== Conventies ===',
+        'Platte tekst geëxtraheerd uit een PDF; opmaak en afbeeldingen zijn weggelaten.',
+        '{p#} = begin van PDF-pagina #. Kan midden in een zin staan als een alinea over de pagina-overgang doorloopt.',
+        'Onderaan staat een paginaconcordantie die fysieke PDF-pagina’s koppelt aan afgedrukte documentpaginanummers.',
+        '==================',
+        '',
+        'Bestand: brief.pdf',
+        'Titel: Brief',
+        'Auteur: Jansen',
+        'Datum: 4 juni 2018',
+        '',
+        '{p1} Een korte brief.',
+        '',
+        '---',
+        'Paginaconcordantie:',
+        'PDF-pagina 1 = geen documentpaginanummer (titelblad)',
+      ].join('\n'),
+    );
+    // Met de woorden van een andere taal.
+    const head = {
+      fields: { file: 'File', title: 'Title', author: 'Author', subject: 'Subject', date: 'Date' },
+      conventions: { title: 'C', intro: 'I', anchors: 'A', concordance: 'K', heading: 'H' },
+    };
+    const english = extractText(pages, { ...PLAIN, header: true, conventions: true }, null, {
+      name: 'letter.pdf',
+      meta,
+      head,
+    }).text;
+    expect(english).toBe(
+      '=== C ===\nI\n=========\n\nFile: letter.pdf\nTitle: Brief\nAuthor: Jansen\nDate: 4 juni 2018\n\nEen korte brief.',
+    );
+  });
+
   it('zet de pagina’s na elkaar, met een witregel ertussen, en laat pagina’s zonder tekst weg', () => {
     const { text, pages } = extractText(
       [

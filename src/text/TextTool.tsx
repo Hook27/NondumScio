@@ -1,4 +1,4 @@
-import type { ComponentChildren } from 'preact';
+import { Fragment, type ComponentChildren } from 'preact';
 import { useEffect, useLayoutEffect, useRef, useState } from 'preact/hooks';
 import { GAP_FACTOR } from '../compare/layout';
 import { copyText } from '../compare/report';
@@ -32,6 +32,7 @@ import {
   ownPage,
   removeZone,
   setFit,
+  setMeta,
   setOptions,
   setBlock,
   setOwnPage,
@@ -49,6 +50,7 @@ import {
   type TextDoc,
   type TextView,
 } from './store';
+import { META_FIELDS } from './header';
 import { JOINS, type Join } from './pages';
 import { forgetStored } from './settings';
 
@@ -85,6 +87,7 @@ export function TextTool() {
         )}
         <ZoneSettings />
         <Settings />
+        <MetaSettings />
         <PageSettings />
         <SaveSettings />
         <ExtractBar />
@@ -155,7 +158,7 @@ function SlotView() {
       inputId="plaintext-file"
       accept="application/pdf,.pdf"
       chooseLabel={slot.status === 'empty' ? p.slot.choose : p.slot.replace}
-      onFiles={(files) => void openFiles(files)}
+      onFiles={(files) => void openFiles(files, language)}
       extraClass="plaintext-slot"
     >
       <button
@@ -422,6 +425,71 @@ function Settings() {
 }
 
 /**
+ * Documentkop en metadata, zoals in de extractor: een kop boven de tekst met de bestandsnaam en de
+ * gegevens van de PDF, de velden om die gegevens aan te passen (met wat de PDF maakte ter
+ * informatie), en het conventieblok. De velden horen bij de PDF: zonder PDF staan ze uit.
+ */
+function MetaSettings() {
+  const { t } = useI18n();
+  const h = t.plainText.header;
+  const { options, slot, meta } = useTextState();
+  const info = slot.status === 'ready' ? slot.doc.info : null;
+  return (
+    <Block id="meta" title={h.title}>
+      <label class="compare-settings__check">
+        <input
+          type="checkbox"
+          checked={options.header}
+          aria-describedby="plaintext-header-hint"
+          onChange={(event) => setOptions({ header: event.currentTarget.checked })}
+        />
+        {h.use}
+      </label>
+      <p id="plaintext-header-hint" class="compare-settings__hint">
+        {h.useHint}
+      </p>
+      <div class="plaintext-meta">
+        {META_FIELDS.map((field) => (
+          <Fragment key={field}>
+            <label for={`plaintext-meta-${field}`}>{h.fields[field]}</label>
+            <input
+              id={`plaintext-meta-${field}`}
+              type="text"
+              autocomplete="off"
+              value={meta[field]}
+              disabled={!info}
+              aria-describedby="plaintext-meta-hint"
+              onInput={(event) => setMeta({ [field]: event.currentTarget.value })}
+            />
+          </Fragment>
+        ))}
+      </div>
+      <p id="plaintext-meta-hint" class="compare-settings__hint">
+        {h.fieldsHint}
+      </p>
+      {info?.Producer && (
+        <p class="plaintext-meta__info">{format(h.producer, { value: info.Producer })}</p>
+      )}
+      {info?.Creator && (
+        <p class="plaintext-meta__info">{format(h.creator, { value: info.Creator })}</p>
+      )}
+      <label class="compare-settings__check plaintext-meta__conventions">
+        <input
+          type="checkbox"
+          checked={options.conventions}
+          aria-describedby="plaintext-conventions-hint"
+          onChange={(event) => setOptions({ conventions: event.currentTarget.checked })}
+        />
+        {h.conventions}
+      </label>
+      <p id="plaintext-conventions-hint" class="compare-settings__hint">
+        {h.conventionsHint}
+      </p>
+    </Block>
+  );
+}
+
+/**
  * Pagina-overgangen: pagina-ankers {p#} met een concordantie, doorlopende zinnen over de
  * pagina-overgang, en per overgang de keuze automatisch, aaneen of gescheiden. In de extractor stond
  * die keuze in de bladerbalk; hier in dit blok, zodat de balk boven de pagina op één regel blijft.
@@ -577,7 +645,12 @@ function ExtractBar() {
         type="button"
         class="button"
         disabled={slot.status !== 'ready'}
-        onClick={() => extract(p.concordance)}
+        onClick={() =>
+          extract({
+            concordance: p.concordance,
+            head: { fields: p.header.fields, conventions: p.conventions },
+          })
+        }
       >
         {p.extract}
       </button>

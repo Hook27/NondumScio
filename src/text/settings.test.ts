@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { DEFAULT_TEXT_OPTIONS } from './extract';
+import { EMPTY_META } from './header';
 import {
   SETTINGS_PREFIX,
   forgetStored,
@@ -19,6 +20,7 @@ const BASE: Settings = {
   pages: {},
   readEmpty: false,
   joins: {},
+  meta: EMPTY_META,
   extra: { options: {} },
 };
 
@@ -76,31 +78,93 @@ describe('fromSettings', () => {
     expect(s.options).toEqual({ ...DEFAULT_TEXT_OPTIONS, columns: false, gapFactor: 1.6 });
   });
 
-  it('bewaart wat de extractor kent maar deze tool nog niet, en schrijft het terug', () => {
+  it('kent alle opties van de extractor, en schrijft ze terug zoals ze waren', () => {
     const s = fromSettings(ORIGINAL, BASE)!;
-    expect(s.extra.options).toEqual({ metaHeader: false, conventions: false });
+    expect(s.extra.options).toEqual({});
     expect(s.options.anchors).toBe(true);
     expect(s.options.crossPage).toBe(true);
+    expect(s.options.header).toBe(false);
+    expect(s.options.conventions).toBe(false);
     expect(s.joins).toEqual({ 2: 'join' });
+    expect(s.meta).toEqual(ORIGINAL.meta);
     const out = toSettings('artikel.pdf', s);
     expect(out.joinOverride).toEqual({ 2: 'join' });
     expect(out.meta).toEqual(ORIGINAL.meta);
     // Alle opties van de extractor staan er weer in, met dezelfde waarden; "strip" komt erbij.
     expect(out.options).toEqual({ ...ORIGINAL.options, strip: true });
+    // Ook in dezelfde volgorde als bij de extractor.
+    expect(Object.keys(out.options)).toEqual([...Object.keys(ORIGINAL.options), 'strip']);
     expect(out.zones).toEqual({ d: [A], p: { 2: [B], 3: [] } });
     expect(out.v).toBe(2);
     expect(out.pdf).toBe('artikel.pdf');
   });
 
+  it('leest en schrijft de documentkop, het conventieblok en de gegevens', () => {
+    const s = fromSettings(
+      {
+        options: { metaHeader: true, conventions: true },
+        meta: {
+          title: 'Notulen',
+          author: 'J. Jansen',
+          subject: 'Vergadering',
+          date: '4 juni 2018',
+        },
+      },
+      BASE,
+    )!;
+    expect(s.options).toEqual({ ...BASE.options, header: true, conventions: true });
+    expect(s.meta).toEqual({
+      title: 'Notulen',
+      author: 'J. Jansen',
+      subject: 'Vergadering',
+      date: '4 juni 2018',
+    });
+    const out = toSettings('x.pdf', s);
+    expect(out.options).toMatchObject({ metaHeader: true, conventions: true });
+    expect(out.options).not.toHaveProperty('header');
+    expect(out.meta).toEqual(s.meta);
+  });
+
+  it('een veld met een tekst vervangt wat er stond; de rest blijft', () => {
+    const base = {
+      ...BASE,
+      meta: { title: 'Uit de PDF', author: 'Ook uit de PDF', subject: 'S', date: 'D' },
+    };
+    const meta = (raw: unknown) => fromSettings({ meta: raw }, base)!.meta;
+    // Een leeg veld is ook een tekst: dat vervangt, zoals in de extractor.
+    expect(meta({ title: 'Eigen titel', author: '', subject: 3, date: null })).toEqual({
+      title: 'Eigen titel',
+      author: '',
+      subject: 'S',
+      date: 'D',
+    });
+    expect(meta('geen gegevens')).toEqual(base.meta);
+    expect(meta([1, 2])).toEqual(base.meta);
+    expect(fromSettings({}, base)!.meta).toEqual(base.meta);
+  });
+
+  it('een optie die deze tool niet kent, gaat mee bij opslaan', () => {
+    const s = fromSettings({ options: { laterNieuw: true, ookNieuw: false } }, BASE)!;
+    expect(s.extra.options).toEqual({ laterNieuw: true, ookNieuw: false });
+    expect(toSettings('x.pdf', s).options).toMatchObject({ laterNieuw: true, ookNieuw: false });
+  });
+
   it('heen en terug geeft hetzelfde, ook via JSON', () => {
     const s: Settings = {
-      options: { ...DEFAULT_TEXT_OPTIONS, strip: false, gapFactor: 2.1 },
+      options: {
+        ...DEFAULT_TEXT_OPTIONS,
+        strip: false,
+        gapFactor: 2.1,
+        header: true,
+        conventions: true,
+      },
       useZones: true,
       zones: [A, B],
       pages: { 4: [B] },
       readEmpty: true,
       joins: { 3: 'break', 4: 'join' },
-      extra: { options: { metaHeader: true } },
+      meta: { title: 'Titel', author: 'Auteur', subject: '', date: '1 mei 2020' },
+      extra: { options: { laterNieuw: true } },
     };
     const back = fromSettings(JSON.parse(JSON.stringify(toSettings('x.pdf', s))), BASE)!;
     expect(back).toEqual(s);
@@ -190,9 +254,14 @@ describe('fromSettings', () => {
   });
 
   it('negeert opties van het verkeerde soort', () => {
-    const s = fromSettings({ options: { columns: 'nee', useCrop: 1, metaHeader: 'ja' } }, BASE)!;
+    const s = fromSettings(
+      { options: { columns: 'nee', useCrop: 1, metaHeader: 'ja', conventions: 1, later: 'x' } },
+      BASE,
+    )!;
     expect(s.options.columns).toBe(true);
     expect(s.useZones).toBe(false);
+    expect(s.options.header).toBe(false);
+    expect(s.options.conventions).toBe(false);
     expect(s.extra.options).toEqual({});
   });
 

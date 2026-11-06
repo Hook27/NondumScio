@@ -710,6 +710,106 @@ test.describe('PDF → Platte tekst: pagina-overgangen', () => {
   });
 });
 
+test.describe('PDF → Platte tekst: documentkop en metadata', () => {
+  test.skip(({ isMobile }) => isMobile, 'Geavanceerd is er alleen op de computer');
+
+  const h = p.header;
+
+  /** De brief, met de gegevens (metadata) die een tekstverwerker meegeeft. */
+  async function letterWithMeta() {
+    const file = await letter('brief.pdf', PAGES);
+    const doc = await PDFDocument.load(file.buffer);
+    doc.setTitle('Nieuwe huurovereenkomst');
+    doc.setAuthor('Woningstichting Voorbeeld');
+    doc.setSubject('Huur');
+    doc.setProducer('Testprinter');
+    doc.setCreator('Tekstverwerker');
+    doc.setCreationDate(new Date(Date.UTC(2026, 0, 1, 12, 0)));
+    return { ...file, buffer: Buffer.from(await doc.save()) };
+  }
+
+  const paragraphs = TEXT.split('\n\n');
+  /** Met pagina-ankers (de standaard): de brief heeft geen afgedrukte paginanummers. */
+  const EXPECTED = [
+    '=== Conventies ===',
+    'Platte tekst geëxtraheerd uit een PDF; opmaak en afbeeldingen zijn weggelaten.',
+    p.conventions.anchors,
+    p.conventions.concordance,
+    '==================',
+    '',
+    'Bestand: brief.pdf',
+    'Titel: Nieuwe huurovereenkomst',
+    'Auteur: Woningstichting Voorbeeld',
+    'Onderwerp: Huurverhoging',
+    'Datum: 1 januari 2026',
+    '',
+    `{p1} ${paragraphs.slice(0, 3).join('\n\n')}`,
+    '',
+    `{p2} ${paragraphs.slice(3).join('\n\n')}`,
+    '',
+    '---',
+    'Paginaconcordantie:',
+    'PDF-pagina 1 = geen documentpaginanummer (titelblad)',
+    'PDF-pagina 2 = geen documentpaginanummer',
+  ].join('\n');
+
+  const field = (page: Page, name: string) => page.getByRole('textbox', { name, exact: true });
+
+  /** De brief openen en het blok openklappen (het staat dicht, zoals in de extractor). */
+  async function openLetter(page: Page) {
+    await page.locator('#plaintext-file').setInputFiles(await letterWithMeta());
+    await expect(page.locator('canvas.plaintext-preview__canvas')).toBeVisible(SLOW);
+    await expect(field(page, h.fields.title)).toBeHidden();
+    await page.locator('summary', { hasText: h.title }).click();
+    return page.getByRole('group', { name: h.title });
+  }
+
+  for (const theme of ['light', 'dark'] as Theme[]) {
+    test(`de gegevens uit de PDF, aan te passen, met de kop en de conventies bovenaan (thema ${theme})`, async ({
+      page,
+    }) => {
+      await openPage(page, '/#/advanced/text', { lang: 'nl', theme });
+      const block = await openLetter(page);
+      await expect(field(page, h.fields.title)).toHaveValue('Nieuwe huurovereenkomst');
+      await expect(field(page, h.fields.author)).toHaveValue('Woningstichting Voorbeeld');
+      await expect(field(page, h.fields.subject)).toHaveValue('Huur');
+      await expect(field(page, h.fields.date)).toHaveValue('1 januari 2026');
+      await expect(block.getByText('PDF-producent (Producer): Testprinter')).toBeVisible();
+      await expect(block.getByText('Toepassing (Creator): Tekstverwerker')).toBeVisible();
+      await expect(block.getByRole('checkbox', { name: h.use })).not.toBeChecked();
+      await expect(block.getByRole('checkbox', { name: h.conventions })).not.toBeChecked();
+
+      await block.getByRole('checkbox', { name: h.use }).check();
+      await block.getByRole('checkbox', { name: h.conventions }).check();
+      await field(page, h.fields.subject).fill('Huurverhoging');
+      await axe(page);
+      await extract(page);
+      await expect(output(page)).toHaveJSProperty('textContent', EXPECTED);
+      await axe(page);
+    });
+  }
+
+  test('de aangepaste gegevens en de vinkjes worden onthouden, ook na herladen', async ({
+    page,
+  }) => {
+    await openPage(page, '/#/advanced/text', { lang: 'nl' });
+    let block = await openLetter(page);
+    await block.getByRole('checkbox', { name: h.use }).check();
+    await field(page, h.fields.subject).fill('Huurverhoging');
+    await page.reload();
+    block = await openLetter(page);
+    await expect(page.getByText(/instellingen hersteld/)).toBeVisible();
+    await expect(field(page, h.fields.subject)).toHaveValue('Huurverhoging');
+    await expect(field(page, h.fields.title)).toHaveValue('Nieuwe huurovereenkomst');
+    await expect(block.getByRole('checkbox', { name: h.use })).toBeChecked();
+    // Wissen: de velden horen bij de PDF en worden leeg; het vinkje blijft.
+    await page.getByRole('button', { name: p.clear, exact: true }).click();
+    await expect(field(page, h.fields.subject)).toHaveValue('');
+    await expect(field(page, h.fields.subject)).toBeDisabled();
+    await expect(block.getByRole('checkbox', { name: h.use })).toBeChecked();
+  });
+});
+
 test.describe('PDF → Platte tekst op een scherm met schaal 150 %', () => {
   test.skip(({ isMobile }) => isMobile, 'Geavanceerd is er alleen op de computer');
   test.use({ viewport: { width: 1366, height: 768 }, deviceScaleFactor: 1.5 });
