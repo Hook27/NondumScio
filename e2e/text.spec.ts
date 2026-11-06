@@ -1116,7 +1116,7 @@ test.describe('PDF → Platte tekst op een scherm met schaal 150 %', () => {
       expect(await lines(page.getByRole('button', { name, exact: true })), name).toBe(1);
     }
     await page.locator('summary', { hasText: p.save.title }).click();
-    for (const name of [p.save.export, p.save.import, p.save.forget]) {
+    for (const name of [p.save.export, p.save.import, p.save.defaults, p.save.forget]) {
       expect(await lines(page.getByRole('button', { name, exact: true })), name).toBe(1);
     }
     await page.locator('summary', { hasText: p.batch.title }).click();
