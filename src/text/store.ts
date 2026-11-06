@@ -133,8 +133,13 @@ export type TextState = {
   blocks: Record<TextBlock, boolean>;
   /** Batch in één bestand (of als zip). Wordt niet onthouden, zoals in de extractor. */
   batchCombine: boolean;
+  /** De PDF's voor de batch, in de volgorde waarin ze verwerkt worden. Niet onthouden. */
+  batchFiles: BatchFile[];
   batch: BatchStatus;
 };
+
+/** Een PDF in de lijst van de batch; `id` blijft hetzelfde als de volgorde verandert. */
+export type BatchFile = { id: number; file: File };
 
 const EMPTY: TextSlot = { status: 'empty' };
 
@@ -162,6 +167,7 @@ const INITIAL: TextState = {
   // Zoals in de extractor: de documentkop en metadata dicht, de rest open (bewaren is nieuw).
   blocks: { zones: true, clean: true, meta: false, pages: true, batch: false, save: false },
   batchCombine: false,
+  batchFiles: [],
   batch: { status: 'idle' },
 };
 
@@ -476,19 +482,71 @@ export function setBatchCombine(batchCombine: boolean): void {
   setState({ batchCombine });
 }
 
+/** Het volgende nummer voor een PDF in de lijst van de batch. */
+let nextBatchId = 1;
+
+/**
+ * De lijst van de batch veranderen. De melding van de vorige batch hoort dan niet meer bij de
+ * lijst en verdwijnt; tijdens het verwerken blijft de voortgang staan.
+ */
+function changeBatchFiles(batchFiles: BatchFile[]) {
+  setState({
+    batchFiles,
+    ...(state.batch.status === 'running' ? {} : { batch: { status: 'idle' as const } }),
+  });
+}
+
+/** PDF's onderaan de lijst van de batch zetten (ook dezelfde PDF nog eens). */
+export function addBatchFiles(files: readonly File[]): void {
+  if (files.length === 0) return;
+  changeBatchFiles([...state.batchFiles, ...files.map((file) => ({ id: nextBatchId++, file }))]);
+}
+
+/** Een PDF uit de lijst halen. Niet tijdens het verwerken. */
+export function removeBatchFile(id: number): void {
+  if (state.batch.status === 'running') return;
+  changeBatchFiles(state.batchFiles.filter((entry) => entry.id !== id));
+}
+
+/** Een PDF een plek omhoog (-1) of omlaag (1). Niet tijdens het verwerken. */
+export function moveBatchFile(id: number, step: -1 | 1): void {
+  const from = state.batchFiles.findIndex((entry) => entry.id === id);
+  moveBatchFileTo(id, step < 0 ? from - 1 : from + 2);
+}
+
+/**
+ * Een PDF naar een andere plek, zoals bij slepen: `target` is de plek vóór het onderdeel met dat
+ * nummer (0 = bovenaan, het aantal = onderaan). Niet tijdens het verwerken.
+ */
+export function moveBatchFileTo(id: number, target: number): void {
+  if (state.batch.status === 'running') return;
+  const list = [...state.batchFiles];
+  const from = list.findIndex((entry) => entry.id === id);
+  if (from < 0) return;
+  const to = Math.max(0, Math.min(list.length - 1, target > from ? target - 1 : target));
+  if (to === from) return;
+  const [entry] = list.splice(from, 1);
+  list.splice(to, 0, entry!);
+  changeBatchFiles(list);
+}
+
+/** De lijst leegmaken. Niet tijdens het verwerken. */
+export function clearBatchFiles(): void {
+  if (state.batch.status === 'running' || state.batchFiles.length === 0) return;
+  changeBatchFiles([]);
+}
+
 const encode = (text: string) => new TextEncoder().encode(text);
 
 /**
- * Meerdere PDF's achter elkaar, met de instellingen van nu en zonder leesvakken, zoals in de
- * extractor. Eén PDF tegelijk wordt gelezen en meteen verwerkt. Daarna één download: een zip met
- * per PDF een .txt, of één .txt met alles. Is er niets bruikbaars (geen tekst, of niets gelezen),
- * dan geen download, alleen de melding. De open PDF, de vakken en het resultaat blijven ongemoeid.
+ * De PDF's van de lijst achter elkaar, in de volgorde van de lijst, met de instellingen van nu en
+ * zonder leesvakken, zoals in de extractor. Eén PDF tegelijk wordt gelezen en meteen verwerkt.
+ * Daarna één download: een zip met per PDF een .txt, of één .txt met alles. Is er niets bruikbaars
+ * (geen tekst, of niets gelezen), dan geen download, alleen de melding. De open PDF, de vakken en
+ * het resultaat blijven ongemoeid, en de lijst blijft staan.
  */
-export async function runBatch(
-  files: readonly File[],
-  language = 'nl',
-  texts?: BatchTexts,
-): Promise<void> {
+export async function runBatch(language = 'nl', texts?: BatchTexts): Promise<void> {
+  const files = state.batchFiles.map((entry) => entry.file);
   if (state.batch.status === 'running' || files.length === 0) return;
   const opts = state.options;
   const combine = state.batchCombine;

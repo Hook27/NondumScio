@@ -873,10 +873,66 @@ test.describe('PDF → Platte tekst: batch', () => {
 
   /** PDF's kiezen voor de batch en de download opvangen. */
   async function batch(page: Page, files: Parameters<Locator['setInputFiles']>[0]) {
-    const download = page.waitForEvent('download', SLOW);
     await page.locator('#plaintext-batch-files').setInputFiles(files);
+    const download = page.waitForEvent('download', SLOW);
+    await page.getByRole('button', { name: b.run, exact: true }).click();
     return download;
   }
+
+  /** De namen in de lijst van de batch, in volgorde. */
+  const listed = (page: Page) =>
+    page.locator('.plaintext-batch-list .merge-list__name').allTextContents();
+
+  test('eerst een lijst: twee keer toevoegen, de volgorde met de pijl en door te slepen', async ({
+    page,
+  }) => {
+    await openPage(page, '/#/advanced/text', { lang: 'nl' });
+    const block = await openBatch(page);
+    await expect(block.getByText(b.empty)).toBeVisible();
+    await expect(block.getByRole('button', { name: b.run, exact: true })).toBeDisabled();
+    // Twee keer kiezen, zoals uit twee mappen; er wordt nog niets gelezen of gedownload.
+    await page.locator('#plaintext-batch-files').setInputFiles([await A()]);
+    await page.locator('#plaintext-batch-files').setInputFiles([await B(), notPdf]);
+    await expect
+      .poll(() => listed(page))
+      .toEqual(['verslag-a.pdf', 'verslag-b.pdf', 'notitie.pdf']);
+    await expect(block.getByRole('status')).toHaveCount(0);
+    // Met de pijl: B naar boven.
+    const m = nl.merge;
+    await block.getByRole('button', { name: format(m.moveUp, { name: 'verslag-b.pdf' }) }).click();
+    await expect
+      .poll(() => listed(page))
+      .toEqual(['verslag-b.pdf', 'verslag-a.pdf', 'notitie.pdf']);
+    // Slepen: notitie.pdf aan het greepje naar boven.
+    const items = block.locator('.merge-list__item');
+    await items.first().evaluate((el) => el.scrollIntoView({ block: 'center' }));
+    const handle = (await items.nth(2).locator('.drag-handle').boundingBox())!;
+    const top = (await items.first().boundingBox())!;
+    await page.mouse.move(handle.x + handle.width / 2, handle.y + handle.height / 2);
+    await page.mouse.down();
+    await page.mouse.move(top.x + 20, top.y + 4, { steps: 12 });
+    await page.mouse.up();
+    await expect
+      .poll(() => listed(page))
+      .toEqual(['notitie.pdf', 'verslag-b.pdf', 'verslag-a.pdf']);
+    await axe(page);
+    // Extraheren in de volgorde van de lijst, in één bestand.
+    await block.getByRole('checkbox', { name: b.combine }).check();
+    const download = page.waitForEvent('download', SLOW);
+    await block.getByRole('button', { name: b.run, exact: true }).click();
+    const text = readFileSync((await (await download).path())!, 'utf-8');
+    expect(text.startsWith('Bestand 2 start: verslag-b.pdf\n')).toBe(true);
+    expect(text).toContain('\n\nBestand 3 start: verslag-a.pdf\n');
+    await expect(block.getByRole('status')).toContainText(
+      format(b.failed, { list: `notitie.pdf: ${b.reasons['not-pdf']}` }),
+    );
+    // De lijst blijft staan; leegmaken.
+    await expect
+      .poll(() => listed(page))
+      .toEqual(['notitie.pdf', 'verslag-b.pdf', 'verslag-a.pdf']);
+    await block.getByRole('button', { name: b.clearList }).click();
+    await expect(block.getByText(b.empty)).toBeVisible();
+  });
 
   const unzip = (path: string) =>
     Object.fromEntries(
@@ -1013,8 +1069,9 @@ test.describe('PDF → Platte tekst op een scherm met schaal 150 %', () => {
       mimeType: 'application/pdf',
       buffer: Buffer.from(await doc.save()),
     };
-    const download = page.waitForEvent('download', SLOW);
     await page.locator('#plaintext-batch-files').setInputFiles([file, file]);
+    const download = page.waitForEvent('download', SLOW);
+    await page.getByRole('button', { name: p.batch.run, exact: true }).click();
     await download;
     const message = page.locator('.plaintext-batch__message');
     await expect(message).toContainText(format(p.batch.downloaded, { name: 'batch_extract.zip' }));
@@ -1063,7 +1120,15 @@ test.describe('PDF → Platte tekst op een scherm met schaal 150 %', () => {
       expect(await lines(page.getByRole('button', { name, exact: true })), name).toBe(1);
     }
     await page.locator('summary', { hasText: p.batch.title }).click();
-    expect(await lines(page.getByRole('button', { name: p.batch.choose, exact: true }))).toBe(1);
+    // De knop om toe te voegen is een label bij het bestandsveld.
+    expect(await lines(page.getByText(p.batch.add, { exact: true })), p.batch.add).toBe(1);
+    // Met een PDF in de lijst (Lijst leegmaken staat er pas met een lijst).
+    await page
+      .locator('#plaintext-batch-files')
+      .setInputFiles(await letter('lange naam van een brief.pdf', PAGES));
+    for (const name of [p.batch.clearList, p.batch.run]) {
+      expect(await lines(page.getByRole('button', { name, exact: true })), name).toBe(1);
+    }
     await extract(page);
     for (const name of [p.copy, p.download]) {
       expect(await lines(page.getByRole('button', { name, exact: true })), name).toBe(1);

@@ -5,6 +5,8 @@ import { copyText } from '../compare/report';
 import { ZOOM_STEPS, renderPage, stepZoom, targetWidths } from '../compare/visual';
 import { ConfirmDialog } from '../components/ConfirmDialog';
 import { Dropzone } from '../components/Dropzone';
+import { IconButton } from '../components/Icon';
+import { useDragReorder } from '../components/useDragReorder';
 import { useI18n } from '../i18n/LanguageContext';
 import { format, plural } from '../i18n/format';
 import { formatFileSize } from '../lib/format';
@@ -30,6 +32,11 @@ import {
   openFiles,
   ownAllPages,
   ownPage,
+  addBatchFiles,
+  clearBatchFiles,
+  moveBatchFile,
+  moveBatchFileTo,
+  removeBatchFile,
   removeZone,
   runBatch,
   setBatchCombine,
@@ -553,20 +560,43 @@ function PageSettings() {
 }
 
 /**
- * Batch (meerdere PDF's), zoals in de extractor: PDF's kiezen, die achter elkaar worden gelezen met
- * de instellingen hierboven (zonder leesvakken), en één download: een zip met per PDF een .txt, of
- * alles in één bestand. Werkt los van de open PDF; tijdens het verwerken staat de knop uit.
+ * Batch (meerdere PDF's): eerst een lijst samenstellen (PDF's toevoegen, ook meerdere keren en
+ * door ze te slepen; de volgorde aanpassen zoals bij Samenvoegen), dan "Batch extraheren": de
+ * PDF's worden achter elkaar gelezen met de instellingen hierboven (zonder leesvakken), en er volgt
+ * één download, een zip met per PDF een .txt of alles in één bestand. In de extractor begon de
+ * batch meteen na het kiezen. Werkt los van de open PDF.
  */
 function BatchSettings() {
   const { t, language } = useI18n();
   const p = t.plainText;
   const b = p.batch;
-  const { batchCombine, batch, useZones } = useTextState();
-  const input = useRef<HTMLInputElement>(null);
+  const { batchCombine, batch, batchFiles, useZones } = useTextState();
+  const running = batch.status === 'running';
   return (
     <Block id="batch" title={b.title}>
       <p class="compare-settings__hint">{b.hint}</p>
       {useZones && <p class="compare-settings__hint">{b.zonesHint}</p>}
+      <Dropzone
+        title={b.files}
+        dropTitle={t.compare.dropHere}
+        hint={b.addHint}
+        inputId="plaintext-batch-files"
+        accept="application/pdf,.pdf"
+        chooseLabel={b.add}
+        onFiles={addBatchFiles}
+        extraClass="plaintext-batch-add"
+      />
+      <BatchList />
+      {batchFiles.length > 0 && (
+        <button
+          type="button"
+          class="button button--secondary plaintext-batch__clear"
+          disabled={running}
+          onClick={clearBatchFiles}
+        >
+          {b.clearList}
+        </button>
+      )}
       <label class="compare-settings__check">
         <input
           type="checkbox"
@@ -579,38 +609,98 @@ function BatchSettings() {
       <p id="plaintext-combine-hint" class="compare-settings__hint">
         {b.combineHint}
       </p>
-      <div class="plaintext-zones__buttons">
-        <button
-          type="button"
-          class="button button--secondary"
-          disabled={batch.status === 'running'}
-          onClick={() => input.current?.click()}
-        >
-          {b.choose}
-        </button>
-        <input
-          ref={input}
-          id="plaintext-batch-files"
-          class="visually-hidden"
-          type="file"
-          accept="application/pdf,.pdf"
-          multiple
-          tabIndex={-1}
-          aria-hidden="true"
-          onChange={(event) => {
-            const files = [...(event.currentTarget.files ?? [])];
-            event.currentTarget.value = '';
-            if (files.length === 0) return;
-            void runBatch(files, language, {
-              concordance: p.concordance,
-              head: { fields: p.header.fields, conventions: p.conventions },
-              batch: { start: b.start, end: b.end },
-            });
-          }}
-        />
-      </div>
+      <button
+        type="button"
+        class="button plaintext-batch__run"
+        disabled={running || batchFiles.length === 0}
+        onClick={() =>
+          void runBatch(language, {
+            concordance: p.concordance,
+            head: { fields: p.header.fields, conventions: p.conventions },
+            batch: { start: b.start, end: b.end },
+          })
+        }
+      >
+        {b.run}
+      </button>
       <BatchMessage batch={batch} t={t} />
     </Block>
+  );
+}
+
+/**
+ * De PDF's van de batch in volgorde, met dezelfde bediening als bij Samenvoegen: slepen (met de
+ * muis, of op een aanraakscherm aan het greepje), omhoog en omlaag, en weghalen. Tijdens het
+ * verwerken staat dat uit.
+ */
+function BatchList() {
+  const { t } = useI18n();
+  const b = t.plainText.batch;
+  const m = t.merge;
+  const { batchFiles, batch } = useTextState();
+  const running = batch.status === 'running';
+  const list = useRef<HTMLOListElement>(null);
+  const { dragged, dropAt, handlers } = useDragReorder<number>({
+    list,
+    itemSelector: '.merge-list__item',
+    direction: 'vertical',
+    onDrop: (id, target) => moveBatchFileTo(id, target),
+  });
+  if (batchFiles.length === 0) return <p class="compare-settings__hint">{b.empty}</p>;
+  const last = batchFiles.length - 1;
+  return (
+    <ol
+      ref={list}
+      class={`merge-list plaintext-batch-list${dragged !== null ? ' merge-list--dragging' : ''}`}
+      aria-label={b.files}
+    >
+      {batchFiles.map(({ id, file }, index) => {
+        const classes = [
+          'merge-list__item',
+          dragged === id && 'merge-list__item--dragging',
+          dropAt === index && 'merge-list__item--drop-before',
+          dropAt === batchFiles.length && index === last && 'merge-list__item--drop-after',
+        ]
+          .filter(Boolean)
+          .join(' ');
+        return (
+          <li key={id} class={classes} data-index={index} {...(running ? {} : handlers(id))}>
+            <div class="merge-list__head">
+              {/* Alleen voor muis en vinger; met het toetsenbord gaan de pijlknoppen. */}
+              <span class="drag-handle merge-list__handle" aria-hidden="true">
+                ⠿
+              </span>
+              <span class="merge-list__position" aria-hidden="true">
+                {index + 1}
+              </span>
+              <span class="merge-list__name" data-tip={file.name}>
+                {file.name}
+              </span>
+              <span class="merge-list__actions">
+                <IconButton
+                  icon="arrowUp"
+                  label={format(m.moveUp, { name: file.name })}
+                  disabled={running || index === 0}
+                  onClick={() => moveBatchFile(id, -1)}
+                />
+                <IconButton
+                  icon="arrowDown"
+                  label={format(m.moveDown, { name: file.name })}
+                  disabled={running || index === last}
+                  onClick={() => moveBatchFile(id, 1)}
+                />
+                <IconButton
+                  icon="close"
+                  label={format(m.remove, { name: file.name })}
+                  disabled={running}
+                  onClick={() => removeBatchFile(id)}
+                />
+              </span>
+            </div>
+          </li>
+        );
+      })}
+    </ol>
   );
 }
 

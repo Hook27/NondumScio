@@ -827,7 +827,13 @@ export const en: Messages = {
       combine: 'Combine into one file',
       combineHint:
         'On: one .txt with a "File N start/end" marker per document. Off: separate .txt files in a .zip.',
-      choose: 'Choose several PDFs',
+      files: 'PDFs for the batch',
+      add: 'Add PDFs',
+      addHint:
+        'Drag PDFs here or choose them, as often as you like: they go to the bottom of the list.',
+      empty: 'No PDFs in the list yet.',
+      clearList: 'Clear list',
+      run: 'Run batch',
       start: 'File {n} start: {name}',
       end: 'File {n} end: {name}',
       reading: 'Processing {i}/{n}: {name}…',

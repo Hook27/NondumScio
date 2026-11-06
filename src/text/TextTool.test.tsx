@@ -14,7 +14,18 @@ import { PdfLoadError } from '../pdf/loader';
 import { downloadFile } from '../pdf/save';
 import { TextTool } from './TextTool';
 import { SETTINGS_PREFIX } from './settings';
-import { UNDO_LIMIT, getTextState, resetTextState, runBatch, setOptions, undoZones } from './store';
+import {
+  UNDO_LIMIT,
+  clearBatchFiles,
+  getTextState,
+  moveBatchFile,
+  moveBatchFileTo,
+  removeBatchFile,
+  resetTextState,
+  runBatch,
+  setOptions,
+  undoZones,
+} from './store';
 
 /** Een pagina met alinea's (elk een lijst regels), met een witregel ertussen. */
 function page(no: number, paragraphs: string[][]): PageText {
@@ -1477,13 +1488,23 @@ describe('PDF → Platte tekst: documentkop en metadata', () => {
 
 describe('PDF → Platte tekst: batch', () => {
   const b = p.batch;
-  /** PDF's kiezen voor de batch, en wachten tot hij klaar is. */
-  async function batch(...names: string[]) {
+  /** PDF's onderaan de lijst van de batch zetten, zoals met de knop of door te slepen. */
+  const add = (...names: string[]) =>
     fireEvent.change(document.querySelector('#plaintext-batch-files')!, {
       target: { files: names.map(pdf) },
     });
+  const run = () => fireEvent.click(document.querySelector('.plaintext-batch__run')!);
+  /** Een nieuwe lijst met deze PDF's, de batch starten, en wachten tot hij klaar is. */
+  async function batch(...names: string[]) {
+    act(() => clearBatchFiles());
+    add(...names);
+    run();
     await waitFor(() => expect(getTextState().batch.status).toBe('done'));
   }
+  const listed = () =>
+    [...document.querySelectorAll('.plaintext-batch-list .merge-list__name')].map(
+      (el) => el.textContent,
+    );
   const message = () => document.querySelector('.plaintext-batch__message')!.textContent;
   /** De bestanden in de gedownloade ZIP, als tekst. */
   async function zipped() {
@@ -1501,7 +1522,10 @@ describe('PDF → Platte tekst: batch', () => {
     const block = screen.getByText(b.title, { selector: 'summary' }).closest('details')!;
     expect(block.open).toBe(false);
     expect(check(b.combine).checked).toBe(false);
-    expect(button(b.choose).disabled).toBe(false);
+    // Een lege lijst: niets te extraheren.
+    expect(screen.getByText(b.empty)).toBeTruthy();
+    expect(button(b.run).disabled).toBe(true);
+    expect(screen.queryByRole('button', { name: b.clearList })).toBeNull();
     await batch('brief.pdf', 'tweede.pdf');
     expect(Object.keys(await zipped())).toEqual(['brief_extract.txt', 'tweede_extract.txt']);
   });
@@ -1641,9 +1665,8 @@ describe('PDF → Platte tekst: batch', () => {
     let release!: () => void;
     gates['artikel.pdf'] = new Promise((resolve) => (release = resolve));
     setup();
-    fireEvent.change(document.querySelector('#plaintext-batch-files')!, {
-      target: { files: [pdf('brief.pdf'), pdf('artikel.pdf')] },
-    });
+    add('brief.pdf', 'artikel.pdf');
+    run();
     await waitFor(() =>
       expect(
         screen.getByText(
@@ -1651,15 +1674,91 @@ describe('PDF → Platte tekst: batch', () => {
         ),
       ).toBeTruthy(),
     );
-    expect(button(b.choose).disabled).toBe(true);
-    // Nog een batch beginnen doet niets zolang hij bezig is.
-    await runBatch([pdf('tweede.pdf')]);
+    expect(button(b.run).disabled).toBe(true);
+    expect(button(b.clearList).disabled).toBe(true);
+    expect(button(format(messages.nl.merge.remove, { name: 'brief.pdf' })).disabled).toBe(true);
+    // Nog een batch beginnen doet niets zolang hij bezig is; de lijst blijft zoals hij was.
+    await runBatch();
+    act(() => clearBatchFiles());
+    act(() => moveBatchFile(getTextState().batchFiles[0]!.id, 1));
+    act(() => removeBatchFile(getTextState().batchFiles[0]!.id));
     expect(readPdf).toHaveBeenCalledTimes(2);
+    expect(listed()).toEqual(['brief.pdf', 'artikel.pdf']);
     release();
     await waitFor(() => expect(getTextState().batch.status).toBe('done'));
-    expect(button(b.choose).disabled).toBe(false);
+    expect(button(b.run).disabled).toBe(false);
     expect(Object.keys(await zipped())).toEqual(['brief_extract.txt', 'artikel_extract.txt']);
     expect(downloadFile).toHaveBeenCalledTimes(1);
+  });
+
+  it('eerst een lijst: toevoegen, ook meerdere keren en dezelfde PDF; pas extraheren na de knop', async () => {
+    setup();
+    add('brief.pdf', 'tweede.pdf');
+    add('artikel.pdf', 'brief.pdf');
+    expect(listed()).toEqual(['brief.pdf', 'tweede.pdf', 'artikel.pdf', 'brief.pdf']);
+    expect(readPdf).not.toHaveBeenCalled();
+    expect(downloadFile).not.toHaveBeenCalled();
+    expect(button(b.run).disabled).toBe(false);
+    run();
+    await waitFor(() => expect(getTextState().batch.status).toBe('done'));
+    expect(Object.keys(await zipped())).toEqual([
+      'brief_extract (01).txt',
+      'tweede_extract.txt',
+      'artikel_extract.txt',
+      'brief_extract (02).txt',
+    ]);
+    // De lijst blijft staan, voor nog een keer met andere instellingen.
+    expect(listed()).toEqual(['brief.pdf', 'tweede.pdf', 'artikel.pdf', 'brief.pdf']);
+  });
+
+  it('de volgorde: omhoog, omlaag en weghalen, en de batch volgt de lijst', async () => {
+    setup();
+    add('brief.pdf', 'tweede.pdf', 'artikel.pdf');
+    const m = messages.nl.merge;
+    expect(button(format(m.moveUp, { name: 'brief.pdf' })).disabled).toBe(true);
+    expect(button(format(m.moveDown, { name: 'artikel.pdf' })).disabled).toBe(true);
+    fireEvent.click(button(format(m.moveUp, { name: 'artikel.pdf' })));
+    expect(listed()).toEqual(['brief.pdf', 'artikel.pdf', 'tweede.pdf']);
+    fireEvent.click(button(format(m.moveDown, { name: 'brief.pdf' })));
+    expect(listed()).toEqual(['artikel.pdf', 'brief.pdf', 'tweede.pdf']);
+    fireEvent.click(button(format(m.remove, { name: 'tweede.pdf' })));
+    expect(listed()).toEqual(['artikel.pdf', 'brief.pdf']);
+    fireEvent.click(check(b.combine));
+    run();
+    await waitFor(() => expect(getTextState().batch.status).toBe('done'));
+    const [data] = vi.mocked(downloadFile).mock.calls.at(-1)!;
+    const text = new TextDecoder().decode(data as Uint8Array);
+    expect(text.indexOf('Bestand 1 start: artikel.pdf')).toBe(0);
+    expect(text).toContain('Bestand 2 start: brief.pdf');
+    expect(text).not.toContain('tweede.pdf');
+    fireEvent.click(button(b.clearList));
+    expect(listed()).toEqual([]);
+    expect(screen.getByText(b.empty)).toBeTruthy();
+  });
+
+  it('slepen: een PDF naar een andere plek (de plek vóór het onderdeel, of onderaan)', () => {
+    setup();
+    add('a.pdf', 'b.pdf', 'c.pdf', 'd.pdf');
+    const id = (name: string) =>
+      getTextState().batchFiles.find((entry) => entry.file.name === name)!.id;
+    act(() => moveBatchFileTo(id('c.pdf'), 0));
+    expect(listed()).toEqual(['c.pdf', 'a.pdf', 'b.pdf', 'd.pdf']);
+    act(() => moveBatchFileTo(id('c.pdf'), 4));
+    expect(listed()).toEqual(['a.pdf', 'b.pdf', 'd.pdf', 'c.pdf']);
+    act(() => moveBatchFileTo(id('a.pdf'), 3));
+    expect(listed()).toEqual(['b.pdf', 'd.pdf', 'a.pdf', 'c.pdf']);
+    // Op dezelfde plek loslaten verandert niets.
+    act(() => moveBatchFileTo(id('d.pdf'), 1));
+    act(() => moveBatchFileTo(id('d.pdf'), 2));
+    expect(listed()).toEqual(['b.pdf', 'd.pdf', 'a.pdf', 'c.pdf']);
+  });
+
+  it('een veranderde lijst haalt de melding van de vorige batch weg', async () => {
+    setup();
+    await batch('brief.pdf');
+    expect(document.querySelector('.plaintext-batch__message')).not.toBeNull();
+    add('tweede.pdf');
+    expect(document.querySelector('.plaintext-batch__message')).toBeNull();
   });
 
   it('raakt de open PDF niet, onthoudt niets, en Combineer blijft staan bij Wissen', async () => {

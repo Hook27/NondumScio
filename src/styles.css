@@ -1447,7 +1447,8 @@ h1 {
 
 /* De PDF op één regel: [Kies een PDF] [Wissen], daaronder de naam en wat er gelezen is. Slepen kan
    nog steeds; de kop staat er alleen voor schermlezers. */
-.dropzone.plaintext-slot {
+.dropzone.plaintext-slot,
+.dropzone.plaintext-batch-add {
   position: relative;
   display: grid;
   grid-template-columns: auto auto minmax(0, 1fr);
@@ -1458,7 +1459,8 @@ h1 {
   text-align: left;
 }
 
-.plaintext-slot .dropzone__title {
+.plaintext-slot .dropzone__title,
+.plaintext-batch-add .dropzone__title {
   position: absolute;
   width: 1px;
   height: 1px;
@@ -1467,7 +1469,8 @@ h1 {
   white-space: nowrap;
 }
 
-.plaintext-slot .dropzone__hint {
+.plaintext-slot .dropzone__hint,
+.plaintext-batch-add .dropzone__hint {
   grid-column: 1 / -1;
   grid-row: 2;
   max-width: none;
@@ -1478,7 +1481,8 @@ h1 {
   white-space: nowrap;
 }
 
-.plaintext-slot .button {
+.plaintext-slot .button,
+.plaintext-batch-add .button {
   grid-row: 1;
   padding: 0.4rem 0.8rem;
   white-space: nowrap;
@@ -1626,6 +1630,59 @@ h1 {
   color: var(--text-muted);
   font-size: 0.8rem;
   overflow-wrap: anywhere;
+}
+
+/* Batch: het vak om PDF's toe te voegen (zoals het vak voor de PDF bovenaan), met de uitleg
+   op meer regels; de lijst één regel per PDF. */
+.dropzone.plaintext-batch-add {
+  display: flex;
+  flex-wrap: wrap;
+  margin-top: 0.6rem;
+}
+
+/* De uitleg op een eigen regel; de knoppen lopen door op een volgende regel als het krap is. */
+.plaintext-batch-add .dropzone__hint {
+  flex-basis: 100%;
+  order: 1;
+  white-space: normal;
+}
+
+/* Kleinere knoppen dan bij Samenvoegen: zo blijft er ruimte voor de naam (de hele naam staat in
+   de hover-tekst). */
+.plaintext-batch-list .button--icon {
+  width: 1.75rem;
+  height: 1.75rem;
+}
+
+.plaintext-batch-list .merge-list__head {
+  gap: 0.35rem;
+}
+
+.plaintext-batch-list .merge-list__actions {
+  gap: 0.15rem;
+}
+
+.merge-list.plaintext-batch-list {
+  gap: 0.3rem;
+  margin: 0 0 0.6rem;
+}
+
+.plaintext-batch-list .merge-list__item {
+  padding: 0.25rem 0.4rem;
+}
+
+.plaintext-batch-list .merge-list__name {
+  font-weight: 400;
+  font-size: 0.9rem;
+}
+
+.plaintext-batch__run {
+  margin-top: 0.4rem;
+}
+
+.plaintext-batch__clear {
+  margin-bottom: 0.2rem;
+  padding: 0.35rem 0.8rem;
 }
 
 /* De melding van de batch schuift in beeld boven de vaste knop "Tekst extraheren". */

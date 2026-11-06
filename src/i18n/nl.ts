@@ -836,7 +836,12 @@ export const nl = {
       combine: 'Combineer in één bestand',
       combineHint:
         'Aan: één .txt met per document een "Bestand N start/einde"-markering. Uit: losse .txt-bestanden in een .zip.',
-      choose: 'Meerdere PDF’s kiezen',
+      files: 'PDF’s voor de batch',
+      add: 'PDF’s toevoegen',
+      addHint: 'Sleep PDF’s hierheen of kies ze, ook meerdere keren: ze komen onderaan de lijst.',
+      empty: 'Nog geen PDF’s in de lijst.',
+      clearList: 'Lijst leegmaken',
+      run: 'Batch extraheren',
       start: 'Bestand {n} start: {name}',
       end: 'Bestand {n} einde: {name}',
       reading: 'Verwerken {i}/{n}: {name}…',
