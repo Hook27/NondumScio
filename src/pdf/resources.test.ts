@@ -61,6 +61,31 @@ describe('gedeelde hulpbronnen (zoals bij veel scans)', () => {
     expect(await imagesIn(second!)).toEqual([0, 3, 4]);
   });
 
+  it('meldt per deel hoeveel pagina’s niet uitgedund konden worden', async () => {
+    const plan = initialPages(4, 1);
+    const untrimmed: number[] = [];
+    await buildParts(
+      new Map([[1, await makeSharedResourcesPdf(4, { unreadable: true })]]),
+      [plan.slice(0, 2), plan.slice(2), plan.slice(0, 1)],
+      undefined,
+      [],
+      undefined,
+      (_, index, report) => (untrimmed[index] = report.untrimmed),
+    );
+    // Pagina 1 is niet te lezen: in elk deel waar hij in zit, telt hij mee.
+    expect(untrimmed).toEqual([1, 0, 1]);
+    const clean: number[] = [];
+    await buildParts(
+      new Map([[1, await makeSharedResourcesPdf(4)]]),
+      [plan.slice(0, 2), plan.slice(2)],
+      undefined,
+      [],
+      undefined,
+      (_, index, report) => (clean[index] = report.untrimmed),
+    );
+    expect(clean).toEqual([0, 0]);
+  });
+
   it('laat pagina’s met eigen hulpbronnen ongemoeid', async () => {
     const doc = await PDFDocument.create();
     for (let i = 0; i < 3; i += 1) doc.addPage([300, 300]).drawText(`pagina ${i + 1}`);

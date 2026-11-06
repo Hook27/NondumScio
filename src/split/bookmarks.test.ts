@@ -3,6 +3,9 @@ import type { OutlineEntry } from '../outline/outline';
 import { initialPages, type PageItem } from '../pages/plan';
 import {
   autoName,
+  checkSize,
+  checkTotal,
+  expectedSize,
   bookmarkParts,
   cleanName,
   duplicateNames,
@@ -298,5 +301,59 @@ describe('namen', () => {
       'a (2) (2).pdf',
       'zonder',
     ]);
+  });
+});
+
+describe('grootte', () => {
+  const KB = 1024;
+  const MB = 1024 * KB;
+
+  it('verwacht per pagina de grootte van zijn bestand gedeeld door zijn aantal pagina’s', () => {
+    const files = new Map([
+      [1, { size: 10 * MB, pageCount: 10 }],
+      [2, { size: 400 * KB, pageCount: 2 }],
+    ]);
+    const plan = [...initialPages(10, 1), ...initialPages(2, 2, 10)];
+    expect(expectedSize(plan.slice(0, 3), files)).toBe(3 * MB);
+    expect(expectedSize([plan[9]!, plan[10]!], files)).toBe(MB + 200 * KB);
+    expect(expectedSize(plan.slice(0, 1), new Map())).toBe(0);
+    expect(expectedSize(plan.slice(0, 1), new Map([[1, { size: 5, pageCount: 0 }]]))).toBe(0);
+  });
+
+  it('rekent zonder afrondingsverschil met het origineel (bron × pagina’s / totaal)', () => {
+    // Per pagina optellen gaf 999,99999… en 16004781,99999…; precies op de grens van 3× telt dat.
+    const six = initialPages(6, 1);
+    expect(expectedSize(six, new Map([[1, { size: 1000, pageCount: 6 }]]))).toBe(1000);
+    const nine = initialPages(9, 1);
+    const files = new Map([[1, { size: 24007173, pageCount: 9 }]]);
+    expect(expectedSize(nine.slice(0, 6), files)).toBe(16004782);
+    expect(checkSize(3 * 16004782, expectedSize(nine.slice(0, 6), files), 0)).toBeNull();
+  });
+
+  it('geeft een ⚠ bij pagina’s die niet uitgedund konden worden, ook bij een kleine grootte', () => {
+    expect(checkSize(10 * KB, MB, 2)).toEqual({ kind: 'untrimmed', pages: 2 });
+  });
+
+  it('geeft een ⚠ als een deel meer dan 3× zo groot is én meer dan 256 kB groter', () => {
+    expect(checkSize(3 * MB + 1, MB, 0)).toEqual({ kind: 'large', expected: MB });
+    expect(checkSize(3 * MB, MB, 0)).toBeNull();
+    // Klein: 3× zo groot, maar niet 256 kB groter.
+    expect(checkSize(300 * KB, 50 * KB, 0)).toBeNull();
+    expect(checkSize(256 * KB + 10 * KB + 1, 10 * KB, 0)).toEqual({
+      kind: 'large',
+      expected: 10 * KB,
+    });
+    expect(checkSize(256 * KB + 10 * KB, 10 * KB, 0)).toBeNull();
+  });
+
+  it('meldt alle delen samen pas als elk deel een grootte heeft, zonder grenspagina', () => {
+    const source = 10 * MB;
+    expect(checkTotal([10 * MB, 7 * MB], source, false)).toBe(17 * MB);
+    expect(checkTotal([10 * MB, 7 * MB, null], source, false)).toBeNull();
+    expect(checkTotal([10 * MB, 7 * MB], source, true)).toBeNull();
+    // Grens: 1,5 × de bron plus 1 MB.
+    expect(checkTotal([16 * MB], source, false)).toBeNull();
+    expect(checkTotal([16 * MB + 1], source, false)).toBe(16 * MB + 1);
+    expect(checkTotal([], source, false)).toBeNull();
   });
 });

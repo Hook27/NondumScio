@@ -138,7 +138,7 @@ export const en: Messages = {
     outOfRangeOther: 'Page {page} does not exist: there are {n} pages.',
     bookmarks: 'By bookmarks',
     bookmarksHint:
-      'By bookmarks: each part runs from the page of its bookmark to the page before the next one; pages before the first bookmark form the part “Front matter”. Under “Split at” you choose which levels start a part. If a bookmark starts halfway down a page, turn on “Boundary page also in previous part”: that page then also goes at the end of the previous part. Names: number - bookmark title.pdf; a / in the title becomes -, the characters \\ : * ? " < > | are dropped. You can change each name per row; a different split setting resets them. Untick rows to leave them out. With “Subfolder per top-level bookmark”, each part goes into a folder in the ZIP named after its level 1 bookmark, if that bookmark has bookmarks below it; the front matter and top-level bookmarks without any stay in the main folder. With more files, each next file starts a new part. The bookmarks themselves and links to pages outside the part are not included.',
+      'By bookmarks: each part runs from the page of its bookmark to the page before the next one; pages before the first bookmark form the part “Front matter”. Under “Split at” you choose which levels start a part. If a bookmark starts halfway down a page, turn on “Boundary page also in previous part”: that page then also goes at the end of the previous part. Names: number - bookmark title.pdf; a / in the title becomes -, the characters \\ : * ? " < > | are dropped. You can change each name per row; a different split setting resets them. Untick rows to leave them out. With “Subfolder per top-level bookmark”, each part goes into a folder in the ZIP named after its level 1 bookmark, if that bookmark has bookmarks below it; the front matter and top-level bookmarks without any stay in the main folder. With more files, each next file starts a new part. The bookmarks themselves and links to pages outside the part are not included. Each part contains only the images and fonts its own pages use; the Size column fills in when you download and shows ⚠ if a part is disproportionately large.',
     level: 'Split at',
     levelAll: 'All bookmarks',
     levelOne: 'Level 1 only',
@@ -174,6 +174,7 @@ export const en: Messages = {
       title: 'Bookmark',
       pages: 'Pages',
       count: 'Count',
+      size: 'Size',
       name: 'File name',
       actions: 'Actions',
     },
@@ -186,6 +187,16 @@ export const en: Messages = {
     previewPage: 'Page {n} of {total} (p. {p})',
     views: { label: 'View', parts: 'Parts', pages: 'Pages' },
     unselected: 'Not selected',
+    untrimmedOne: '1 page could not be slimmed down; this part may contain data from other pages.',
+    untrimmedOther:
+      '{n} pages could not be slimmed down; this part may contain data from other pages.',
+    expected: 'About {size} expected from the number of pages; check this part.',
+    largeOne:
+      '1 part is disproportionately large for its number of pages (⚠ in the Size column). Check it before you share it.',
+    largeOther:
+      '{n} parts are disproportionately large for their number of pages (⚠ in the Size column). Check them before you share them.',
+    totalLarge:
+      'All parts together are {sum}, against {source} for the source. Parts may contain data from other pages.',
   },
   convert: {
     actions: 'Convert',

@@ -10,7 +10,15 @@ import type { LoadedPdf } from '../pdf/loader';
 import { buildParts, downloadFile, downloadPdf } from '../pdf/save';
 import { rotatePages } from '../pages/plan';
 import { useDocument } from '../document/DocumentContext';
+import { format } from '../i18n/format';
+import { formatFileSize } from '../lib/format';
 import { Workspace } from './Workspace';
+
+/**
+ * Wat de nep-`buildParts` per deel meldt: hoeveel pagina's niet uitgedund konden worden (per deel
+ * dat gemaakt wordt), en met `bytes` een vaste grootte in plaats van de paginanummers.
+ */
+const made = vi.hoisted(() => ({ untrimmed: [] as number[], bytes: 0 }));
 
 vi.mock('../pdf/save', async (importOriginal) => ({
   ...(await importOriginal<typeof import('../pdf/save')>()),
@@ -22,13 +30,15 @@ vi.mock('../pdf/save', async (importOriginal) => ({
       _progress?: unknown,
       _annotations?: unknown,
       _redaction?: unknown,
-      onPart?: (bytes: Uint8Array, index: number) => void,
+      onPart?: (bytes: Uint8Array, index: number, report: { untrimmed: number }) => void,
     ) => {
       const pdfs = parts.map((part) =>
-        new TextEncoder().encode(part.map((p) => p.source + 1).join(',')),
+        made.bytes > 0
+          ? new Uint8Array(made.bytes)
+          : new TextEncoder().encode(part.map((p) => p.source + 1).join(',')),
       );
       if (!onPart) return pdfs;
-      pdfs.forEach((pdf, i) => onPart(pdf, i));
+      pdfs.forEach((pdf, i) => onPart(pdf, i, { untrimmed: made.untrimmed[i] ?? 0 }));
       return [];
     },
   ),
@@ -120,7 +130,7 @@ async function setup(outline: Item[] = REPORT, pages = 10, more: File[] = []) {
 
 const table = () => screen.getByRole('table', { name: s.table.label });
 
-/** De rijen als "nr | bladwijzer | pagina's | aantal | naam". */
+/** De rijen als "nr | bladwijzer | pagina's | aantal | naam" (de grootte staat er los bij, zie `sizes`). */
 async function rows() {
   await screen.findByRole('table', { name: s.table.label });
   return within(table())
@@ -128,10 +138,17 @@ async function rows() {
     .slice(1)
     .map((row) => {
       const cells = within(row).getAllByRole('cell');
-      const name = cells[5]!.querySelector('input')!.value;
+      const name = row.querySelector<HTMLInputElement>('.bookmark-table__name input')!.value;
       return [1, 2, 3, 4].map((i) => cells[i]!.textContent).join(' | ') + ` | ${name}`;
     });
 }
+
+/** De kolom Grootte, per rij. */
+const sizes = () =>
+  within(table())
+    .getAllByRole('row')
+    .slice(1)
+    .map((row) => row.querySelector('.bookmark-table__size')!.textContent);
 
 const includeBox = (n: number) =>
   screen.getByRole('checkbox', { name: new RegExp(`^Deel ${n} meenemen`) }) as HTMLInputElement;
@@ -140,6 +157,8 @@ const nameField = (n: number) =>
 
 beforeEach(() => {
   angles = [];
+  made.untrimmed = [];
+  made.bytes = 0;
   vi.mocked(buildParts).mockClear();
   vi.mocked(downloadPdf).mockClear();
   vi.mocked(downloadFile).mockClear();
@@ -392,6 +411,94 @@ describe('Splitsen op bladwijzers', () => {
       'Hoofdstuk 1/03 - paragraaf 1.1 (2).pdf',
       '05 - Bijlage - A.pdf',
     ]);
+  });
+
+  it('toont de grootte na het downloaden, en weer “—” na een andere splitsinstelling', async () => {
+    await setup();
+    await rows();
+    expect(sizes()).toEqual(['—', '—', '—', '—', '—']);
+    fireEvent.click(includeBox(1));
+    fireEvent.click(screen.getByRole('button', { name: '4 van 5 delen downloaden (ZIP)' }));
+    fireEvent.click(screen.getByRole('button', { name: nl.saveDialog.download }));
+    await waitFor(() => expect(downloadFile).toHaveBeenCalledTimes(1));
+    // De nep-delen bevatten hun paginanummers: "2,3", "4,5", "6,7,8", "9,10".
+    const bytes = (n: number) => formatFileSize(n, 'nl');
+    expect(sizes()).toEqual(['—', bytes(3), bytes(3), bytes(5), bytes(4)]);
+    // Los downloaden vult ook de grootte; een andere naam of een vinkje laat ze staan.
+    fireEvent.click(screen.getByRole('button', { name: 'Deel 1 downloaden' }));
+    await waitFor(() => expect(sizes()[0]).toBe(bytes(1)));
+    fireEvent.input(nameField(2), { target: { value: 'andere naam' } });
+    fireEvent.click(includeBox(3));
+    expect(sizes()).toEqual([bytes(1), bytes(3), bytes(3), bytes(5), bytes(4)]);
+    // Geen ⚠ en geen meldingen over de grootte.
+    expect(document.querySelector('.bookmark-table__warn')).toBeNull();
+    expect(document.querySelector('.split-note--error')).toBeNull();
+    fireEvent.click(screen.getByLabelText(s.overlap));
+    await waitFor(() => expect(sizes()).toEqual(['—', '—', '—', '—', '—']));
+  });
+
+  it('geeft een ⚠ bij pagina’s die niet uitgedund konden worden', async () => {
+    await setup();
+    await rows();
+    made.untrimmed = [0, 2];
+    fireEvent.click(screen.getByRole('button', { name: 'Alle 5 delen downloaden (ZIP)' }));
+    fireEvent.click(screen.getByRole('button', { name: nl.saveDialog.download }));
+    await waitFor(() => expect(downloadFile).toHaveBeenCalledTimes(1));
+    const cell = within(table()).getAllByRole('row')[2]!.querySelector('.bookmark-table__size')!;
+    const why = format(s.untrimmedOther, { n: 2 });
+    expect(cell.className).toContain('is-large');
+    expect(cell.querySelector('.bookmark-table__warn')!.getAttribute('data-tip')).toBe(why);
+    expect(cell.querySelector('.visually-hidden')!.textContent).toBe(why);
+    expect(document.querySelectorAll('.bookmark-table__warn')).toHaveLength(1);
+    expect(screen.getByText(s.largeOne)).toBeTruthy();
+    // Ook bij los downloaden.
+    made.untrimmed = [1];
+    fireEvent.click(screen.getByRole('button', { name: 'Deel 5 downloaden' }));
+    await waitFor(() =>
+      expect(
+        within(table()).getAllByRole('row')[5]!.querySelector('.bookmark-table__warn'),
+      ).not.toBeNull(),
+    );
+    expect(screen.getByText(format(s.largeOther, { n: 2 }))).toBeTruthy();
+  });
+
+  it('meldt onevenredig grote delen, en alle delen samen als dat veel meer is dan de bron', async () => {
+    await setup();
+    await rows();
+    // Het nepbestand is maar een paar honderd bytes; elk deel wordt 400 kB.
+    made.bytes = 400 * 1024;
+    fireEvent.click(includeBox(1));
+    fireEvent.click(screen.getByRole('button', { name: '4 van 5 delen downloaden (ZIP)' }));
+    fireEvent.click(screen.getByRole('button', { name: nl.saveDialog.download }));
+    await waitFor(() => expect(downloadFile).toHaveBeenCalledTimes(1));
+    expect(screen.getByText(format(s.largeOther, { n: 4 }))).toBeTruthy();
+    const source = new Blob([`%PDF-1.7 10\n${JSON.stringify(REPORT)}\n`]).size;
+    // De verwachting: twee van de tien pagina's van de bron.
+    const second = within(table()).getAllByRole('row')[2]!.querySelector('.bookmark-table__warn')!;
+    expect(second.getAttribute('data-tip')).toBe(
+      format(s.expected, { size: formatFileSize((source / 10) * 2, 'nl') }),
+    );
+    // Deel 1 heeft nog geen grootte: nog geen melding over alle delen samen.
+    expect(screen.queryByText(/^Alle delen samen/)).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: 'Deel 1 downloaden' }));
+    expect(
+      await screen.findByText(
+        format(s.totalLarge, {
+          sum: formatFileSize(5 * 400 * 1024, 'nl'),
+          source: formatFileSize(source, 'nl'),
+        }),
+      ),
+    ).toBeTruthy();
+    expect(screen.getByText(format(s.largeOther, { n: 5 }))).toBeTruthy();
+
+    // Met de grenspagina zitten pagina's dubbel in de delen: dan geen melding over alle delen samen.
+    fireEvent.click(screen.getByLabelText(s.overlap));
+    await waitFor(() => expect(sizes()).toEqual(['—', '—', '—', '—', '—']));
+    fireEvent.click(screen.getByRole('button', { name: 'Alle 5 delen downloaden (ZIP)' }));
+    fireEvent.click(screen.getByRole('button', { name: nl.saveDialog.download }));
+    await waitFor(() => expect(downloadFile).toHaveBeenCalledTimes(2));
+    expect(screen.getByText(format(s.largeOther, { n: 5 }))).toBeTruthy();
+    expect(screen.queryByText(/^Alle delen samen/)).toBeNull();
   });
 
   it('downloadt een deel meteen, onder de naam uit de tabel', async () => {

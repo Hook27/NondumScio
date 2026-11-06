@@ -2,9 +2,11 @@ import AxeBuilder from '@axe-core/playwright';
 import { readFileSync } from 'node:fs';
 import { expect, test, type Page } from '@playwright/test';
 import { unzipSync } from 'fflate';
+import { PDFDocument } from 'pdf-lib';
 import * as pdfjs from 'pdfjs-dist/legacy/build/pdf.mjs';
+import { makeSharedResourcesPdf } from '../src/pdf/testShared';
 import { downloadVia, messages, openPage } from './helpers';
-import { makeOutlinePdf, type OutlineItem } from './outline-fixtures';
+import { addOutline, makeOutlinePdf, type OutlineItem } from './outline-fixtures';
 
 const nl = messages.nl;
 const s = nl.split;
@@ -24,15 +26,38 @@ const OUTLINE: OutlineItem[] = [
   { title: 'Bijlage / A', page: 8 },
 ];
 
-async function open(page: Page, theme: 'light' | 'dark' = 'light') {
-  await openPage(page, '/#/split', { lang: 'nl', theme });
+async function open(page: Page, theme: 'light' | 'dark' = 'light', lang: 'nl' | 'en' = 'nl') {
+  await openPage(page, '/#/split', { lang, theme });
   await page.locator('#pdf-file').setInputFiles({
     name: 'rapport.pdf',
     mimeType: 'application/pdf',
     buffer: await makeOutlinePdf(OUTLINE, 10),
   });
-  await expect(page.getByRole('list', { name: s.parts })).toBeVisible({ timeout: 15_000 });
-  await page.getByLabel(s.bookmarks).check();
+  await expect(page.getByRole('list', { name: messages[lang].split.parts })).toBeVisible({
+    timeout: 15_000,
+  });
+  await page.getByLabel(messages[lang].split.bookmarks).check();
+}
+
+/**
+ * Per kolom: hoeveel de cellen van elke rij links en rechts verschillen van de kolomkop (in
+ * beeldpunten, afgerond). Recht onder elkaar is overal 0.
+ */
+function offsets(page: Page, columns: string[]) {
+  return page.evaluate((names) => {
+    const head = document.querySelector('.bookmark-table__head .bookmark-table__row')!;
+    const body = [...document.querySelectorAll('.bookmark-table__row')].slice(1);
+    return Object.fromEntries(
+      names.map((name) => {
+        const top = head.querySelector(`.bookmark-table__${name}`)!.getBoundingClientRect();
+        const moved = body.flatMap((row) => {
+          const cell = row.querySelector(`.bookmark-table__${name}`)!.getBoundingClientRect();
+          return [Math.round(cell.left - top.left), Math.round(cell.right - top.right)];
+        });
+        return [name, [...new Set(moved)]];
+      }),
+    );
+  }, columns);
 }
 
 const table = (page: Page) => page.getByRole('table', { name: s.table.label });
@@ -86,6 +111,49 @@ test.describe('splitsen op bladwijzers', () => {
       { title: 'Paragraaf 1.2', pages: ['Pagina 6', 'Pagina 7', 'Pagina 8'] },
       { title: 'Bijlage / A', pages: ['Pagina 9', 'Pagina 10'] },
     ]);
+  });
+
+  test('de grootte na het downloaden, met ⚠ bij een pagina die niet uitgedund kon worden', async ({
+    page,
+  }) => {
+    test.setTimeout(60_000);
+    // Een scan met één gedeelde lijst hulpbronnen; pagina 1 is niet te lezen (twijfel).
+    const doc = await PDFDocument.load(await makeSharedResourcesPdf(6, { unreadable: true }));
+    addOutline(doc, [
+      { title: 'Eerste brief', page: 0 },
+      { title: 'Tweede brief', page: 3 },
+    ]);
+    await openPage(page, '/#/split', { lang: 'nl' });
+    await page.locator('#pdf-file').setInputFiles({
+      name: 'scan.pdf',
+      mimeType: 'application/pdf',
+      buffer: Buffer.from(await doc.save()),
+    });
+    await expect(page.getByRole('list', { name: s.parts })).toBeVisible({ timeout: 30_000 });
+    await page.getByLabel(s.bookmarks).check();
+    await expect(rows(page)).toHaveCount(3, { timeout: 15_000 });
+    const size = (n: number) => rows(page).nth(n).locator('.bookmark-table__size');
+    await expect(size(1)).toHaveText('—');
+
+    const download = await downloadVia(
+      page,
+      page.getByRole('button', { name: 'Alle 2 delen downloaden (ZIP)' }),
+    );
+    const files = Object.values(unzipSync(new Uint8Array(readFileSync(await download.path()))));
+    // De kolom toont de echte grootte van elk deel in de ZIP.
+    for (const [i, file] of files.entries()) {
+      await expect(size(i + 1)).toContainText(
+        new Intl.NumberFormat('nl', { maximumFractionDigits: 1 }).format(file.length / 1024),
+      );
+    }
+    const why = s.untrimmedOne;
+    await expect(size(1)).toContainText('⚠');
+    await expect(size(1).locator('.bookmark-table__warn')).toHaveAttribute('data-tip', why);
+    await expect(size(2)).not.toContainText('⚠');
+    await expect(page.getByText(s.largeOne)).toBeVisible();
+    // De uitleg bij de muis.
+    await size(1).locator('.bookmark-table__warn').hover();
+    await expect(page.locator('.tooltip')).toHaveText(why);
   });
 
   test('een submap per hoofdbladwijzer in de ZIP', async ({ page }) => {
@@ -160,6 +228,49 @@ test.describe('splitsen op bladwijzers', () => {
     await expect(thumbs).toHaveCount(10);
     await expect(thumbs.nth(1)).toContainText(s.unselected);
     await expect(page.locator('.thumbs__off')).toHaveCount(2);
+  });
+
+  test('de kolomkoppen staan recht boven de cellen, op een groot en op een klein scherm', async ({
+    browser,
+  }) => {
+    test.setTimeout(60_000);
+    // Groot: alles op één regel. Klein (1366 × 768 bij 150 %): de naam op een tweede regel; de
+    // koppen daarvan staan dan alleen voor een schermlezer, dus die tellen niet mee.
+    const sizes = [
+      {
+        width: 1600,
+        height: 900,
+        scale: 1,
+        columns: ['title', 'pages', 'count', 'size', 'name', 'actions'],
+      },
+      { width: 911, height: 433, scale: 1.5, columns: ['title', 'pages', 'count'] },
+    ];
+    for (const { width, height, scale, columns } of sizes) {
+      for (const lang of ['nl', 'en'] as const) {
+        const context = await browser.newContext({
+          viewport: { width, height },
+          deviceScaleFactor: scale,
+        });
+        const page = await context.newPage();
+        await open(page, 'light', lang);
+        await expect(page.locator('.bookmark-table__row')).toHaveCount(6, { timeout: 15_000 });
+        const expected = Object.fromEntries(columns.map((name) => [name, [0]]));
+        expect(await offsets(page, columns), `${width} px, ${lang}`).toEqual(expected);
+        // De knoppen passen in hun (vaste) kolom.
+        const overflow = await page.evaluate(() =>
+          [...document.querySelectorAll('.bookmark-table__row')].slice(1).some((row) => {
+            const cell = row.querySelector('.bookmark-table__actions')!;
+            const box = cell.getBoundingClientRect();
+            return [...cell.querySelectorAll('button')].some((button) => {
+              const edge = button.getBoundingClientRect();
+              return edge.left < box.left - 0.5 || edge.right > box.right + 0.5;
+            });
+          }),
+        );
+        expect(overflow, `${width} px, ${lang}: knoppen passen niet`).toBe(false);
+        await context.close();
+      }
+    }
   });
 
   for (const theme of ['light', 'dark'] as const) {

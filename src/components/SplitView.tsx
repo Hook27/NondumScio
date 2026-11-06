@@ -8,6 +8,7 @@ import { useDesktop } from '../lib/useDesktop';
 import { chunkParts, formatRanges, parseParts, type RangeProblem } from '../pages/ranges';
 import {
   PdfSaveError,
+  type PartReport,
   type SaveErrorCode,
   buildParts,
   downloadFile,
@@ -123,7 +124,7 @@ export function SplitView() {
    */
   const build = async (
     wanted: number[][],
-    onPart?: (bytes: Uint8Array, index: number) => void,
+    onPart?: (bytes: Uint8Array, index: number, report: PartReport) => void,
     titles?: string[],
   ) => {
     const files = new Map(
@@ -151,6 +152,8 @@ export function SplitView() {
       ? uniqueNames(chosenRows.map((row) => row.path))
       : zipParts.map(partName);
     const titles = byBookmarks ? chosenRows.map((row) => row.title) : undefined;
+    // Waar elk gekozen deel in de tabel staat (om zijn grootte te tonen).
+    const chosenIndices = marked.rows.flatMap((row, index) => (row.include ? [index] : []));
     const wanted = current.kind === 'zip' ? zipParts : [parts[current.index]!];
     setSave({ status: 'saving', done: 0, total: wanted.length });
     try {
@@ -159,11 +162,17 @@ export function SplitView() {
         const zip = await zipWriter();
         await build(
           wanted,
-          (bytes, i) => {
+          (bytes, i, report) => {
             try {
               zip.add(zipNames[i]!, bytes);
             } catch (error) {
               throw error instanceof ZipTooLargeError ? new PdfSaveError('tooLarge') : error;
+            }
+            if (byBookmarks) {
+              marked.setSize(chosenIndices[i]!, {
+                size: bytes.length,
+                untrimmed: report?.untrimmed ?? 0,
+              });
             }
           },
           titles,
@@ -184,8 +193,16 @@ export function SplitView() {
     const row = marked.rows[index]!;
     setSave({ status: 'saving', done: 0, total: 1 });
     try {
-      const [pdf] = await build([row.positions], undefined, [row.title]);
-      downloadPdf(pdf!, row.fileName);
+      let pdf: Uint8Array = new Uint8Array();
+      await build(
+        [row.positions],
+        (bytes, _, report) => {
+          pdf = bytes;
+          marked.setSize(index, { size: bytes.length, untrimmed: report?.untrimmed ?? 0 });
+        },
+        [row.title],
+      );
+      downloadPdf(pdf, row.fileName);
       setSave({ status: 'saved', fileName: row.fileName });
     } catch (error) {
       setSave({ status: 'error', code: error instanceof PdfSaveError ? error.code : 'failed' });

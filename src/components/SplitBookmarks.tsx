@@ -2,9 +2,13 @@ import { useLayoutEffect, useMemo, useRef, useState } from 'preact/hooks';
 import { useDocument } from '../document/DocumentContext';
 import { useI18n } from '../i18n/LanguageContext';
 import { format, plural } from '../i18n/format';
+import { formatFileSize } from '../lib/format';
 import {
   autoName,
   bookmarkParts,
+  checkSize,
+  checkTotal,
+  expectedSize,
   duplicateNames,
   fileNameOf,
   flattenMarks,
@@ -12,6 +16,7 @@ import {
   zipPath,
   type Mark,
   type Part,
+  type SizeCheck,
 } from '../split/bookmarks';
 import { defaultBookmarkTitle } from './FilesParts';
 import { IconButton } from './Icon';
@@ -36,9 +41,21 @@ export type BookmarkRow = Part & {
   duplicate: boolean;
   /** De pagina's van het deel: plekken in het plan, vanaf 1. */
   positions: number[];
+  /** De grootte van het gedownloade deel, of `null` als het nog niet gedownload is. */
+  size: number | null;
+  /** Waarom het deel een ⚠ krijgt (onevenredig groot), of `null`. */
+  check: SizeCheck | null;
 };
 
-type Choice = { key: string; include: boolean[]; names: (string | null)[] };
+/** Wat er bij het downloaden van een deel bleek. */
+export type Sized = { size: number; untrimmed: number };
+
+type Choice = {
+  key: string;
+  include: boolean[];
+  names: (string | null)[];
+  sizes: (Sized | null)[];
+};
 
 /**
  * De delen volgens de bladwijzers van de geopende bestanden, met wat je hebt aan- of uitgevinkt en
@@ -82,8 +99,9 @@ export function useBookmarkSplit(
     key,
     include: parts.map(() => true),
     names: parts.map(() => null),
+    sizes: parts.map(() => null),
   });
-  const [stored, setStored] = useState<Choice>({ key: '', include: [], names: [] });
+  const [stored, setStored] = useState<Choice>({ key: '', include: [], names: [], sizes: [] });
   const choice = stored.key === key ? stored : fresh();
   const change = (update: (current: Choice) => Choice) =>
     setStored((previous) => update(previous.key === key ? previous : fresh()));
@@ -97,17 +115,46 @@ export function useBookmarkSplit(
   });
   // Dubbel is hetzelfde pad: dezelfde naam in een andere map mag.
   const duplicates = duplicateNames(named.map((row) => (row.include ? row.path : null)));
-  const rows: BookmarkRow[] = parts.map((part, index) => ({
-    ...part,
-    ...named[index]!,
-    duplicate: duplicates.has(index),
-    positions: Array.from({ length: part.to - part.from + 1 }, (_, i) => part.from + i + 1),
-  }));
+  // De grootte die je per deel zou verwachten: naar de grootte en het aantal pagina's van de bestanden.
+  const files = new Map(
+    activeSources.map((source) => [source.id, { size: source.size, pageCount: source.pageCount }]),
+  );
+  const rows: BookmarkRow[] = parts.map((part, index) => {
+    const positions = Array.from({ length: part.to - part.from + 1 }, (_, i) => part.from + i + 1);
+    const sized = choice.sizes[index] ?? null;
+    const expected = expectedSize(
+      positions.map((position) => pages[position - 1]!),
+      files,
+    );
+    return {
+      ...part,
+      ...named[index]!,
+      duplicate: duplicates.has(index),
+      positions,
+      size: sized?.size ?? null,
+      check: sized ? checkSize(sized.size, expected, sized.untrimmed) : null,
+    };
+  });
+  // Alle delen samen, tegen alle bestanden samen.
+  const total = checkTotal(
+    rows.map((row) => row.size),
+    activeSources.reduce((sum, source) => sum + source.size, 0),
+    overlap,
+  );
 
   return {
     loaded,
     marks,
     rows,
+    total,
+    /** Alle geopende bestanden samen (voor de melding over de totale grootte). */
+    sourceSize: activeSources.reduce((sum, source) => sum + source.size, 0),
+    /** Na het downloaden van deel `index`: zijn grootte (en wat er niet uitgedund kon worden). */
+    setSize: (index: number, sized: Sized) =>
+      change((current) => ({
+        ...current,
+        sizes: current.sizes.map((old, i) => (i === index ? sized : old)),
+      })),
     setInclude: (index: number, include: boolean) =>
       change((current) => ({
         ...current,
@@ -215,13 +262,15 @@ export function BookmarkOptions({
 
 /** Wat er te zeggen valt over de bladwijzers: nog aan het lezen, geen bruikbare, overgeslagen, of "ook". */
 export function BookmarkNotes({ split }: { split: BookmarkSplit }) {
-  const { t } = useI18n();
+  const { t, language } = useI18n();
   const s = t.split;
-  const { loaded, marks, rows } = split;
+  const { loaded, marks, rows, total } = split;
   if (!loaded) return <p class="split-note">{s.reading}</p>;
   if (rows.length === 0) return <p class="split-note split-note--error">{s.noBookmarks}</p>;
   const skipped = marks.filter((mark) => mark.position === null);
   const shared = rows.filter((row) => row.also.length > 0).length;
+  const large = rows.filter((row) => row.check !== null).length;
+  const source = split.sourceSize;
   const titles =
     skipped
       .slice(0, 5)
@@ -235,6 +284,17 @@ export function BookmarkNotes({ split }: { split: BookmarkSplit }) {
         </p>
       )}
       {shared > 0 && <p class="split-note">{plural(shared, s.sharedOne, s.sharedOther)}</p>}
+      {large > 0 && (
+        <p class="split-note split-note--error">{plural(large, s.largeOne, s.largeOther)}</p>
+      )}
+      {total !== null && (
+        <p class="split-note split-note--error">
+          {format(s.totalLarge, {
+            sum: formatFileSize(total, language),
+            source: formatFileSize(source, language),
+          })}
+        </p>
+      )}
     </>
   );
 }
@@ -262,6 +322,35 @@ export function bookmarkSummary(
         pages: plural(chosenPages, s.summaryPagesOne, s.summaryPagesOther),
       })}`,
     );
+}
+
+/**
+ * De grootte van een deel: "—" tot het gedownload is; met ⚠ (en uitleg bij de muis en voor een
+ * schermlezer) als het onevenredig groot is.
+ */
+function SizeCell({ row }: { row: BookmarkRow }) {
+  const { t, language } = useI18n();
+  const s = t.split;
+  const why =
+    row.check === null
+      ? ''
+      : row.check.kind === 'untrimmed'
+        ? plural(row.check.pages, s.untrimmedOne, s.untrimmedOther)
+        : format(s.expected, { size: formatFileSize(row.check.expected, language) });
+  return (
+    <span class={`bookmark-table__size${why ? ' is-large' : ''}`} role="cell">
+      {row.size === null ? '—' : formatFileSize(row.size, language)}
+      {why && (
+        <>
+          {' '}
+          <span class="bookmark-table__warn" data-tip={why} aria-hidden="true">
+            ⚠
+          </span>
+          <span class="visually-hidden">{why}</span>
+        </>
+      )}
+    </span>
+  );
 }
 
 /** Een bereik zoals in de tabel: "4" of "4–10". */
@@ -334,6 +423,9 @@ export function BookmarkTable({
             <span class="bookmark-table__count" role="columnheader">
               {c.count}
             </span>
+            <span class="bookmark-table__size" role="columnheader">
+              {c.size}
+            </span>
             <span class="bookmark-table__name" role="columnheader">
               {c.name}
             </span>
@@ -376,6 +468,7 @@ export function BookmarkTable({
                 <span class="bookmark-table__count" role="cell">
                   {row.positions.length}
                 </span>
+                <SizeCell row={row} />
                 <span class="bookmark-table__name" role="cell">
                   <input
                     type="text"

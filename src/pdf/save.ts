@@ -204,6 +204,7 @@ async function buildPlain(
  * dan staan niet alle delen tegelijk in het geheugen, en is de teruggegeven lijst leeg.
  *
  * Met `titles` krijgt elk deel een eigen titel (bij splitsen op bladwijzers: die van de bladwijzer).
+ * `onPart` krijgt per deel ook een verslag mee (zie `PartReport`).
  */
 export async function buildParts(
   sources: SourceBytes,
@@ -211,7 +212,7 @@ export async function buildParts(
   onProgress?: (done: number, total: number) => void,
   annotations: readonly Annotation[] = [],
   redaction?: RedactionRun,
-  onPart?: (bytes: Uint8Array, index: number) => void,
+  onPart?: (bytes: Uint8Array, index: number, report: PartReport) => void,
   titles?: readonly string[],
 ): Promise<Uint8Array[]> {
   if (parts.length === 0 || parts.some((part) => part.length === 0)) {
@@ -225,12 +226,13 @@ export async function buildParts(
   const redacting = redaction?.wholeDocument ?? hasRedactions(parts.flat(), annotations);
   try {
     for (const [index, part] of parts.entries()) {
-      const out = await assemble(lib, docs, part, annotations);
+      const report: PartReport = { untrimmed: 0 };
+      const out = await assemble(lib, docs, part, annotations, report);
       const title = titles?.[index];
       if (title) out.setTitle(title);
       const bytes = await out.save();
       const done = await applyRedactions(bytes, part, annotations, redaction, redacting);
-      if (onPart) onPart(done, index);
+      if (onPart) onPart(done, index, report);
       else result.push(done);
       onProgress?.(index + 1, parts.length);
       await new Promise((resolve) => setTimeout(resolve, 0));
@@ -241,6 +243,15 @@ export async function buildParts(
   }
   return result;
 }
+
+/** Wat er bij het maken van een deel gebeurde. */
+export type PartReport = {
+  /**
+   * Hoeveel pagina's hun gedeelde lijst met hulpbronnen hielden, omdat uitdunnen niet veilig kon
+   * (zie `trimSharedResources`): dan kan het deel gegevens van andere pagina's bevatten.
+   */
+  untrimmed: number;
+};
 
 type PdfLib = typeof import('pdf-lib');
 
@@ -277,13 +288,15 @@ function rotation({ degrees }: PdfLib) {
 
 /**
  * Een nieuw document met de pagina's van het plan, gekopieerd uit de ingelezen bestanden.
- * Titel en auteur komen uit het bestand van de eerste pagina.
+ * Titel en auteur komen uit het bestand van de eerste pagina. In `report` komt hoeveel pagina's
+ * niet uitgedund konden worden.
  */
 async function assemble(
   lib: PdfLib,
   docs: ReadonlyMap<number, PdfLibDocument>,
   pages: readonly PageItem[],
   annotations: readonly Annotation[] = [],
+  report?: PartReport,
 ) {
   const rotated = rotation(lib);
   // Anders haalt het kopiëren via koppelingen pagina's mee die niet meedoen (zie `links.ts`).
@@ -308,7 +321,8 @@ async function assemble(
     const indices = [...new Set(pages.filter((p) => p.doc === id).map((p) => p.source))];
     if (indices.length === 0) continue;
     // Anders neemt elke pagina met een gedeelde lijst hulpbronnen alle afbeeldingen mee.
-    trimSharedResources(lib, doc, indices);
+    const doubtful = trimSharedResources(lib, doc, indices);
+    if (report) report.untrimmed += doubtful.length;
     const copied = await out.copyPages(doc, indices);
     indices.forEach((index, i) => copies.set(`${id}:${index}`, copied[i]!));
   }
