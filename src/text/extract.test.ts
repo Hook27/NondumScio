@@ -99,7 +99,15 @@ describe('extractText', () => {
     // Met de woorden van een andere taal.
     const head = {
       fields: { file: 'File', title: 'Title', author: 'Author', subject: 'Subject', date: 'Date' },
-      conventions: { title: 'C', intro: 'I', anchors: 'A', concordance: 'K', heading: 'H' },
+      conventions: {
+        title: 'C',
+        intro: 'I',
+        anchors: 'A',
+        concordance: 'K',
+        concordanceBatch: 'B',
+        files: 'F',
+        heading: 'H',
+      },
     };
     const english = extractText(pages, { ...PLAIN, header: true, conventions: true }, null, {
       name: 'letter.pdf',

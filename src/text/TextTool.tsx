@@ -5,6 +5,8 @@ import { copyText } from '../compare/report';
 import { ZOOM_STEPS, renderPage, stepZoom, targetWidths } from '../compare/visual';
 import { ConfirmDialog } from '../components/ConfirmDialog';
 import { Dropzone } from '../components/Dropzone';
+import { IconButton } from '../components/Icon';
+import { useDragReorder } from '../components/useDragReorder';
 import { useI18n } from '../i18n/LanguageContext';
 import { format, plural } from '../i18n/format';
 import { formatFileSize } from '../lib/format';
@@ -30,7 +32,14 @@ import {
   openFiles,
   ownAllPages,
   ownPage,
+  addBatchFiles,
+  clearBatchFiles,
+  moveBatchFile,
+  moveBatchFileTo,
+  removeBatchFile,
   removeZone,
+  runBatch,
+  setBatchCombine,
   setFit,
   setMeta,
   setOptions,
@@ -45,6 +54,7 @@ import {
   setZoom,
   undoZones,
   useTextState,
+  type BatchStatus,
   type Fit,
   type TextBlock,
   type TextDoc,
@@ -89,6 +99,7 @@ export function TextTool() {
         <Settings />
         <MetaSettings />
         <PageSettings />
+        <BatchSettings />
         <SaveSettings />
         <ExtractBar />
       </div>
@@ -545,6 +556,201 @@ function PageSettings() {
           <p class="compare-settings__hint">{g.joinFirst}</p>
         ))}
     </Block>
+  );
+}
+
+/**
+ * Batch (meerdere PDF's): eerst een lijst samenstellen (PDF's toevoegen, ook meerdere keren en
+ * door ze te slepen; de volgorde aanpassen zoals bij Samenvoegen), dan "Batch extraheren": de
+ * PDF's worden achter elkaar gelezen met de instellingen hierboven (zonder leesvakken), en er volgt
+ * één download, een zip met per PDF een .txt of alles in één bestand. In de extractor begon de
+ * batch meteen na het kiezen. Werkt los van de open PDF.
+ */
+function BatchSettings() {
+  const { t, language } = useI18n();
+  const p = t.plainText;
+  const b = p.batch;
+  const { batchCombine, batch, batchFiles, useZones } = useTextState();
+  const running = batch.status === 'running';
+  return (
+    <Block id="batch" title={b.title}>
+      <p class="compare-settings__hint">{b.hint}</p>
+      {useZones && <p class="compare-settings__hint">{b.zonesHint}</p>}
+      <Dropzone
+        title={b.files}
+        dropTitle={t.compare.dropHere}
+        hint={b.addHint}
+        inputId="plaintext-batch-files"
+        accept="application/pdf,.pdf"
+        chooseLabel={b.add}
+        onFiles={addBatchFiles}
+        extraClass="plaintext-batch-add"
+      />
+      <BatchList />
+      {batchFiles.length > 0 && (
+        <button
+          type="button"
+          class="button button--secondary plaintext-batch__clear"
+          disabled={running}
+          onClick={clearBatchFiles}
+        >
+          {b.clearList}
+        </button>
+      )}
+      <label class="compare-settings__check">
+        <input
+          type="checkbox"
+          checked={batchCombine}
+          aria-describedby="plaintext-combine-hint"
+          onChange={(event) => setBatchCombine(event.currentTarget.checked)}
+        />
+        {b.combine}
+      </label>
+      <p id="plaintext-combine-hint" class="compare-settings__hint">
+        {b.combineHint}
+      </p>
+      <button
+        type="button"
+        class="button plaintext-batch__run"
+        disabled={running || batchFiles.length === 0}
+        onClick={() =>
+          void runBatch(language, {
+            concordance: p.concordance,
+            head: { fields: p.header.fields, conventions: p.conventions },
+            batch: { start: b.start, end: b.end },
+          })
+        }
+      >
+        {b.run}
+      </button>
+      <BatchMessage batch={batch} t={t} />
+    </Block>
+  );
+}
+
+/**
+ * De PDF's van de batch in volgorde, met dezelfde bediening als bij Samenvoegen: slepen (met de
+ * muis, of op een aanraakscherm aan het greepje), omhoog en omlaag, en weghalen. Tijdens het
+ * verwerken staat dat uit.
+ */
+function BatchList() {
+  const { t } = useI18n();
+  const b = t.plainText.batch;
+  const m = t.merge;
+  const { batchFiles, batch } = useTextState();
+  const running = batch.status === 'running';
+  const list = useRef<HTMLOListElement>(null);
+  const { dragged, dropAt, handlers } = useDragReorder<number>({
+    list,
+    itemSelector: '.merge-list__item',
+    direction: 'vertical',
+    onDrop: (id, target) => moveBatchFileTo(id, target),
+  });
+  if (batchFiles.length === 0) return <p class="compare-settings__hint">{b.empty}</p>;
+  const last = batchFiles.length - 1;
+  return (
+    <ol
+      ref={list}
+      class={`merge-list plaintext-batch-list${dragged !== null ? ' merge-list--dragging' : ''}`}
+      aria-label={b.files}
+    >
+      {batchFiles.map(({ id, file }, index) => {
+        const classes = [
+          'merge-list__item',
+          dragged === id && 'merge-list__item--dragging',
+          dropAt === index && 'merge-list__item--drop-before',
+          dropAt === batchFiles.length && index === last && 'merge-list__item--drop-after',
+        ]
+          .filter(Boolean)
+          .join(' ');
+        return (
+          <li key={id} class={classes} data-index={index} {...(running ? {} : handlers(id))}>
+            <div class="merge-list__head">
+              {/* Alleen voor muis en vinger; met het toetsenbord gaan de pijlknoppen. */}
+              <span class="drag-handle merge-list__handle" aria-hidden="true">
+                ⠿
+              </span>
+              <span class="merge-list__position" aria-hidden="true">
+                {index + 1}
+              </span>
+              <span class="merge-list__name" data-tip={file.name}>
+                {file.name}
+              </span>
+              <span class="merge-list__actions">
+                <IconButton
+                  icon="arrowUp"
+                  label={format(m.moveUp, { name: file.name })}
+                  disabled={running || index === 0}
+                  onClick={() => moveBatchFile(id, -1)}
+                />
+                <IconButton
+                  icon="arrowDown"
+                  label={format(m.moveDown, { name: file.name })}
+                  disabled={running || index === last}
+                  onClick={() => moveBatchFile(id, 1)}
+                />
+                <IconButton
+                  icon="close"
+                  label={format(m.remove, { name: file.name })}
+                  disabled={running}
+                  onClick={() => removeBatchFile(id)}
+                />
+              </span>
+            </div>
+          </li>
+        );
+      })}
+    </ol>
+  );
+}
+
+/** Wat de batch doet of gedaan heeft: de voortgang, of wat er verwerkt, mislukt en gedownload is. */
+function BatchMessage({ batch, t }: { batch: BatchStatus; t: Texts }) {
+  const b = t.plainText.batch;
+  const box = useRef<HTMLDivElement>(null);
+  // Bij het begin en het eind in beeld: op een klein scherm staat de melding anders onder de vaste
+  // knop "Tekst extraheren", en zie je niet wat er gebeurd is.
+  useLayoutEffect(() => {
+    box.current?.scrollIntoView?.({ block: 'nearest' });
+  }, [batch.status]);
+  if (batch.status === 'idle') return null;
+  if (batch.status === 'running') {
+    const values = {
+      i: batch.i,
+      n: batch.total,
+      name: batch.name,
+      page: batch.page,
+      pages: batch.pages,
+    };
+    return (
+      <div ref={box} class="plaintext-batch__message" role="status">
+        <p class="plaintext__done">{format(batch.pages > 0 ? b.readingPage : b.reading, values)}</p>
+      </div>
+    );
+  }
+  const failedCount =
+    batch.failed.length > 0 ? format(b.failedCount, { n: batch.failed.length }) : '';
+  const done = format(batch.combine ? b.doneCombined : b.doneZip, {
+    ok: batch.ok,
+    failed: failedCount,
+  });
+  return (
+    <div ref={box} class="plaintext-batch__message" role="status">
+      <p class="plaintext__done">
+        {batch.download ? `${done} ${format(b.downloaded, { name: batch.download })}` : done}
+      </p>
+      {batch.problem && <p class="compare__warning">{b[batch.problem]}</p>}
+      {batch.failed.length > 0 && (
+        <p class="compare__note">
+          {format(b.failed, {
+            list: batch.failed.map((f) => `${f.label}: ${b.reasons[f.code]}`).join('; '),
+          })}
+        </p>
+      )}
+      {batch.noText.length > 0 && (
+        <p class="compare__note">{format(b.noText, { list: batch.noText.join(', ') })}</p>
+      )}
+    </div>
   );
 }
 

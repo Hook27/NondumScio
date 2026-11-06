@@ -22,6 +22,10 @@ export type HeadTexts = {
     intro: string;
     anchors: string;
     concordance: string;
+    /** Bij een batch in één bestand: de concordantie staat per brondocument. */
+    concordanceBatch: string;
+    /** Bij een batch in één bestand: wat "Bestand N start/einde" betekent. */
+    files: string;
     heading: string;
   };
 };
@@ -42,6 +46,9 @@ export const DUTCH_HEAD: HeadTexts = {
       '{p#} = begin van PDF-pagina #. Kan midden in een zin staan als een alinea over de pagina-overgang doorloopt.',
     concordance:
       'Onderaan staat een paginaconcordantie die fysieke PDF-pagina’s koppelt aan afgedrukte documentpaginanummers.',
+    concordanceBatch:
+      'Per brondocument staat een paginaconcordantie die fysieke PDF-pagina’s koppelt aan afgedrukte documentpaginanummers.',
+    files: '"Bestand N start/einde: <naam>" markeert het begin en einde van elk brondocument.',
     heading: '{H} = begin van een herkende kop, zoals een hoofdstuk- of artikeltitel.',
   },
 };
@@ -104,13 +111,19 @@ export type ConventionOptions = {
 /**
  * Het conventieblok: wat de tekst is, en wat de markeringen betekenen. De regel over {H} staat er
  * alleen als {H} ook echt in de tekst kan staan (met regels samenvoegen en opsommingen en koppen);
- * die regel had de extractor nog niet.
+ * die regel had de extractor nog niet. `batch`: voor een batch in één bestand, zoals in de
+ * extractor: de concordantie staat dan per brondocument, en "Bestand N start/einde" wordt uitgelegd.
  */
-export function buildConventions(opts: ConventionOptions, texts: HeadTexts = DUTCH_HEAD): string {
+export function buildConventions(
+  opts: ConventionOptions,
+  texts: HeadTexts = DUTCH_HEAD,
+  batch = false,
+): string {
   const c = texts.conventions;
   const title = `=== ${c.title} ===`;
   const lines = [title, c.intro];
-  if (opts.anchors) lines.push(c.anchors, c.concordance);
+  if (opts.anchors) lines.push(c.anchors, batch ? c.concordanceBatch : c.concordance);
+  if (batch) lines.push(c.files);
   if (opts.headingMarker && opts.structure && opts.joinLines) lines.push(c.heading);
   // Even breed als de titelregel (in de extractor: 18 tekens, net als "=== Conventies ===").
   lines.push('='.repeat(title.length));
