@@ -17,6 +17,15 @@ export type Mark = {
    * pagina (bijvoorbeeld naar een website), of zijn pagina is weggehaald.
    */
   position: number | null;
+  /** De hoofdbladwijzer (niveau 1) waar hij onder valt; op niveau 1 hijzelf. */
+  top: Top;
+};
+
+/** Een hoofdbladwijzer, voor de submappen in de ZIP. */
+export type Top = {
+  title: string;
+  /** Of er bladwijzers onder vallen (alleen dan krijgt hij een eigen map). */
+  children: boolean;
 };
 
 /** De bladwijzers van een geopend bestand (`doc` is `Source.id`). */
@@ -33,17 +42,20 @@ export function flattenMarks(
 ): Mark[] {
   const marks: Mark[] = [];
   for (const source of sources) {
-    const walk = (entries: ReturnType<typeof placeOutline>, depth: number) => {
+    const walk = (entries: ReturnType<typeof placeOutline>, depth: number, top: Top | null) => {
       for (const entry of entries) {
+        const title = entry.title || untitled;
+        const own = top ?? { title, children: entry.children.length > 0 };
         marks.push({
-          title: entry.title || untitled,
+          title,
           depth,
           position: entry.target.kind === 'page' ? entry.target.position : null,
+          top: own,
         });
-        walk(entry.children, depth + 1);
+        walk(entry.children, depth + 1, own);
       }
     };
-    walk(placeOutline(source.entries, source.doc, pages), 1);
+    walk(placeOutline(source.entries, source.doc, pages), 1, null);
   }
   return marks;
 }
@@ -61,6 +73,8 @@ export type Part = {
   to: number;
   /** De andere bladwijzers die op dezelfde pagina beginnen ("ook: …"). */
   also: string[];
+  /** De hoofdbladwijzer van de bladwijzer die het deel zijn naam geeft (`null` bij voorwerk). */
+  top: Top | null;
 };
 
 export type PartOptions = {
@@ -108,14 +122,15 @@ export function bookmarkParts(
 
   const parts: Part[] = [];
   if (starts[0]! > 0) {
-    parts.push({ title: frontMatter, depth: 1, from: 0, to: until(starts[0]!), also: [] });
+    const to = until(starts[0]!);
+    parts.push({ title: frontMatter, depth: 1, from: 0, to, also: [], top: null });
   }
   starts.forEach((start, i) => {
     const to = i + 1 < starts.length ? until(starts[i + 1]!) : pages.length - 1;
     const group = groups.get(start);
     if (!group) {
       const title = fileTitles?.get(pages[start]!.doc) ?? frontMatter;
-      parts.push({ title, depth: 1, from: start, to, also: [] });
+      parts.push({ title, depth: 1, from: start, to, also: [], top: null });
       return;
     }
     const main = group.reduce((best, mark) => (mark.depth > best.depth ? mark : best));
@@ -125,6 +140,7 @@ export function bookmarkParts(
       from: start,
       to,
       also: group.filter((mark) => mark !== main).map((mark) => mark.title),
+      top: main.top,
     });
   });
   return parts;
@@ -170,6 +186,20 @@ export function autoName(
 export function fileNameOf(name: string, fallback: string): string {
   const clean = cleanName(name.replace(/\.pdf$/i, ''), fallback).trim() || fallback;
   return /\.pdf$/i.test(clean) ? clean : `${clean}.pdf`;
+}
+
+/**
+ * Het pad van een deel in de ZIP. Met `folders` ("Submap per hoofdbladwijzer") komt het in een map
+ * met de naam van zijn hoofdbladwijzer, als daar bladwijzers onder vallen; anders, en het
+ * voorwerk, in de hoofdmap.
+ */
+export function zipPath(
+  fileName: string,
+  top: Top | null,
+  folders: boolean,
+  fallback: string,
+): string {
+  return folders && top?.children ? `${cleanName(top.title, fallback)}/${fileName}` : fileName;
 }
 
 /** Welke namen vaker voorkomen (hoofdletters tellen niet): hun plekken in de lijst. */

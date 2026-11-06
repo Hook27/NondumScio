@@ -10,6 +10,7 @@ import {
   flattenMarks,
   maxDepth,
   uniqueNames,
+  zipPath,
   type Mark,
   type PartOptions,
 } from './bookmarks';
@@ -39,16 +40,31 @@ const report = [
 describe('flattenMarks', () => {
   it('zet de boom plat in documentvolgorde, met niveau en plek in het plan', () => {
     const marks = flattenMarks([{ doc: 0, entries: report }], initialPages(10), '(naamloos)');
+    const chapter = { title: 'Hoofdstuk 1', children: true };
     expect(marks).toEqual([
-      { title: 'Inleiding', depth: 1, position: 1 },
-      { title: 'Hoofdstuk 1', depth: 1, position: 3 },
-      { title: 'Paragraaf 1.1', depth: 2, position: 3 },
-      { title: 'Paragraaf 1.2', depth: 2, position: 5 },
-      { title: 'Website', depth: 1, position: null },
-      { title: 'Bijlage', depth: 1, position: 8 },
+      { title: 'Inleiding', depth: 1, position: 1, top: { title: 'Inleiding', children: false } },
+      { title: 'Hoofdstuk 1', depth: 1, position: 3, top: chapter },
+      { title: 'Paragraaf 1.1', depth: 2, position: 3, top: chapter },
+      { title: 'Paragraaf 1.2', depth: 2, position: 5, top: chapter },
+      { title: 'Website', depth: 1, position: null, top: { title: 'Website', children: false } },
+      { title: 'Bijlage', depth: 1, position: 8, top: { title: 'Bijlage', children: false } },
     ]);
     expect(maxDepth(marks)).toBe(2);
     expect(maxDepth([])).toBe(0);
+  });
+
+  it('geeft diepere bladwijzers de hoofdbladwijzer van niveau 1, ook zonder titel', () => {
+    const marks = flattenMarks(
+      [{ doc: 0, entries: [entry('', null, [entry('A', 0, [entry('A1', 1)])]), entry('B', 2)] }],
+      initialPages(3),
+      '(naamloos)',
+    );
+    expect(marks.map((mark) => `${mark.title}: ${mark.top.title} ${mark.top.children}`)).toEqual([
+      '(naamloos): (naamloos) true',
+      'A: (naamloos) true',
+      'A1: (naamloos) true',
+      'B: B false',
+    ]);
   });
 
   it('volgt het pagina-plan: een weggehaalde pagina geeft geen plek, de rest schuift op', () => {
@@ -97,6 +113,18 @@ describe('bookmarkParts', () => {
     ]);
     const [, , shared] = bookmarkParts(marks, pages, options);
     expect(shared).toMatchObject({ depth: 2, from: 3, to: 4, also: ['Hoofdstuk 1'] });
+  });
+
+  it('kent elk deel de hoofdbladwijzer van zijn naamgever toe; voorwerk heeft er geen', () => {
+    const tops = bookmarkParts(marks, pages, options).map((part) => part.top?.title ?? null);
+    expect(tops).toEqual([null, 'Inleiding', 'Hoofdstuk 1', 'Hoofdstuk 1', 'Bijlage']);
+    const two = [...initialPages(2, 1), ...initialPages(2, 2, 2)];
+    const both = flattenMarks([{ doc: 1, entries: [entry('A', 0, [entry('A1', 1)])] }], two, '');
+    expect(
+      bookmarkParts(both, two, { ...options, fileTitles: new Map([[2, 'tweede']]) }).map(
+        (part) => `${part.title}: ${part.top?.title ?? '-'}`,
+      ),
+    ).toEqual(['A: A', 'A1: A', 'tweede: -']);
   });
 
   it('kan alleen tot een niveau splitsen', () => {
@@ -194,6 +222,26 @@ describe('bookmarkParts', () => {
       '',
     );
     expect(partsOf(atStart, two, { fileTitles, overlap: true })).toEqual(['A 1-4', 'B 5-7']);
+  });
+});
+
+describe('zipPath', () => {
+  const chapter = { title: 'Hoofdstuk 1 / Inleiding', children: true };
+  it('zet een deel in de map van zijn hoofdbladwijzer, als daar bladwijzers onder vallen', () => {
+    expect(zipPath('03 - Paragraaf.pdf', chapter, true, 'naamloos')).toBe(
+      'Hoofdstuk 1 - Inleiding/03 - Paragraaf.pdf',
+    );
+    expect(zipPath('03 - Paragraaf.pdf', { title: '..', children: true }, true, 'naamloos')).toBe(
+      'naamloos/03 - Paragraaf.pdf',
+    );
+  });
+
+  it('laat een deel in de hoofdmap: alles in één map, voorwerk, of een hoofdbladwijzer zonder onderliggende', () => {
+    expect(zipPath('03 - Paragraaf.pdf', chapter, false, 'naamloos')).toBe('03 - Paragraaf.pdf');
+    expect(zipPath('01 - Voorwerk.pdf', null, true, 'naamloos')).toBe('01 - Voorwerk.pdf');
+    expect(zipPath('02 - Bijlage.pdf', { title: 'Bijlage', children: false }, true, 'x')).toBe(
+      '02 - Bijlage.pdf',
+    );
   });
 });
 

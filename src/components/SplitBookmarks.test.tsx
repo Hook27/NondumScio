@@ -339,6 +339,61 @@ describe('Splitsen op bladwijzers', () => {
     ]);
   });
 
+  it('zet met een submap per hoofdbladwijzer de delen in mappen; namen en vinkjes blijven', async () => {
+    await setup();
+    await rows();
+    fireEvent.click(includeBox(1));
+    fireEvent.input(nameField(2), { target: { value: '03 - Paragraaf 1.1.pdf' } });
+    // In één map is dat een dubbele naam; in een eigen map niet meer.
+    expect(nameField(2).className).toBe('is-duplicate');
+    const layout = screen.getByLabelText(s.zipLayout) as HTMLSelectElement;
+    expect([...layout.options].map((option) => option.textContent)).toEqual([
+      s.zipFlat,
+      s.zipFolders,
+    ]);
+    expect(layout.value).toBe('flat');
+    fireEvent.change(layout, { target: { value: 'folders' } });
+    expect(nameField(2).className).toBe('');
+    expect(nameField(2).value).toBe('03 - Paragraaf 1.1.pdf');
+    expect(includeBox(1).checked).toBe(false);
+
+    fireEvent.click(screen.getByRole('button', { name: '4 van 5 delen downloaden (ZIP)' }));
+    fireEvent.click(screen.getByRole('button', { name: nl.saveDialog.download }));
+    await waitFor(() => expect(downloadFile).toHaveBeenCalledTimes(1));
+    const zip = vi.mocked(downloadFile).mock.calls[0]![0] as Blob;
+    expect(Object.keys(unzipSync(new Uint8Array(await zip.arrayBuffer())))).toEqual([
+      '03 - Paragraaf 1.1.pdf',
+      'Hoofdstuk 1/03 - Paragraaf 1.1.pdf',
+      'Hoofdstuk 1/04 - Paragraaf 1.2.pdf',
+      '05 - Bijlage - A.pdf',
+    ]);
+
+    // Los downloaden: alleen de naam, zonder map.
+    fireEvent.click(screen.getByRole('button', { name: 'Deel 4 downloaden' }));
+    await waitFor(() => expect(downloadPdf).toHaveBeenCalledTimes(1));
+    expect(vi.mocked(downloadPdf).mock.calls[0]![1]).toBe('04 - Paragraaf 1.2.pdf');
+  });
+
+  it('nummert dubbele paden in dezelfde submap', async () => {
+    await setup();
+    await rows();
+    fireEvent.change(screen.getByLabelText(s.zipLayout), { target: { value: 'folders' } });
+    fireEvent.input(nameField(4), { target: { value: '03 - paragraaf 1.1' } });
+    expect(nameField(3).className).toBe('is-duplicate');
+    expect(nameField(4).className).toBe('is-duplicate');
+    fireEvent.click(screen.getByRole('button', { name: 'Alle 5 delen downloaden (ZIP)' }));
+    fireEvent.click(screen.getByRole('button', { name: nl.saveDialog.download }));
+    await waitFor(() => expect(downloadFile).toHaveBeenCalledTimes(1));
+    const zip = vi.mocked(downloadFile).mock.calls[0]![0] as Blob;
+    expect(Object.keys(unzipSync(new Uint8Array(await zip.arrayBuffer())))).toEqual([
+      '01 - Voorwerk.pdf',
+      '02 - Inleiding.pdf',
+      'Hoofdstuk 1/03 - Paragraaf 1.1.pdf',
+      'Hoofdstuk 1/03 - paragraaf 1.1 (2).pdf',
+      '05 - Bijlage - A.pdf',
+    ]);
+  });
+
   it('downloadt een deel meteen, onder de naam uit de tabel', async () => {
     await setup();
     await rows();
@@ -444,11 +499,17 @@ describe('Splitsen op bladwijzers op een smal scherm', () => {
     try {
       await setup();
       await rows();
+      fireEvent.change(screen.getByLabelText(s.zipLayout), { target: { value: 'folders' } });
       list.matches = false;
       act(() => listener());
       expect(screen.queryByRole('table')).toBeNull();
       expect((screen.getByLabelText(s.every) as HTMLInputElement).checked).toBe(true);
       expect(screen.getByRole('list', { name: s.parts })).toBeTruthy();
+      // Weer breed: de keuzes staan er weer zoals ze waren.
+      list.matches = true;
+      act(() => listener());
+      expect(screen.getByRole('table')).toBeTruthy();
+      expect((screen.getByLabelText(s.zipLayout) as HTMLSelectElement).value).toBe('folders');
     } finally {
       window.matchMedia = original;
     }

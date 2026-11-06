@@ -63,6 +63,7 @@ export function SplitView() {
   const [level, setLevel] = useState(0);
   const [overlap, setOverlap] = useState(false);
   const [prefix, setPrefix] = useState('');
+  const [folders, setFolders] = useState(false);
   const [paneView, setPaneView] = useState<PaneView>('parts');
   const [viewing, setViewing] = useState<number | null>(null);
   const [save, setSave] = useState<SaveState>({ status: 'idle' });
@@ -73,7 +74,7 @@ export function SplitView() {
       <p class="desktop-only">{t.split.bookmarksHint}</p>
     </>,
   );
-  const marked = useBookmarkSplit(level, overlap, prefix);
+  const marked = useBookmarkSplit(level, overlap, prefix, folders);
   const byBookmarks = method === 'bookmarks';
 
   // De delen als paginanummers (vanaf 1) in het plan, of wat er niet klopt aan de bereiken.
@@ -147,7 +148,7 @@ export function SplitView() {
     // Op bladwijzers: de aangevinkte delen, met hun eigen naam en de titel van hun bladwijzer.
     const zipParts = byBookmarks ? chosenRows.map((row) => row.positions) : parts;
     const zipNames = byBookmarks
-      ? uniqueNames(chosenRows.map((row) => row.fileName))
+      ? uniqueNames(chosenRows.map((row) => row.path))
       : zipParts.map(partName);
     const titles = byBookmarks ? chosenRows.map((row) => row.title) : undefined;
     const wanted = current.kind === 'zip' ? zipParts : [parts[current.index]!];
@@ -296,9 +297,11 @@ export function SplitView() {
                   level={level}
                   overlap={overlap}
                   prefix={prefix}
+                  folders={folders}
                   onLevel={setLevel}
                   onOverlap={setOverlap}
                   onPrefix={setPrefix}
+                  onFolders={setFolders}
                 />
               </>
             )}
