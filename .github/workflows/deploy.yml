@@ -85,8 +85,10 @@ jobs:
           # De voorbeelden van open PR's blijven staan.
           clean-exclude: pr-preview/
       - name: Rooktest op de live site
+        # GitHub Pages staat soms minuten in de wachtrij (6-11: ruim 5 minuten); daarom 10 minuten
+        # wachten, zodat een trage uitrol niet als fout telt.
         run: |
-          for i in $(seq 1 30); do
+          for i in $(seq 1 60); do
             live=$(curl --silent --location "$SITE_URL/version.txt" || true)
             if [ "$live" = "$GITHUB_SHA" ]; then
               echo "Live: $GITHUB_SHA"
@@ -95,7 +97,7 @@ jobs:
             echo "Poging $i: live is '$live', verwacht '$GITHUB_SHA'"
             sleep 10
           done
-          echo "De nieuwe versie kwam niet live binnen 5 minuten" >&2
+          echo "De nieuwe versie kwam niet live binnen 10 minuten" >&2
           exit 1
       - name: Restanten van gesloten voorbeelden opruimen
         run: |
