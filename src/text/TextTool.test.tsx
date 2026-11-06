@@ -1274,7 +1274,7 @@ describe('PDF → Platte tekst: documentkop en metadata', () => {
     'Titel: Nieuwe huurovereenkomst',
     'Auteur: Woningstichting Voorbeeld',
     'Onderwerp: Huur',
-    'Datum: 4 juni 2018',
+    'Datum: 2018-06-04',
   ].join('\n');
 
   it('vult de velden met de gegevens uit de PDF; zonder PDF staan ze uit', async () => {
@@ -1290,7 +1290,7 @@ describe('PDF → Platte tekst: documentkop en metadata', () => {
     expect(field(f.title).disabled).toBe(false);
     expect(field(f.author).value).toBe('Woningstichting Voorbeeld');
     expect(field(f.subject).value).toBe('Huur');
-    expect(field(f.date).value).toBe('4 juni 2018');
+    expect(field(f.date).value).toBe('2018-06-04');
     expect(screen.getByText('PDF-producent (Producer): Voorbeeld PDF 2.0')).toBeTruthy();
     expect(screen.getByText('Toepassing (Creator): Tekstverwerker')).toBeTruthy();
   });
@@ -1321,12 +1321,12 @@ describe('PDF → Platte tekst: documentkop en metadata', () => {
       title: 'Huurcontract',
       author: 'Woningstichting Voorbeeld',
       subject: '',
-      date: '4 juni 2018',
+      date: '2018-06-04',
     });
     expect(screen.getByText(p.stale)).toBeTruthy();
     fireEvent.click(button(p.extract));
     expect(output()!.textContent).toBe(
-      `Bestand: brief.pdf\nTitel: Huurcontract\nAuteur: Woningstichting Voorbeeld\nDatum: 4 juni 2018\n\n${LETTER_TEXT}`,
+      `Bestand: brief.pdf\nTitel: Huurcontract\nAuteur: Woningstichting Voorbeeld\nDatum: 2018-06-04\n\n${LETTER_TEXT}`,
     );
   });
 
@@ -1373,7 +1373,7 @@ describe('PDF → Platte tekst: documentkop en metadata', () => {
     choose('tweede.pdf');
     await waitFor(() => expect(field(f.title).value).toBe('De tweede'));
     expect(field(f.author).value).toBe('');
-    expect(field(f.date).value).toBe('1 mei 2020');
+    expect(field(f.date).value).toBe('2020-05-01');
   });
 
   it('worden onthouden en opgeslagen; onthouden velden gaan voor die uit de PDF', async () => {
@@ -1388,7 +1388,7 @@ describe('PDF → Platte tekst: documentkop en metadata', () => {
       title: 'Eigen titel',
       author: 'Woningstichting Voorbeeld',
       subject: 'Huur',
-      date: '4 juni 2018',
+      date: '2018-06-04',
     });
     fireEvent.click(button(p.clear));
     fireEvent.click(check(h.use));
@@ -1414,7 +1414,39 @@ describe('PDF → Platte tekst: documentkop en metadata', () => {
     expect(screen.getByText(/instellingen hersteld/)).toBeTruthy();
     expect(check(p.settings.dehyphen).checked).toBe(false);
     expect(field(f.title).value).toBe('Nieuwe huurovereenkomst');
-    expect(field(f.date).value).toBe('4 juni 2018');
+    expect(field(f.date).value).toBe('2018-06-04');
+  });
+
+  it('een onthouden datum in de vorm van eerder ("4 juni 2018") wordt ISO; een eigen datum blijft', async () => {
+    const stored = (date: string) =>
+      localStorage.setItem(
+        `${SETTINGS_PREFIX}brief.pdf`,
+        JSON.stringify({
+          v: 2,
+          pdf: 'brief.pdf',
+          meta: { title: 'Eigen titel', author: '', subject: '', date },
+        }),
+      );
+    stored('4 juni 2018');
+    await open('brief.pdf');
+    expect(field(f.date).value).toBe('2018-06-04');
+    expect(field(f.title).value).toBe('Eigen titel');
+    cleanup();
+    stored('4 June 2018');
+    await open('brief.pdf');
+    expect(field(f.date).value).toBe('2018-06-04');
+    cleanup();
+    stored('begin juni');
+    await open('brief.pdf');
+    expect(field(f.date).value).toBe('begin juni');
+    // Ook uit een instellingenbestand van de extractor.
+    await loadSettings(
+      json('brief_instellingen.json', {
+        v: 2,
+        meta: { title: '', author: '', subject: '', date: '4 juni 2018' },
+      }),
+    );
+    expect(field(f.date).value).toBe('2018-06-04');
   });
 
   it('een instellingenbestand van de extractor zet ook de velden en de vinkjes', async () => {
@@ -1462,7 +1494,7 @@ describe('PDF → Platte tekst: documentkop en metadata', () => {
     );
     choose('brief.pdf');
     const en = messages.en.plainText;
-    await waitFor(() => expect(field(en.header.fields.date).value).toBe('4 June 2018'));
+    await waitFor(() => expect(field(en.header.fields.date).value).toBe('2018-06-04'));
     fireEvent.click(screen.getByRole('checkbox', { name: en.header.use }));
     fireEvent.click(screen.getByRole('checkbox', { name: en.header.conventions }));
     fireEvent.click(screen.getByRole('button', { name: en.extract }));
@@ -1476,7 +1508,7 @@ describe('PDF → Platte tekst: documentkop en metadata', () => {
         'Title: Nieuwe huurovereenkomst',
         'Author: Woningstichting Voorbeeld',
         'Subject: Huur',
-        'Date: 4 June 2018',
+        'Date: 2018-06-04',
         '',
         LETTER_TEXT,
       ].join('\n'),
@@ -1560,7 +1592,7 @@ describe('PDF → Platte tekst: batch', () => {
         'Titel: Nieuwe huurovereenkomst',
         'Auteur: Woningstichting Voorbeeld',
         'Onderwerp: Huur',
-        'Datum: 4 juni 2018',
+        'Datum: 2018-06-04',
         '',
         LETTER_TEXT,
       ].join('\n'),
@@ -1609,7 +1641,7 @@ describe('PDF → Platte tekst: batch', () => {
         'Titel: Nieuwe huurovereenkomst',
         'Auteur: Woningstichting Voorbeeld',
         'Onderwerp: Huur',
-        'Datum: 4 juni 2018',
+        'Datum: 2018-06-04',
         '',
         LETTER_TEXT,
         '',
@@ -1810,7 +1842,7 @@ describe('PDF → Platte tekst: batch', () => {
       'Title: Nieuwe huurovereenkomst',
       'Author: Woningstichting Voorbeeld',
       'Subject: Huur',
-      'Date: 4 June 2018',
+      'Date: 2018-06-04',
     ]);
     expect(message()).toContain(format(en.batch.doneCombined, { ok: 1, failed: '' }));
   });

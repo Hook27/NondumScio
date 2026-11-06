@@ -20,16 +20,14 @@ export const DUTCH_BATCH: BatchWords = {
   end: 'Bestand {n} einde: {name}',
 };
 
-/** Wat er naast de instellingen nodig is: de taal (voor de datum) en de woorden. */
+/** Wat er naast de instellingen nodig is: de woorden, in de taal van de app. */
 export type BatchContext = {
-  language: string;
   concordance: ConcordanceTexts;
   head: HeadTexts;
   words: BatchWords;
 };
 
 export const DUTCH_CONTEXT: BatchContext = {
-  language: 'nl',
   concordance: DUTCH_CONCORDANCE,
   head: DUTCH_HEAD,
   words: DUTCH_BATCH,
@@ -72,7 +70,7 @@ function textOf(doc: BatchDoc, opts: TextOptions, ctx: BatchContext): string {
   return extractText(doc.pages, opts, null, {
     joins: {},
     name: doc.name,
-    meta: metaFromInfo(doc.info, ctx.language),
+    meta: metaFromInfo(doc.info),
     texts: ctx.concordance,
     head: ctx.head,
   }).text;
@@ -103,7 +101,7 @@ export function combinedPart(
   ctx: BatchContext = DUTCH_CONTEXT,
 ): string {
   const body = textOf(doc, { ...opts, header: false, conventions: false }, ctx);
-  const lines = buildHeader('', metaFromInfo(doc.info, ctx.language), ctx.head);
+  const lines = buildHeader('', metaFromInfo(doc.info), ctx.head);
   const start = format(ctx.words.start, { n: no, name: doc.name }) + (lines ? `\n${lines}` : '');
   const end = format(ctx.words.end, { n: no, name: doc.name });
   return body ? `${start}\n\n${body}\n\n${end}` : `${start}\n\n${end}`;

@@ -46,7 +46,6 @@ const PLAIN = { ...DEFAULT_TEXT_OPTIONS, anchors: false, crossPage: false };
 
 const en = messages.en.plainText;
 const ENGLISH: BatchContext = {
-  language: 'en',
   concordance: en.concordance,
   head: { fields: en.header.fields, conventions: en.conventions },
   words: { start: en.batch.start, end: en.batch.end },
@@ -121,7 +120,7 @@ describe('docText (voor de zip)', () => {
         'Bestand: notulen.pdf',
         'Titel: Notulen',
         'Auteur: Bewonerscommissie',
-        'Datum: 4 juni 2018',
+        'Datum: 2018-06-04',
         '',
         '{p1} De vergadering begint.',
         '',
@@ -141,7 +140,7 @@ describe('docText (voor de zip)', () => {
       'File: notulen.pdf',
       'Title: Notulen',
       'Author: Bewonerscommissie',
-      'Date: 4 June 2018',
+      'Date: 2018-06-04',
     ]);
   });
 });
@@ -153,7 +152,7 @@ describe('in één bestand', () => {
         'Bestand 1 start: notulen.pdf',
         'Titel: Notulen',
         'Auteur: Bewonerscommissie',
-        'Datum: 4 juni 2018',
+        'Datum: 2018-06-04',
         '',
         'De vergadering begint.',
         '',
@@ -208,7 +207,7 @@ describe('in één bestand', () => {
       'File 1 start: notulen.pdf',
       'Title: Notulen',
       'Author: Bewonerscommissie',
-      'Date: 4 June 2018',
+      'Date: 2018-06-04',
       '',
       'De vergadering begint.',
       '',
