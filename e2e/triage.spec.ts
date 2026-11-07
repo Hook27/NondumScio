@@ -43,6 +43,7 @@ async function addThree(page: Page) {
     ]);
 }
 
+const fd = tr.folderDialog;
 const list = (page: Page) => page.getByRole('list', { name: tr.files });
 const active = (page: Page) => list(page).locator('[aria-current="true"]');
 const canvas = (page: Page, n: number, lang: 'nl' | 'en' = 'nl') =>
@@ -120,7 +121,7 @@ test.describe('Archief / Triage', () => {
       page.waitForEvent('download'),
       page.getByRole('button', { name: tr.overview.txt }).click(),
     ]);
-    expect(txt.suggestedFilename()).toBe('triage.txt');
+    expect(txt.suggestedFilename()).toMatch(/^triage_\d{4}-\d{2}-\d{2}_\d{4}\.txt$/);
     expect(readFileSync(await txt.path(), 'utf8')).toBe(
       'ARCHIEF TRIAGE\n====================================\n\nBEWAREN:\n  brief.pdf\n\nVERWIJDEREN:\n  factuur.pdf\n\nNIET BEOORDEELD:\n  offerte.pdf\n',
     );
@@ -128,9 +129,9 @@ test.describe('Archief / Triage', () => {
       page.waitForEvent('download'),
       page.getByRole('button', { name: tr.overview.csv }).click(),
     ]);
-    expect(csv.suggestedFilename()).toBe('triage.csv');
+    expect(csv.suggestedFilename()).toMatch(/^triage_\d{4}-\d{2}-\d{2}_\d{4}\.csv$/);
     expect(readFileSync(await csv.path(), 'utf8')).toBe(
-      '"Bestandsnaam","Besluit"\n"brief.pdf","bewaren"\n"factuur.pdf","verwijderen"\n"offerte.pdf","niet beoordeeld"',
+      '"Bestandsnaam","Besluit","Map"\n"brief.pdf","bewaren",""\n"factuur.pdf","verwijderen",""\n"offerte.pdf","niet beoordeeld",""',
     );
   });
 
@@ -189,6 +190,64 @@ test.describe('Archief / Triage', () => {
     ).toBeVisible();
   });
 
+  test('verplaatsen: M voor een nieuwe map, 1–9 voor een gekozen map, en in de lijst', async ({
+    page,
+  }) => {
+    await open(page);
+    await addThree(page);
+    await expect(canvas(page, 1)).toBeVisible(SLOW);
+    // M: een nieuwe map; Enter verplaatst en gaat door naar de volgende.
+    await page.keyboard.press('m');
+    const dialog = page.getByRole('dialog');
+    await expect(dialog.getByRole('heading')).toHaveText(fd.title);
+    await expect(dialog.getByLabel(fd.label)).toBeFocused();
+    await page.keyboard.type('Facturen');
+    await page.keyboard.press('Enter');
+    await expect(dialog).toHaveCount(0);
+    await expect(active(page)).toContainText('factuur.pdf');
+    await expect(
+      list(page).getByRole('button', {
+        name: `brief.pdf, ${format(tr.states.move, { folder: 'Facturen' })}`,
+      }),
+    ).toBeVisible();
+    // 1: de eerste map op naam.
+    await page.keyboard.press('1');
+    await expect(active(page)).toContainText('offerte.pdf');
+    // Een tweede map, met Escape eerst afgebroken.
+    await page.keyboard.press('m');
+    await page.keyboard.press('Escape');
+    await expect(dialog).toHaveCount(0);
+    await page.getByRole('button', { name: tr.newFolder }).click();
+    await page.keyboard.type('Archief');
+    await dialog.getByRole('button', { name: fd.confirm }).click();
+    await expect(
+      page.getByRole('group', { name: tr.moveTo }).getByRole('button', { name: 'Archief' }),
+    ).toHaveAttribute('aria-pressed', 'true');
+
+    await page.getByRole('button', { name: tr.views.overview }).click();
+    await expect(
+      page.getByRole('heading', { name: format(tr.overview.move, { n: 3 }) }),
+    ).toBeVisible();
+    // Factuur toch bewaren.
+    await page
+      .getByRole('button', { name: format(tr.overview.setKeep, { name: 'factuur.pdf' }) })
+      .click();
+    const [csv] = await Promise.all([
+      page.waitForEvent('download'),
+      page.getByRole('button', { name: tr.overview.csv }).click(),
+    ]);
+    expect(readFileSync(await csv.path(), 'utf8')).toBe(
+      '"Bestandsnaam","Besluit","Map"\n"brief.pdf","verplaatsen","Facturen"\n"factuur.pdf","bewaren",""\n"offerte.pdf","verplaatsen","Archief"',
+    );
+    const [txt] = await Promise.all([
+      page.waitForEvent('download'),
+      page.getByRole('button', { name: tr.overview.txt }).click(),
+    ]);
+    expect(readFileSync(await txt.path(), 'utf8')).toBe(
+      'ARCHIEF TRIAGE\n====================================\n\nBEWAREN:\n  factuur.pdf\n\nVERPLAATSEN NAAR Archief:\n  offerte.pdf\n\nVERPLAATSEN NAAR Facturen:\n  brief.pdf\n',
+    );
+  });
+
   test('Wis alles vraagt eerst', async ({ page }) => {
     await open(page);
     await addThree(page);
@@ -212,6 +271,10 @@ test.describe('Archief / Triage', () => {
       await expect(canvas(page, 1)).toBeVisible(SLOW);
       await page.keyboard.press('k');
       await expect(active(page)).toContainText('factuur.pdf');
+      await page.keyboard.press('m');
+      await page.keyboard.type('Facturen');
+      await page.keyboard.press('Enter');
+      await expect(active(page)).toContainText('offerte.pdf');
       const check = async () => {
         const result = await new AxeBuilder({ page })
           .withTags(['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa'])
@@ -221,6 +284,12 @@ test.describe('Archief / Triage', () => {
         ).toEqual([]);
       };
       await check();
+      await page.keyboard.press('m');
+      await expect(page.getByRole('dialog')).toBeVisible();
+      await page.getByRole('dialog').getByRole('button', { name: fd.confirm }).click();
+      await expect(page.getByRole('alert')).toHaveText(fd.empty);
+      await check();
+      await page.keyboard.press('Escape');
       await page.getByRole('button', { name: tr.views.overview }).click();
       await expect(
         page.getByRole('heading', { name: format(tr.overview.keep, { n: 1 }) }),
@@ -253,6 +322,15 @@ for (const size of [
           content: '.workspace__tools { padding-right: 23px !important; }',
         });
         await addThree(page);
+        await expect(canvas(page, 1, lang)).toBeVisible(SLOW);
+        // Met drie gekozen mappen (twee rijen): de knoppen per map staan dan ook in de vaste balk.
+        for (const folder of ['Facturen 2024', 'Belastingdienst', 'Foto/Bloemen']) {
+          await page.getByRole('button', { name: t.newFolder }).click();
+          await page.keyboard.type(folder);
+          await page.keyboard.press('Enter');
+        }
+        await page.keyboard.press('ArrowLeft');
+        await page.keyboard.press('ArrowLeft');
         await expect(canvas(page, 1, lang)).toBeVisible(SLOW);
         const viewport = page.viewportSize()!;
         for (const name of [
@@ -293,6 +371,23 @@ for (const size of [
           ).toBeLessThanOrEqual(0);
           await expect(button).toHaveAttribute('data-tip', `${name} (${key})`);
         }
+        // "+ Nieuwe map" en de knoppen van de mappen: helemaal in beeld (niet weggeschoven of half
+        // afgeknipt), binnen het vak.
+        const move = page.getByRole('group', { name: t.moveTo });
+        for (const name of [t.newFolder, 'Belastingdienst', 'Facturen 2024', 'Foto/Bloemen']) {
+          const button = move.getByRole('button', { name });
+          const box = (await button.boundingBox())!;
+          const area = (await button.evaluate((element) => {
+            const scroller = element.closest('.triage-folders') ?? element.parentElement!;
+            const r = scroller.getBoundingClientRect();
+            return { top: r.top, bottom: r.bottom };
+          }))!;
+          expect(box.y, name).toBeGreaterThanOrEqual(area.top - 0.5);
+          expect(box.y + box.height, name).toBeLessThanOrEqual(
+            Math.min(area.bottom, viewport.height) + 0.5,
+          );
+          expect(box.x + box.width, name).toBeLessThanOrEqual(inner.right + 0.5);
+        }
         // De pagina zelf krijgt het grootste deel van de breedte.
         const view = (await page.locator('.workspace__view').boundingBox())!;
         expect(view.width / viewport.width).toBeGreaterThan(0.55);
@@ -301,5 +396,67 @@ for (const size of [
         expect(shown.width / view.width).toBeGreaterThan(0.8);
       });
     }
+
+    test('de lijst links schuift mee met het bestand van nu, en de pagina zelf schuift niet', async ({
+      page,
+    }) => {
+      // Op 911 × 433 is het linkervak zo laag (175 px) dat de vaste balk het helemaal vult: daar is
+      // de lijst niet te zien. Wel nagaan dat de pagina zelf daar niet schuift.
+      const roomy = size.width >= 1000;
+      test.setTimeout(90_000);
+      await open(page);
+      await page.addStyleTag({
+        content: '.workspace__tools { padding-right: 23px !important; }',
+      });
+      const names = Array.from(
+        { length: 16 },
+        (_, i) => `stuk ${String(i + 1).padStart(2, '0')}.pdf`,
+      );
+      const files = [];
+      for (const name of names) files.push(await pdf(name, 1));
+      await page.locator('#triage-files').setInputFiles(files);
+      await expect(canvas(page, 1)).toBeVisible(SLOW);
+      const pane = page.locator('.workspace__tools');
+      /** Het bestand van nu staat helemaal in het linkervak, boven de vaste balk. */
+      const shown = async (name: string) => {
+        await expect(active(page)).toContainText(name);
+        if (!roomy) return;
+        await expect
+          .poll(() =>
+            active(page).evaluate((item) => {
+              const box = item.getBoundingClientRect();
+              const area = item.closest('.workspace__tools')!.getBoundingClientRect();
+              const bar = document.querySelector('.triage-decide')!.getBoundingClientRect();
+              return box.top >= area.top - 0.5 && box.bottom <= bar.top + 0.5;
+            }),
+          )
+          .toBe(true);
+      };
+      /** De pagina zelf heeft niets om te schuiven. */
+      const pageFits = () =>
+        page.evaluate(
+          () => document.documentElement.scrollHeight <= document.documentElement.clientHeight,
+        );
+      // Een map erbij (de balk onderaan wordt dan hoger), dan om en om bewaren en verplaatsen.
+      await page.keyboard.press('m');
+      await page.keyboard.type('Map');
+      await page.keyboard.press('Enter');
+      for (let i = 1; i < names.length - 1; i++) {
+        await shown(names[i]!);
+        await page.keyboard.press(i % 2 ? 'k' : '1');
+      }
+      await shown(names.at(-1)!);
+      if (roomy) expect(await pane.evaluate((element) => element.scrollTop)).toBeGreaterThan(0);
+      expect(await pageFits()).toBe(true);
+      // Terug naar boven: de lijst schuift mee terug.
+      for (let i = names.length - 2; i >= 0; i--) await page.keyboard.press('ArrowLeft');
+      await shown(names[0]!);
+      // Het overzicht, met verplaatste PDF's (en dus tekst alleen voor schermlezers).
+      await page.getByRole('button', { name: tr.views.overview }).click();
+      await expect(
+        page.getByRole('heading', { name: format(tr.overview.move, { n: 8 }) }),
+      ).toBeVisible();
+      expect(await pageFits()).toBe(true);
+    });
   });
 }

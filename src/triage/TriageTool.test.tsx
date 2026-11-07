@@ -76,6 +76,10 @@ const current = () =>
     .getAllByRole('button')
     .find((b) => b.getAttribute('aria-current') === 'true');
 const names = () => getTriageState().files.map((f) => [f.name, f.decision, f.page]);
+const fd = tr.folderDialog;
+const nameField = () => screen.getByLabelText(fd.label) as HTMLInputElement;
+const folderButton = (name: string) =>
+  within(screen.getByRole('group', { name: tr.moveTo })).getByRole('button', { name });
 const pageText = () => document.querySelector('.plaintext-bar .plaintext-nav__page')?.textContent;
 
 beforeEach(() => {
@@ -157,7 +161,7 @@ describe('TriageTool', () => {
     expect(names().map(([, d]) => d)).toEqual(['remove', 'remove', null, null]);
     const progress = document.querySelector('.triage-progress')!;
     expect(progress.querySelector('p')!.textContent).toBe(
-      `${format(tr.progress, { done: 2, total: 4 })} · ✓ 0 · ✕ 2${format(tr.tallyLabel, { keep: 0, remove: 2 })}`,
+      `${format(tr.progress, { done: 2, total: 4 })} · ✓ 0 · → 0 · ✕ 2${format(tr.tallyLabel, { keep: 0, move: 0, remove: 2 })}`,
     );
     expect(progress.querySelector('progress')!.getAttribute('value')).toBe('2');
     expect(progress.querySelector('progress')!.getAttribute('max')).toBe('4');
@@ -320,7 +324,9 @@ describe('TriageTool', () => {
     expect(vi.mocked(closeVisual)).toHaveBeenCalledWith(getTriageState().files[0]!.file);
   });
 
-  it('het overzicht toont de groepen en downloadt de lijst als .txt en .csv', async () => {
+  it('het overzicht toont de groepen en downloadt de lijst als .txt en .csv, met datum en tijd', async () => {
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(new Date(2026, 10, 7, 18, 30, 12));
     setup();
     choose(pdf('a.pdf'), pdf('b.pdf'), pdf('c.pdf'));
     await settle();
@@ -337,22 +343,23 @@ describe('TriageTool', () => {
 
     fireEvent.click(screen.getByRole('button', { name: tr.overview.txt }));
     const [txt, txtName, txtType] = vi.mocked(downloadFile).mock.calls[0]!;
-    expect(txtName).toBe('triage.txt');
+    expect(txtName).toBe('triage_2026-11-07_1830.txt');
     expect(txtType).toBe('text/plain');
     expect(new TextDecoder().decode(txt as Uint8Array)).toBe(
       'ARCHIEF TRIAGE\n====================================\n\nBEWAREN:\n  a.pdf\n\nVERWIJDEREN:\n  b.pdf\n\nNIET BEOORDEELD:\n  c.pdf\n',
     );
     expect(screen.getByRole('status').textContent).toBe(
-      format(tr.overview.downloaded, { name: 'triage.txt' }),
+      format(tr.overview.downloaded, { name: 'triage_2026-11-07_1830.txt' }),
     );
 
     fireEvent.click(screen.getByRole('button', { name: tr.overview.csv }));
     const [csv, csvName, csvType] = vi.mocked(downloadFile).mock.calls[1]!;
-    expect(csvName).toBe('triage.csv');
+    expect(csvName).toBe('triage_2026-11-07_1830.csv');
     expect(csvType).toBe('text/csv');
     expect(new TextDecoder().decode(csv as Uint8Array)).toBe(
-      '"Bestandsnaam","Besluit"\n"a.pdf","bewaren"\n"b.pdf","verwijderen"\n"c.pdf","niet beoordeeld"',
+      '"Bestandsnaam","Besluit","Map"\n"a.pdf","bewaren",""\n"b.pdf","verwijderen",""\n"c.pdf","niet beoordeeld",""',
     );
+    vi.useRealTimers();
 
     // Een bestand in de lijst kiezen gaat terug naar Beoordelen.
     fireEvent.click(within(list()).getByRole('button', { name: /^b\.pdf/ }));
@@ -384,6 +391,191 @@ describe('TriageTool', () => {
     expect(getTriageState().cur).toBe(-1);
     expect(screen.getByText(tr.placeholder)).toBeTruthy();
     expect(vi.mocked(closeVisual)).toHaveBeenCalled();
+  });
+
+  it('M opent het venster: een nieuwe map typen verplaatst en gaat door; 1–9 kiest een map', async () => {
+    setup();
+    choose(pdf('a.pdf'), pdf('b.pdf'), pdf('c.pdf'), pdf('d.pdf'));
+    await settle();
+    await key('m');
+    const dialog = screen.getByRole('dialog');
+    expect(within(dialog).getByRole('heading').textContent).toBe(fd.title);
+    // In het venster doen de toetsen niets.
+    await key('k');
+    expect(names()[0]![1]).toBe(null);
+    fireEvent.input(nameField(), { target: { value: '  Facturen ' } });
+    fireEvent.click(within(dialog).getByRole('button', { name: fd.confirm }));
+    expect(screen.queryByRole('dialog')).toBeNull();
+    expect(names()[0]![1]).toEqual({ move: 'Facturen' });
+    expect(
+      within(list()).getByRole('button', {
+        name: `a.pdf, ${format(tr.states.move, { folder: 'Facturen' })}`,
+      }),
+    ).toBeTruthy();
+    expect(folderButton('Facturen').getAttribute('aria-pressed')).toBe('true');
+    expect(folderButton('Facturen').getAttribute('data-tip')).toBe(
+      format(tr.folderTip, { folder: 'Facturen', n: 1 }),
+    );
+    await advance();
+    expect(current()?.textContent).toContain('b.pdf');
+
+    // Een tweede map: op naam komt hij vóór Facturen, dus 1 = Archief, 2 = Facturen.
+    await key('M');
+    fireEvent.input(nameField(), { target: { value: 'Archief' } });
+    fireEvent.submit(nameField().form!);
+    await advance();
+    expect(names()[1]![1]).toEqual({ move: 'Archief' });
+    expect(current()?.textContent).toContain('c.pdf');
+    expect(
+      within(screen.getByRole('group', { name: tr.moveTo }))
+        .getAllByRole('button')
+        .map((b) => b.textContent),
+    ).toEqual([tr.newFolder, '1Archief', '2Facturen']);
+    await key('2');
+    await advance();
+    expect(names()[2]![1]).toEqual({ move: 'Facturen' });
+    expect(current()?.textContent).toContain('d.pdf');
+    // Een nummer zonder map doet niets.
+    await key('3');
+    expect(names()[3]![1]).toBe(null);
+    // Nog eens dezelfde map haalt het besluit weg; je blijft staan.
+    await key('1');
+    await key('1');
+    await advance();
+    expect(names()[3]![1]).toBe(null);
+    expect(current()?.textContent).toContain('d.pdf');
+    // Met de knop van de map.
+    fireEvent.click(folderButton('Archief'));
+    expect(names()[3]![1]).toEqual({ move: 'Archief' });
+    const progress = document.querySelector('.triage-progress p')!.textContent;
+    expect(progress).toContain('✓ 0 · → 4 · ✕ 0');
+  });
+
+  it('het venster: een lege naam geeft een melding, een bestaande map (andere hoofdletters) is dezelfde, Annuleren sluit', async () => {
+    setup();
+    choose(pdf('a.pdf'), pdf('b.pdf'), pdf('c.pdf'));
+    await settle();
+    fireEvent.click(screen.getByRole('button', { name: tr.newFolder }));
+    fireEvent.click(screen.getByRole('button', { name: fd.confirm }));
+    expect(screen.getByRole('alert').textContent).toBe(fd.empty);
+    expect(screen.getByRole('dialog')).toBeTruthy();
+    expect(nameField().getAttribute('aria-invalid')).toBe('true');
+    fireEvent.input(nameField(), { target: { value: 'Facturen' } });
+    expect(screen.queryByRole('alert')).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: fd.confirm }));
+    await advance();
+
+    fireEvent.click(screen.getByRole('button', { name: tr.newFolder }));
+    fireEvent.input(nameField(), { target: { value: 'FACTUREN' } });
+    fireEvent.click(screen.getByRole('button', { name: fd.confirm }));
+    expect(getTriageState().folders).toEqual(['Facturen']);
+    expect(names()[1]![1]).toEqual({ move: 'Facturen' });
+    await advance();
+
+    fireEvent.click(screen.getByRole('button', { name: tr.newFolder }));
+    fireEvent.click(screen.getByRole('button', { name: fd.cancel }));
+    expect(screen.queryByRole('dialog')).toBeNull();
+    expect(names()[2]![1]).toBe(null);
+
+    // Een gekozen map aanklikken in het venster.
+    fireEvent.click(screen.getByRole('button', { name: tr.newFolder }));
+    fireEvent.click(
+      within(screen.getByRole('group', { name: fd.existing })).getByRole('button', {
+        name: 'Facturen',
+      }),
+    );
+    expect(names()[2]![1]).toEqual({ move: 'Facturen' });
+    // Via het venster nog eens dezelfde map: het besluit blijft.
+    fireEvent.click(screen.getByRole('button', { name: tr.newFolder }));
+    fireEvent.input(nameField(), { target: { value: 'facturen' } });
+    fireEvent.click(screen.getByRole('button', { name: fd.confirm }));
+    expect(names()[2]![1]).toEqual({ move: 'Facturen' });
+  });
+
+  it('het overzicht: verplaatsen per map, per PDF wijzigen, en alle niet beoordeelde verplaatsen', async () => {
+    setup();
+    choose(pdf('a.pdf'), pdf('b.pdf'), pdf('c.pdf'), pdf('d.pdf'), pdf('e.pdf'));
+    await settle();
+    await key('m');
+    fireEvent.input(nameField(), { target: { value: 'Zaken' } });
+    fireEvent.click(screen.getByRole('button', { name: fd.confirm }));
+    await advance();
+    await key('x');
+    await advance();
+    fireEvent.click(screen.getByRole('button', { name: tr.views.overview }));
+    const moved = screen
+      .getByRole('heading', { name: format(tr.overview.move, { n: 1 }) })
+      .closest('section')!;
+    expect(moved.querySelector('.triage-group__folder')!.textContent).toBe(`→ ${tr.moveTo} Zaken`);
+
+    // Wijzigen: c bewaren (en nog eens = weer niet beoordeeld), b toch bewaren; je blijft in het overzicht.
+    fireEvent.click(
+      screen.getByRole('button', { name: format(tr.overview.setKeep, { name: 'c.pdf' }) }),
+    );
+    expect(names()[2]![1]).toBe('keep');
+    fireEvent.click(
+      screen.getByRole('button', { name: format(tr.overview.setKeep, { name: 'c.pdf' }) }),
+    );
+    expect(names()[2]![1]).toBe(null);
+    fireEvent.click(
+      screen.getByRole('button', { name: format(tr.overview.setKeep, { name: 'b.pdf' }) }),
+    );
+    expect(names()[1]![1]).toBe('keep');
+    fireEvent.click(
+      screen.getByRole('button', { name: format(tr.overview.setRemove, { name: 'a.pdf' }) }),
+    );
+    expect(names()[0]![1]).toBe('remove');
+    expect(
+      screen
+        .getByRole('button', { name: format(tr.overview.setRemove, { name: 'a.pdf' }) })
+        .getAttribute('aria-pressed'),
+    ).toBe('true');
+    // Eén PDF naar een map, via het venster.
+    fireEvent.click(
+      screen.getByRole('button', { name: format(tr.overview.setMove, { name: 'd.pdf' }) }),
+    );
+    fireEvent.click(
+      within(screen.getByRole('group', { name: fd.existing })).getByRole('button', {
+        name: 'Zaken',
+      }),
+    );
+    expect(names()[3]![1]).toEqual({ move: 'Zaken' });
+    // Alle niet beoordeelde (c en e) naar een nieuwe map.
+    fireEvent.click(screen.getByRole('button', { name: tr.overview.moveAll }));
+    expect(within(screen.getByRole('dialog')).getByRole('heading').textContent).toBe(
+      fd.titleUndecided,
+    );
+    fireEvent.input(nameField(), { target: { value: 'Rest' } });
+    fireEvent.click(screen.getByRole('button', { name: fd.confirm }));
+    await advance();
+    expect(names().map(([, d]) => d)).toEqual([
+      'remove',
+      'keep',
+      { move: 'Rest' },
+      { move: 'Zaken' },
+      { move: 'Rest' },
+    ]);
+    expect(getTriageState().view).toBe('overview');
+    expect(screen.queryByRole('heading', { name: /Niet beoordeeld/ })).toBeNull();
+    expect(screen.getByRole('heading', { name: format(tr.overview.move, { n: 3 }) })).toBeTruthy();
+    // Per map, de mappen op naam: Rest (c, e), dan Zaken (d).
+    expect(
+      [...document.querySelectorAll('.triage-group--move .triage-list__name')].map(
+        (e) => e.textContent,
+      ),
+    ).toEqual(['c.pdf', 'e.pdf', 'd.pdf']);
+  });
+
+  it('Wis alles haalt ook de mappen weg', async () => {
+    setup();
+    choose(pdf('a.pdf'));
+    await settle();
+    await key('m');
+    fireEvent.input(nameField(), { target: { value: 'Zaken' } });
+    fireEvent.click(screen.getByRole('button', { name: fd.confirm }));
+    fireEvent.click(screen.getByRole('button', { name: tr.clear }));
+    fireEvent.click(screen.getByRole('button', { name: tr.clearConfirm }));
+    expect(getTriageState().folders).toEqual([]);
   });
 
   it('in het Engels', async () => {

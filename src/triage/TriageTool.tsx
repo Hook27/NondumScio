@@ -11,13 +11,17 @@ import { PdfLoadError } from '../pdf/loader';
 import { downloadFile } from '../pdf/save';
 import {
   addTriageFiles,
+  askFolder,
+  chooseFolder,
   clearTriage,
   decide,
   getTriageState,
+  moveToNumber,
   navigate,
   select,
   setFit,
   setPage,
+  setDecision,
   setPageCount,
   setView,
   setZoom,
@@ -25,7 +29,21 @@ import {
   type Fit,
   type TriageView,
 } from './store';
-import { counts, groups, triageCsv, triageTxt, type ExportTexts, type TriageFile } from './triage';
+import {
+  byFolder,
+  counts,
+  exportName,
+  groups,
+  isMove,
+  sameDecision,
+  sortFolders,
+  triageCsv,
+  triageTxt,
+  type Choice,
+  type Decision,
+  type ExportTexts,
+  type TriageFile,
+} from './triage';
 
 type Texts = ReturnType<typeof useI18n>['t'];
 
@@ -33,11 +51,12 @@ const VIEWS: readonly TriageView[] = ['review', 'overview'];
 const FITS: readonly Fit[] = ['page', 'width'];
 
 /**
- * Archief / Triage: PDF's één voor één bekijken en per PDF beslissen: bewaren of verwijderen,
- * met een toets (K of X); daarna komt vanzelf de volgende die nog niet beoordeeld is. Het
- * overzicht toont de lijsten, om te downloaden als .txt of .csv. Overgenomen uit de losse
- * pdf-triage.html (de lijst) en DocumentTriage (naar de volgende onbeoordeelde); bladeren en zoomen
- * zoals bij PDF → Platte tekst. Er gebeurt niets met de bestanden zelf.
+ * Archief / Triage: PDF's één voor één bekijken en per PDF beslissen: bewaren, verplaatsen naar een
+ * map of verwijderen, met een toets (K, M of 1–9, X); daarna komt vanzelf de volgende die nog niet
+ * beoordeeld is. Het overzicht toont de lijsten (en daar kun je nog wijzigen), om te downloaden als
+ * .txt of .csv. Overgenomen uit de losse pdf-triage.html (de lijst) en DocumentTriage (verplaatsen,
+ * naar de volgende onbeoordeelde); bladeren en zoomen zoals bij PDF → Platte tekst. Er gebeurt
+ * niets met de bestanden zelf.
  */
 export function TriageTool() {
   const { t } = useI18n();
@@ -55,13 +74,14 @@ export function TriageTool() {
       <div class="workspace__view" data-scroll-root>
         {view === 'review' ? <Review /> : <Overview />}
       </div>
+      <FolderDialog />
     </section>
   );
 }
 
 /**
- * De toetsen bij Beoordelen: K bewaren, X verwijderen, ← → ander bestand, ↑ ↓ (en Page Up, Page
- * Down, Home, End) bladeren. Niet in een invoerveld, niet met Ctrl/Alt en niet als er een venster
+ * De toetsen bij Beoordelen: K bewaren, X verwijderen, M naar een nieuwe map, 1–9 naar een gekozen
+ * map, ← → ander bestand, ↑ ↓ (en Page Up, Page Down, Home, End) bladeren. Niet in een invoerveld, niet met Ctrl/Alt en niet als er een venster
  * open is.
  */
 function useKeys() {
@@ -78,6 +98,7 @@ function useKeys() {
       const actions: Record<string, () => void> = {
         k: () => decide('keep'),
         x: () => decide('remove'),
+        m: () => askFolder({ kind: 'current' }),
         ArrowLeft: () => navigate(-1),
         ArrowRight: () => navigate(1),
         ArrowUp: () => setPage(current.page - 1),
@@ -88,7 +109,7 @@ function useKeys() {
         End: () => setPage(last),
       };
       const key = event.key.length === 1 ? event.key.toLowerCase() : event.key;
-      const action = actions[key];
+      const action = /^[1-9]$/.test(key) ? () => moveToNumber(Number(key)) : actions[key];
       if (!action) return;
       event.preventDefault();
       action();
@@ -178,7 +199,7 @@ function Slot() {
   );
 }
 
-/** "3 van 10 beoordeeld · ✓ 2 · ✕ 1", met een voortgangsbalk. */
+/** "3 van 10 beoordeeld · ✓ 1 · → 1 · ✕ 1", met een voortgangsbalk. */
 function Progress() {
   const { t } = useI18n();
   const tr = t.triage;
@@ -191,9 +212,9 @@ function Progress() {
       <p class="triage-progress__text">
         {progress}
         {' · '}
-        <span aria-hidden="true">{`✓ ${c.keep} · ✕ ${c.remove}`}</span>
+        <span aria-hidden="true">{`✓ ${c.keep} · → ${c.move} · ✕ ${c.remove}`}</span>
         <span class="visually-hidden">
-          {format(tr.tallyLabel, { keep: c.keep, remove: c.remove })}
+          {format(tr.tallyLabel, { keep: c.keep, move: c.move, remove: c.remove })}
         </span>
       </p>
       <progress
@@ -214,8 +235,9 @@ function FileList() {
   const list = useRef<HTMLOListElement>(null);
   // Het bestand van nu in beeld houden, ook als het vanzelf verder gaat na een besluit.
   useLayoutEffect(() => {
-    list.current?.querySelector('[aria-current="true"]')?.scrollIntoView?.({ block: 'nearest' });
-  }, [cur]);
+    const item = list.current?.querySelector<HTMLElement>('[aria-current="true"]');
+    if (item) reveal(item);
+  }, [cur, files.length]);
   if (files.length === 0) return null;
   return (
     <ol ref={list} class="triage-list" aria-label={tr.files}>
@@ -223,12 +245,15 @@ function FileList() {
         <li key={entry.id}>
           <button
             type="button"
-            class={['triage-list__item', entry.decision && `triage-list__item--${entry.decision}`]
+            class={[
+              'triage-list__item',
+              entry.decision && `triage-list__item--${kind(entry.decision)}`,
+            ]
               .filter(Boolean)
               .join(' ')}
             aria-current={index === cur ? 'true' : undefined}
             // Een schermlezer hoort "brief.pdf, bewaren": de naam zoals hij er staat, en het besluit.
-            aria-label={`${entry.name}, ${tr.states[entry.decision ?? 'none']}`}
+            aria-label={`${entry.name}, ${stateText(entry.decision, t)}`}
             data-tip={entry.name}
             onClick={() => select(index)}
           >
@@ -241,13 +266,48 @@ function FileList() {
   );
 }
 
-/** Vast onderaan links: naar het vorige of volgende bestand, en de knoppen Verwijderen en Bewaren. */
+/** Het soort besluit, voor de stip en de klasse: bewaren, verplaatsen of verwijderen. */
+const kind = (decision: Choice): 'keep' | 'move' | 'remove' =>
+  isMove(decision) ? 'move' : decision;
+
+/** Het besluit in woorden: "bewaren", "verplaatsen naar Facturen", "nog niet beoordeeld". */
+function stateText(decision: Decision, t: Texts): string {
+  const states = t.triage.states;
+  if (isMove(decision)) return states.move.replace('{folder}', () => decision.move);
+  return states[decision ?? 'none'];
+}
+
+/**
+ * Schuift het linkervak zo dat dit bestand in beeld staat, met één regel ruimte erboven en eronder,
+ * en niet achter de vaste balk onderaan (die is hoger met de mappen erin). Alleen dat vak schuift:
+ * `scrollIntoView` zou ook de pagina zelf kunnen schuiven.
+ */
+function reveal(item: HTMLElement) {
+  const pane = item.closest<HTMLElement>('.workspace__tools');
+  if (!pane || pane.scrollHeight <= pane.clientHeight) return;
+  const box = item.getBoundingClientRect();
+  const area = pane.getBoundingClientRect();
+  const bar = pane.querySelector('.triage-decide')?.getBoundingClientRect();
+  const end = bar ? bar.top : area.bottom;
+  // Eén regel ruimte erboven en eronder; is het vak daarvoor te laag, dan minder.
+  const room = Math.max(0, Math.min(box.height, (end - area.top - box.height) / 2));
+  const top = area.top + room;
+  const bottom = end - room;
+  if (box.bottom > bottom) pane.scrollTop += box.bottom - bottom;
+  else if (box.top < top) pane.scrollTop -= top - box.top;
+}
+
+/**
+ * Vast onderaan links: naar het vorige of volgende bestand, de gekozen mappen (op naam, met de
+ * toets 1–9) en "+ Nieuwe map" (M), en de knoppen Verwijderen en Bewaren.
+ */
 function DecideBar() {
   const { t } = useI18n();
   const tr = t.triage;
-  const { files, cur } = useTriageState();
+  const { files, cur, folders } = useTriageState();
   const current = files[cur];
   if (!current) return null;
+  const decision = current.decision;
   return (
     <div class="triage-decide">
       <div class="plaintext-nav triage-filenav" role="group" aria-label={tr.fileNav}>
@@ -275,6 +335,44 @@ function DecideBar() {
         >
           ›
         </button>
+      </div>
+      <div class="triage-move" role="group" aria-label={tr.moveTo}>
+        <div class="triage-move__head">
+          <span class="triage-folders__label" aria-hidden="true">
+            {tr.moveTo}
+          </span>
+          <button
+            type="button"
+            class="button button--secondary triage-folder"
+            aria-keyshortcuts="M"
+            data-tip={tr.newFolderTip}
+            onClick={() => askFolder({ kind: 'current' })}
+          >
+            {tr.newFolder}
+          </button>
+        </div>
+        {folders.length > 0 && (
+          <div class="triage-folders">
+            {sortFolders(folders).map((folder, i) => (
+              <button
+                key={folder}
+                type="button"
+                class="button button--secondary triage-folder"
+                aria-pressed={sameDecision(decision, { move: folder })}
+                aria-keyshortcuts={i < 9 ? String(i + 1) : undefined}
+                data-tip={i < 9 ? format(tr.folderTip, { folder, n: i + 1 }) : folder}
+                onClick={() => decide({ move: folder })}
+              >
+                {i < 9 && (
+                  <span class="triage-folder__key" aria-hidden="true">
+                    {i + 1}
+                  </span>
+                )}
+                <span class="triage-folder__name">{folder}</span>
+              </button>
+            ))}
+          </div>
+        )}
       </div>
       <div class="triage-decide__buttons" role="group" aria-label={tr.decide}>
         <button
@@ -602,7 +700,11 @@ function CanvasBox({
 /** De woorden van de lijsten in de taal van de app. */
 const exportTexts = (t: Texts): ExportTexts => t.triage.export;
 
-/** Het overzicht: de drie groepen, en de lijst downloaden als .txt of .csv, zoals pdf-triage.html. */
+/**
+ * Het overzicht: de groepen (verplaatsen per map), en de lijst downloaden als .txt of .csv, zoals
+ * pdf-triage.html, met de datum en tijd in de naam. Per PDF kun je het besluit nog wijzigen, en
+ * alle PDF's die nog niet beoordeeld zijn in één keer naar een map sturen, zoals in DocumentTriage.
+ */
 function Overview() {
   const { t } = useI18n();
   const tr = t.triage;
@@ -610,10 +712,31 @@ function Overview() {
   const { files } = useTriageState();
   const [status, setStatus] = useState<string | null>(null);
   const all = groups(files);
-  const save = (name: string, text: string, type: string) => {
-    downloadFile(new TextEncoder().encode(text), name, type);
+  const save = (extension: 'txt' | 'csv') => {
+    const name = exportName(new Date(), extension);
+    const text =
+      extension === 'txt' ? triageTxt(files, exportTexts(t)) : triageCsv(files, exportTexts(t));
+    downloadFile(
+      new TextEncoder().encode(text),
+      name,
+      extension === 'txt' ? 'text/plain' : 'text/csv',
+    );
     setStatus(format(o.downloaded, { name }));
   };
+  const item = (entry: TriageFile) => (
+    <li key={entry.id} class="triage-group__item">
+      <span class="triage-list__dot" aria-hidden="true" />
+      <span class="triage-list__name">{entry.name}</span>
+      {isMove(entry.decision) && (
+        <span class="triage-group__folder">
+          <span aria-hidden="true">→ </span>
+          <span class="visually-hidden">{`${tr.moveTo} `}</span>
+          {entry.decision.move}
+        </span>
+      )}
+      <Change entry={entry} />
+    </li>
+  );
   return (
     <>
       <Bar>
@@ -622,7 +745,7 @@ function Overview() {
             type="button"
             class="button button--secondary"
             disabled={files.length === 0}
-            onClick={() => save('triage.txt', triageTxt(files, exportTexts(t)), 'text/plain')}
+            onClick={() => save('txt')}
           >
             {o.txt}
           </button>
@@ -630,7 +753,7 @@ function Overview() {
             type="button"
             class="button button--secondary"
             disabled={files.length === 0}
-            onClick={() => save('triage.csv', triageCsv(files, exportTexts(t)), 'text/csv')}
+            onClick={() => save('csv')}
           >
             {o.csv}
           </button>
@@ -642,21 +765,177 @@ function Overview() {
         </p>
       )}
       {files.length === 0 && <p class="compare__placeholder">{o.empty}</p>}
-      {(['keep', 'remove', 'none'] as const).map((key) =>
+      {(['keep', 'move', 'remove', 'none'] as const).map((key) =>
         all[key].length === 0 ? null : (
           <section key={key} class={`triage-group triage-group--${key}`}>
-            <h2 class="triage-group__title">{format(o[key], { n: all[key].length })}</h2>
+            <div class="triage-group__head">
+              <h2 class="triage-group__title">{format(o[key], { n: all[key].length })}</h2>
+              {key === 'none' && (
+                <button
+                  type="button"
+                  class="button button--secondary triage-group__all"
+                  onClick={() => askFolder({ kind: 'undecided' })}
+                >
+                  {o.moveAll}
+                </button>
+              )}
+            </div>
             <ul class="triage-group__list">
-              {all[key].map((entry) => (
-                <li key={entry.id} class="triage-group__item">
-                  <span class="triage-list__dot" aria-hidden="true" />
-                  <span class="triage-list__name">{entry.name}</span>
-                </li>
-              ))}
+              {key === 'move'
+                ? byFolder(files).flatMap(({ files: moved }) => moved.map(item))
+                : all[key].map(item)}
             </ul>
           </section>
         ),
       )}
     </>
+  );
+}
+
+/** Het besluit voor één PDF in het overzicht wijzigen: bewaren, verplaatsen (venster) of verwijderen. */
+function Change({ entry }: { entry: TriageFile }) {
+  const { t } = useI18n();
+  const o = t.triage.overview;
+  const set = (choice: 'keep' | 'remove') =>
+    setDecision(entry.id, entry.decision === choice ? null : choice);
+  return (
+    <span class="triage-change" role="group" aria-label={format(o.change, { name: entry.name })}>
+      <button
+        type="button"
+        class="triage-change__button"
+        aria-label={format(o.setKeep, { name: entry.name })}
+        aria-pressed={entry.decision === 'keep'}
+        data-tip={t.triage.keep}
+        onClick={() => set('keep')}
+      >
+        ✓
+      </button>
+      <button
+        type="button"
+        class="triage-change__button"
+        aria-label={format(o.setMove, { name: entry.name })}
+        aria-pressed={isMove(entry.decision)}
+        data-tip={t.triage.moveTo}
+        onClick={() => askFolder({ kind: 'file', id: entry.id })}
+      >
+        →
+      </button>
+      <button
+        type="button"
+        class="triage-change__button"
+        aria-label={format(o.setRemove, { name: entry.name })}
+        aria-pressed={entry.decision === 'remove'}
+        data-tip={t.triage.remove}
+        onClick={() => set('remove')}
+      >
+        ✕
+      </button>
+    </span>
+  );
+}
+
+/**
+ * Het venster "Verplaatsen naar een map": een naam typen (een nieuwe map), of een gekozen map
+ * aanklikken. Enter verplaatst, Escape of Annuleren sluit. Een lege naam geeft een melding.
+ */
+function FolderDialog() {
+  const { asking } = useTriageState();
+  return asking ? <FolderForm undecided={asking.kind === 'undecided'} /> : null;
+}
+
+function FolderForm({ undecided }: { undecided: boolean }) {
+  const { t } = useI18n();
+  const d = t.triage.folderDialog;
+  const { folders } = useTriageState();
+  const dialog = useRef<HTMLDialogElement>(null);
+  const input = useRef<HTMLInputElement>(null);
+  const [value, setValue] = useState('');
+  const [empty, setEmpty] = useState(false);
+
+  useLayoutEffect(() => {
+    const element = dialog.current;
+    if (!element) return;
+    if (typeof element.showModal === 'function') element.showModal();
+    else element.setAttribute('open', '');
+    input.current?.focus();
+    return () => {
+      if (element.open && typeof element.close === 'function') element.close();
+    };
+  }, []);
+
+  const sorted = sortFolders(folders);
+  return (
+    <dialog
+      ref={dialog}
+      class="save-dialog triage-folder-dialog"
+      aria-labelledby="triage-folder-title"
+      onCancel={(event) => {
+        event.preventDefault();
+        askFolder(null);
+      }}
+    >
+      <form
+        method="dialog"
+        onSubmit={(event) => {
+          event.preventDefault();
+          if (!chooseFolder(value)) setEmpty(true);
+        }}
+      >
+        <h2 id="triage-folder-title" class="save-dialog__title">
+          {undecided ? d.titleUndecided : d.title}
+        </h2>
+        <label for="triage-folder-name" class="save-dialog__label">
+          {d.label}
+        </label>
+        <input
+          ref={input}
+          id="triage-folder-name"
+          class="save-dialog__input triage-folder-dialog__input"
+          type="text"
+          value={value}
+          spellcheck={false}
+          autocomplete="off"
+          aria-describedby="triage-folder-hint"
+          aria-invalid={empty}
+          onInput={(event) => {
+            setValue(event.currentTarget.value);
+            setEmpty(false);
+          }}
+        />
+        <p id="triage-folder-hint" class="compare-settings__hint">
+          {d.hint}
+        </p>
+        {empty && (
+          <p class="triage-folder-dialog__error" role="alert">
+            {d.empty}
+          </p>
+        )}
+        {sorted.length > 0 && (
+          <div class="triage-folders" role="group" aria-label={d.existing}>
+            <span class="triage-folders__label" aria-hidden="true">
+              {d.existing}
+            </span>
+            {sorted.map((folder) => (
+              <button
+                key={folder}
+                type="button"
+                class="button button--secondary triage-folder"
+                onClick={() => chooseFolder(folder)}
+              >
+                <span class="triage-folder__name">{folder}</span>
+              </button>
+            ))}
+          </div>
+        )}
+        <div class="save-dialog__actions">
+          <button type="button" class="button button--secondary" onClick={() => askFolder(null)}>
+            {d.cancel}
+          </button>
+          <button type="submit" class="button">
+            {d.confirm}
+          </button>
+        </div>
+      </form>
+    </dialog>
   );
 }
