@@ -1844,6 +1844,217 @@ h1 {
   display: block;
 }
 
+/* Archief / Triage. De werkwijze bovenaan, met een korte regel eronder. */
+.triage-mode {
+  margin: 0 0 0.3rem;
+}
+
+.triage-mode .segmented__button:disabled {
+  color: var(--text-muted);
+  cursor: not-allowed;
+}
+
+.triage-mode__hint {
+  margin: 0 0 0.6rem;
+}
+
+/* "3 van 10 beoordeeld · ✓ 2 · ✕ 1" met een balk, zoals in pdf-triage.html. */
+.triage-progress {
+  margin: 0 0 0.5rem;
+}
+
+.triage-progress__text {
+  margin: 0 0 0.25rem;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 0.85rem;
+}
+
+.triage-progress__bar {
+  display: block;
+  width: 100%;
+  height: 0.4rem;
+  accent-color: var(--accent);
+}
+
+/* De lijst: een stip per besluit (grijs, groen bewaren, rood verwijderen); de PDF van nu met een
+   streep links, zoals in pdf-triage.html. */
+.triage-list {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 1px;
+  margin: 0 0 0.6rem;
+  padding: 0;
+  list-style: none;
+}
+
+.triage-list__item {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  width: 100%;
+  padding: 0.3rem 0.5rem;
+  color: var(--text);
+  font: inherit;
+  font-size: 0.85rem;
+  text-align: left;
+  background: none;
+  border: 0;
+  border-left: 3px solid transparent;
+  border-radius: 4px;
+  cursor: pointer;
+  /* Bij in beeld schuiven niet achter de vaste balk met Verwijderen en Bewaren. */
+  scroll-margin-bottom: 8rem;
+}
+
+.triage-list__item:hover {
+  background: var(--surface);
+}
+
+.triage-list__item[aria-current='true'] {
+  background: var(--surface);
+  border-left-color: var(--accent);
+  box-shadow: inset 0 0 0 1px var(--border);
+}
+
+.triage-list__item--remove .triage-list__name {
+  color: var(--text-muted);
+  text-decoration: line-through;
+}
+
+.triage-list__dot {
+  flex: none;
+  width: 0.5rem;
+  height: 0.5rem;
+  background: var(--border);
+  border-radius: 50%;
+}
+
+.triage-list__item--keep .triage-list__dot,
+.triage-group--keep .triage-list__dot {
+  background: var(--added-line);
+}
+
+.triage-list__item--remove .triage-list__dot,
+.triage-group--remove .triage-list__dot {
+  background: var(--removed-line);
+}
+
+.triage-list__name {
+  min-width: 0;
+  overflow: hidden;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Vast onderaan het linkervak: ander bestand, en Verwijderen of Bewaren. */
+.triage-decide {
+  position: sticky;
+  bottom: -1rem;
+  z-index: 1;
+  display: grid;
+  gap: 0.5rem;
+  margin: 0 0 0.75rem;
+  padding: 0.6rem 0 0.75rem;
+  background: var(--bg);
+  border-top: 1px solid var(--border);
+}
+
+.triage-filenav {
+  justify-content: center;
+}
+
+.triage-decide__buttons {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.5rem;
+}
+
+.triage-decide__buttons .button {
+  padding: 0.5rem 0.6rem;
+  white-space: nowrap;
+}
+
+.triage-decide__keep {
+  background: var(--added-line);
+  border-color: var(--added-line);
+}
+
+.triage-decide__remove {
+  background: var(--removed-line);
+  border-color: var(--removed-line);
+}
+
+/* Het besluit van nu: een rand eromheen, zoals in pdf-triage.html. */
+.triage-decide__buttons .button[aria-pressed='true'] {
+  outline: 2px solid var(--text);
+  outline-offset: 2px;
+}
+
+.triage-kbd {
+  padding: 0 0.3rem;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 0.75rem;
+  border: 1px solid currentColor;
+  border-radius: 3px;
+  opacity: 0.8;
+}
+
+/* De naam en het aantal pagina's, achteraan in de balk; te lang = afgekapt (de hele naam als hint). */
+.triage-meta {
+  flex: 1 1 10rem;
+  min-width: 0;
+  margin: 0;
+  overflow: hidden;
+  color: var(--text-muted);
+  font-size: 0.85rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* De balk boven de PDF wat compacter: zo blijft er op een klein scherm meer over voor de pagina. */
+.workspace.triage .plaintext-bar {
+  gap: 0.35rem 0.75rem;
+}
+
+.workspace.triage .plaintext-bar .button {
+  padding: 0.25rem 0.55rem;
+}
+
+.workspace.triage .plaintext-bar .segmented__button {
+  min-height: 2rem;
+  padding: 0.2rem 0.7rem;
+}
+
+/* Het overzicht: per groep een kop en de namen. */
+.triage-group {
+  margin: 0 0 1rem;
+}
+
+.triage-group__title {
+  margin: 0 0 0.4rem;
+  font-size: 0.95rem;
+}
+
+.triage-group__list {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 0.25rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.triage-group__item {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  padding: 0.35rem 0.7rem;
+  font-size: 0.85rem;
+  background: var(--surface);
+  border-radius: 4px;
+}
+
 .plaintext-zones-layer {
   position: absolute;
   inset: 0;
@@ -3109,6 +3320,15 @@ h1 {
   /* PDF → Platte tekst: hetzelfde smalle linkervak, zodat de tekst de ruimte heeft. */
   .workspace.plaintext {
     grid-template-columns: minmax(16rem, 20rem) minmax(0, 1fr);
+  }
+
+  /* Archief / Triage: een smal linkervak met de lijst, zodat de PDF de ruimte heeft. */
+  .workspace.triage {
+    grid-template-columns: minmax(15rem, 18rem) minmax(0, 1fr);
+  }
+
+  .workspace.triage .workspace__view {
+    scrollbar-gutter: stable;
   }
 
   /* De balk blijft staan als je bij ingezoomd voorbeeld of lange tekst omlaag schuift. */

@@ -107,6 +107,26 @@ export function closeVisual(file: File): void {
   pdf.then(closePdf, () => undefined);
 }
 
+/**
+ * Het aantal pagina's van een PDF en de maat (in punten) van pagina `pageNumber`; null als die
+ * pagina niet bestaat. Gebruikt dezelfde geopende PDF als het tekenen. Kan de PDF niet open, dan
+ * een `PdfLoadError` (zie `loadPdf`).
+ */
+export async function pageSize(
+  file: File,
+  pageNumber: number,
+): Promise<{ count: number; w: number; h: number } | null> {
+  const pdf = await pdfFor(file);
+  if (pageNumber < 1 || pageNumber > pdf.numPages) return null;
+  const page = await pdf.getPage(pageNumber);
+  try {
+    const { width, height } = page.getViewport({ scale: 1 });
+    return { count: pdf.numPages, w: width, h: height };
+  } finally {
+    page.cleanup();
+  }
+}
+
 /** Tekent een pagina op een witte achtergrond, `width` beeldpunten breed; null als hij niet bestaat. */
 export async function renderPage(
   file: File,
