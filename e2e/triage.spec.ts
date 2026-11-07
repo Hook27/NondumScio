@@ -1,0 +1,305 @@
+import AxeBuilder from '@axe-core/playwright';
+import { readFileSync } from 'node:fs';
+import { expect, test, type Locator, type Page } from '@playwright/test';
+import { PDFDocument, StandardFonts } from 'pdf-lib';
+import { format } from '../src/i18n/format';
+import { messages, openPage, type Theme } from './helpers';
+
+/**
+ * Archief / Triage (Geavanceerd, alleen op de computer): PDF's één voor één bekijken, per PDF
+ * bewaren of verwijderen, en de lijst downloaden. De PDF's worden hier gemaakt en in de browser door
+ * pdf.js gelezen, zoals bij een echte PDF.
+ */
+
+/** Openen met pdf.js kan onder belasting even duren: de eerste controle wacht langer. */
+const SLOW = { timeout: 15_000 };
+
+const nl = messages.nl;
+const tr = nl.triage;
+const pv = nl.plainText.preview;
+
+/** Een PDF met `pages` pagina's; op elke pagina staat "<naam> pagina <n>". */
+async function pdf(name: string, pages: number) {
+  const doc = await PDFDocument.create();
+  const font = await doc.embedFont(StandardFonts.Helvetica);
+  for (let n = 1; n <= pages; n++) {
+    doc.addPage([595, 842]).drawText(`${name} pagina ${n}`, { x: 72, y: 760, size: 24, font });
+  }
+  return { name, mimeType: 'application/pdf', buffer: Buffer.from(await doc.save()) };
+}
+
+async function open(page: Page, lang: 'nl' | 'en' = 'nl', theme?: Theme) {
+  await openPage(page, '/#/advanced/triage', { lang, theme });
+  await expect(page.getByRole('heading', { level: 1 })).toBeVisible();
+}
+
+async function addThree(page: Page) {
+  await page
+    .locator('#triage-files')
+    .setInputFiles([
+      await pdf('brief.pdf', 2),
+      await pdf('factuur.pdf', 1),
+      await pdf('offerte.pdf', 3),
+    ]);
+}
+
+const list = (page: Page) => page.getByRole('list', { name: tr.files });
+const active = (page: Page) => list(page).locator('[aria-current="true"]');
+const canvas = (page: Page, n: number, lang: 'nl' | 'en' = 'nl') =>
+  page.getByRole('img', { name: format(messages[lang].plainText.preview.canvas, { n }) });
+const pageNumber = (page: Page) =>
+  page.locator('.plaintext-bar .plaintext-nav__page [aria-hidden]');
+
+/**
+ * Het aantal regels van de tekst op een knop: de bovenkanten van de stukjes tekst, waarbij een
+ * verschil van minder dan een halve letterhoogte (een ✓ of een kleiner toetsje) dezelfde regel is.
+ */
+const lines = (button: Locator) =>
+  button.evaluate((element) => {
+    const size = parseFloat(getComputedStyle(element).fontSize);
+    const walker = document.createTreeWalker(element, NodeFilter.SHOW_TEXT);
+    const tops: number[] = [];
+    for (let node = walker.nextNode(); node; node = walker.nextNode()) {
+      if (!node.textContent?.trim()) continue;
+      const range = document.createRange();
+      range.selectNodeContents(node);
+      for (const rect of range.getClientRects()) tops.push(rect.top);
+    }
+    tops.sort((a, b) => a - b);
+    return tops.filter((top, i) => i === 0 || top - tops[i - 1]! > size / 2).length;
+  });
+
+test.describe('Archief / Triage', () => {
+  test.skip(({ isMobile }) => isMobile, 'Archief / Triage is er alleen op een breed scherm');
+
+  test('PDF’s beoordelen met toetsen, bladeren, en de lijst downloaden', async ({ page }) => {
+    await open(page);
+    await expect(page.getByText(tr.placeholder)).toBeVisible();
+    await expect(page.getByRole('button', { name: tr.modes.folder })).toBeDisabled();
+
+    await addThree(page);
+    await expect(list(page).getByRole('button')).toHaveCount(3);
+    await expect(active(page)).toContainText('brief.pdf');
+    await expect(canvas(page, 1)).toBeVisible(SLOW);
+    await expect(pageNumber(page)).toHaveText('1 / 2');
+    await expect(page.locator('.triage-meta')).toContainText('brief.pdf · 2 pagina’s');
+
+    // Bladeren met ↓ en End; ← → gaat naar een ander bestand.
+    await page.keyboard.press('ArrowDown');
+    await expect(canvas(page, 2)).toBeVisible(SLOW);
+    await expect(pageNumber(page)).toHaveText('2 / 2');
+    await page.keyboard.press('ArrowRight');
+    await expect(active(page)).toContainText('factuur.pdf');
+    await expect(pageNumber(page)).toHaveText('1 / 1');
+    await page.keyboard.press('ArrowLeft');
+    await expect(active(page)).toContainText('brief.pdf');
+    await expect(pageNumber(page)).toHaveText('2 / 2');
+
+    // K bewaart en gaat vanzelf naar de volgende; X verwijdert.
+    await page.keyboard.press('k');
+    await expect(active(page)).toContainText('factuur.pdf');
+    await page.keyboard.press('x');
+    await expect(active(page)).toContainText('offerte.pdf');
+    await expect(canvas(page, 1)).toBeVisible(SLOW);
+    await expect(page.locator('.triage-progress__text')).toContainText(
+      format(tr.progress, { done: 2, total: 3 }),
+    );
+    await expect(
+      list(page).getByRole('button', { name: `brief.pdf, ${tr.states.keep}` }),
+    ).toBeVisible();
+    await expect(
+      list(page).getByRole('button', { name: `factuur.pdf, ${tr.states.remove}` }),
+    ).toBeVisible();
+
+    // Overzicht en downloaden.
+    await page.getByRole('button', { name: tr.views.overview }).click();
+    await expect(
+      page.getByRole('heading', { name: format(tr.overview.keep, { n: 1 }) }),
+    ).toBeVisible();
+    const [txt] = await Promise.all([
+      page.waitForEvent('download'),
+      page.getByRole('button', { name: tr.overview.txt }).click(),
+    ]);
+    expect(txt.suggestedFilename()).toBe('triage.txt');
+    expect(readFileSync(await txt.path(), 'utf8')).toBe(
+      'ARCHIEF TRIAGE\n====================================\n\nBEWAREN:\n  brief.pdf\n\nVERWIJDEREN:\n  factuur.pdf\n\nNIET BEOORDEELD:\n  offerte.pdf\n',
+    );
+    const [csv] = await Promise.all([
+      page.waitForEvent('download'),
+      page.getByRole('button', { name: tr.overview.csv }).click(),
+    ]);
+    expect(csv.suggestedFilename()).toBe('triage.csv');
+    expect(readFileSync(await csv.path(), 'utf8')).toBe(
+      '"Bestandsnaam","Besluit"\n"brief.pdf","bewaren"\n"factuur.pdf","verwijderen"\n"offerte.pdf","niet beoordeeld"',
+    );
+  });
+
+  test('met de knoppen: beslissen, bladeren en zoomen', async ({ page }) => {
+    await open(page);
+    await addThree(page);
+    await expect(canvas(page, 1)).toBeVisible(SLOW);
+    const before = (await canvas(page, 1).boundingBox())!.width;
+    await page.getByRole('button', { name: pv.zoomIn }).click();
+    await expect
+      .poll(async () => (await canvas(page, 1).boundingBox())?.width ?? 0)
+      .toBeGreaterThan(before * 1.2);
+    await page.getByRole('button', { name: pv.fitPage }).click();
+    await page.getByRole('button', { name: pv.next }).click();
+    await expect(canvas(page, 2)).toBeVisible(SLOW);
+
+    await page.getByRole('button', { name: tr.keep, exact: true }).click();
+    await expect(page.getByRole('button', { name: tr.keep, exact: true })).toHaveAttribute(
+      'aria-pressed',
+      'true',
+    );
+    await expect(active(page)).toContainText('factuur.pdf');
+    await page.getByRole('button', { name: tr.previousFile }).click();
+    await expect(active(page)).toContainText('brief.pdf');
+    // Nog eens Bewaren haalt het besluit weg; je blijft staan.
+    await page.getByRole('button', { name: tr.keep, exact: true }).click();
+    await expect(page.getByRole('button', { name: tr.keep, exact: true })).toHaveAttribute(
+      'aria-pressed',
+      'false',
+    );
+    await page.waitForTimeout(400);
+    await expect(active(page)).toContainText('brief.pdf');
+  });
+
+  test('andere bestanden en dubbele namen worden overgeslagen; een kapotte PDF geeft een melding', async ({
+    page,
+  }) => {
+    await open(page);
+    await page
+      .locator('#triage-files')
+      .setInputFiles([
+        await pdf('brief.pdf', 1),
+        { name: 'foto.png', mimeType: 'image/png', buffer: Buffer.from('png') },
+        { name: 'kapot.pdf', mimeType: 'application/pdf', buffer: Buffer.from('%PDF-1.7 kapot') },
+      ]);
+    await expect(page.getByText(format(tr.skipped, { list: tr.notPdfOne }))).toBeVisible();
+    await page.locator('#triage-files').setInputFiles([await pdf('brief.pdf', 1)]);
+    await expect(page.getByText(format(tr.skipped, { list: tr.duplicateOne }))).toBeVisible();
+    await expect(list(page).getByRole('button')).toHaveCount(2);
+
+    await page.keyboard.press('ArrowRight');
+    await expect(page.getByRole('alert')).toHaveText(nl.compare.errors.damaged, SLOW);
+    await page.keyboard.press('x');
+    await expect(
+      list(page).getByRole('button', { name: `kapot.pdf, ${tr.states.remove}` }),
+    ).toBeVisible();
+  });
+
+  test('Wis alles vraagt eerst', async ({ page }) => {
+    await open(page);
+    await addThree(page);
+    await expect(canvas(page, 1)).toBeVisible(SLOW);
+    await page.getByRole('button', { name: tr.clear }).click();
+    const dialog = page.getByRole('dialog');
+    await expect(dialog).toBeVisible();
+    // In het venster doen de toetsen niets.
+    await page.keyboard.press('k');
+    await dialog.getByRole('button', { name: tr.clearConfirm }).click();
+    await expect(page.getByText(tr.placeholder)).toBeVisible();
+    await expect(list(page)).toHaveCount(0);
+  });
+
+  for (const theme of ['light', 'dark'] as const) {
+    test(`geen toegankelijkheidsfouten met PDF’s, bij beoordelen en in het overzicht (${theme})`, async ({
+      page,
+    }) => {
+      await open(page, 'nl', theme);
+      await addThree(page);
+      await expect(canvas(page, 1)).toBeVisible(SLOW);
+      await page.keyboard.press('k');
+      await expect(active(page)).toContainText('factuur.pdf');
+      const check = async () => {
+        const result = await new AxeBuilder({ page })
+          .withTags(['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa'])
+          .analyze();
+        expect(
+          result.violations.map((v) => [v.id, v.nodes.map((n) => n.target.join(' '))]),
+        ).toEqual([]);
+      };
+      await check();
+      await page.getByRole('button', { name: tr.views.overview }).click();
+      await expect(
+        page.getByRole('heading', { name: format(tr.overview.keep, { n: 1 }) }),
+      ).toBeVisible();
+      await check();
+    });
+  }
+});
+
+/**
+ * Zoals een laptop met Windows-schaal 150 %: 1366 × 768 met de balken van de browser en Windows eraf
+ * (911 × 433), en een groter scherm op 150 % zoals in de review van PR 91 (1333 × 722).
+ */
+for (const size of [
+  { width: 911, height: 433 },
+  { width: 1333, height: 722 },
+]) {
+  test.describe(`Archief / Triage op ${size.width} × ${size.height} bij 150 %`, () => {
+    test.skip(({ isMobile }) => isMobile, 'Alleen op de computer');
+    test.use({ viewport: size, deviceScaleFactor: 1.5 });
+
+    for (const lang of ['nl', 'en'] as const) {
+      test(`de knoppen passen, op één regel, en Bewaren/Verwijderen zijn in beeld (${lang})`, async ({
+        page,
+      }) => {
+        const t = messages[lang].triage;
+        await open(page, lang);
+        // Een gewone schuifbalk (17 px op Windows) kost breedte; de testbrowser toont er geen.
+        await page.addStyleTag({
+          content: '.workspace__tools { padding-right: 23px !important; }',
+        });
+        await addThree(page);
+        await expect(canvas(page, 1, lang)).toBeVisible(SLOW);
+        const viewport = page.viewportSize()!;
+        for (const name of [
+          t.keep,
+          t.remove,
+          t.views.review,
+          t.views.overview,
+          t.modes.list,
+          t.modes.folder,
+        ]) {
+          const button = page.getByRole('button', { name, exact: true });
+          expect(await lines(button), name).toBe(1);
+        }
+        // Verwijderen en Bewaren: in beeld, binnen het vak (ook met de schuifbalk), niet afgekapt,
+        // en de toets staat in de hint.
+        const tools = page.locator('.workspace__tools');
+        const inner = await tools.evaluate((element) => {
+          const box = element.getBoundingClientRect();
+          const style = getComputedStyle(element);
+          return {
+            right: box.left + element.clientWidth - parseFloat(style.paddingRight),
+            overflow: element.scrollWidth - element.clientWidth,
+          };
+        });
+        expect(inner.overflow, 'zijwaarts schuiven in het linkervak').toBeLessThanOrEqual(0);
+        for (const [name, key] of [
+          [t.keep, 'K'],
+          [t.remove, 'X'],
+        ] as const) {
+          const button = page.getByRole('button', { name, exact: true });
+          const box = (await button.boundingBox())!;
+          expect(box.y + box.height, name).toBeLessThanOrEqual(viewport.height);
+          expect(box.x + box.width, name).toBeLessThanOrEqual(inner.right + 0.5);
+          const label = button.locator('.triage-decide__label');
+          expect(
+            await label.evaluate((element) => element.scrollWidth - element.clientWidth),
+            `${name} afgekapt`,
+          ).toBeLessThanOrEqual(0);
+          await expect(button).toHaveAttribute('data-tip', `${name} (${key})`);
+        }
+        // De pagina zelf krijgt het grootste deel van de breedte.
+        const view = (await page.locator('.workspace__view').boundingBox())!;
+        expect(view.width / viewport.width).toBeGreaterThan(0.55);
+        // Zoals pdf-triage.html staat de pagina op de breedte van het vak: goed te lezen.
+        const shown = (await canvas(page, 1, lang).boundingBox())!;
+        expect(shown.width / view.width).toBeGreaterThan(0.8);
+      });
+    }
+  });
+}
