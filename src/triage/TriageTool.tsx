@@ -9,11 +9,21 @@ import { formatFileSize } from '../lib/format';
 import type { LoadErrorCode } from '../pdf/detect';
 import { PdfLoadError } from '../pdf/loader';
 import { downloadFile } from '../pdf/save';
-import { canPickFolders, folderAt, parentOf, pathOf, shortPath, subfolders } from './folders';
+import { planActions, plannedFolders, type Outcome } from './execute';
+import {
+  TRASH_FOLDER,
+  canPickFolders,
+  folderAt,
+  parentOf,
+  pathOf,
+  shortPath,
+  subfolders,
+} from './folders';
 import {
   addNewFolder,
   addTriageFiles,
   askFolder,
+  askRun,
   chooseFolder,
   chooseFolderPath,
   chooseRoot,
@@ -21,9 +31,12 @@ import {
   decide,
   getTriageState,
   loadRememberedRoot,
+  locked,
   moveToNumber,
   navigate,
+  rescanAfterRun,
   resumeRoot,
+  run,
   select,
   setMode,
   setRecursive,
@@ -200,7 +213,10 @@ function FolderSlot() {
   const { t } = useI18n();
   const tr = t.triage;
   const f = tr.folderMode;
-  const { root, rootProblem, source, recursive, scan, files } = useTriageState();
+  const state = useTriageState();
+  const { root, rootProblem, source, recursive, scan, files } = state;
+  // Tijdens Uitvoeren blijft de map zoals hij is.
+  const busy = state.run.status === 'running';
   const [asking, setAsking] = useState(false);
   const problem = rootProblem && (
     <p class="plaintext-slot__meta dropzone__error" role="alert">
@@ -249,6 +265,7 @@ function FolderSlot() {
         <button
           type="button"
           class="button button--secondary triage-root__change"
+          disabled={busy}
           onClick={() => void chooseRoot()}
         >
           {f.otherRoot}
@@ -262,6 +279,7 @@ function FolderSlot() {
         <button
           type="button"
           class={`button ${source ? 'button--secondary ' : ''}triage-root__change`}
+          disabled={busy}
           onClick={() => askFolder({ kind: 'source' })}
         >
           {source ? f.otherSource : f.chooseSource}
@@ -271,6 +289,7 @@ function FolderSlot() {
         <input
           type="checkbox"
           checked={recursive}
+          disabled={busy}
           onChange={(event) => setRecursive(event.currentTarget.checked)}
         />
         {f.recursive}
@@ -287,7 +306,7 @@ function FolderSlot() {
       <button
         type="button"
         class="button button--secondary triage-root__clear"
-        disabled={files.length === 0}
+        disabled={files.length === 0 || busy}
         onClick={() => setAsking(true)}
       >
         {tr.clear}
@@ -491,6 +510,8 @@ function DecideBar() {
   const current = files[cur];
   if (!current) return null;
   const decision = current.decision;
+  // Tijdens en na Uitvoeren liggen de besluiten vast.
+  const fixed = locked(state);
   const f = tr.folderMode;
   return (
     <div class="triage-decide">
@@ -530,6 +551,7 @@ function DecideBar() {
             class="button button--secondary triage-folder"
             aria-keyshortcuts="M"
             data-tip={mode === 'folder' ? f.chooseTip : tr.newFolderTip}
+            disabled={fixed}
             onClick={() => askFolder({ kind: 'current' })}
           >
             {mode === 'folder' ? f.choose : tr.newFolder}
@@ -549,6 +571,7 @@ function DecideBar() {
                   data-tip={
                     i < 9 ? format(tr.folderTip, { folder: text.full, n: i + 1 }) : text.full
                   }
+                  disabled={fixed}
                   onClick={() => decide({ move: folder })}
                 >
                   {i < 9 && (
@@ -570,6 +593,7 @@ function DecideBar() {
           aria-pressed={current.decision === 'remove'}
           aria-keyshortcuts="X"
           data-tip={`${tr.remove} (X)`}
+          disabled={fixed}
           onClick={() => decide('remove')}
         >
           <span aria-hidden="true">✕</span>
@@ -581,6 +605,7 @@ function DecideBar() {
           aria-pressed={current.decision === 'keep'}
           aria-keyshortcuts="K"
           data-tip={`${tr.keep} (K)`}
+          disabled={fixed}
           onClick={() => decide('keep')}
         >
           <span aria-hidden="true">✓</span>
@@ -905,6 +930,12 @@ function Overview() {
   const { files, mode } = state;
   const [status, setStatus] = useState<string | null>(null);
   const all = groups(files);
+  const r = tr.run;
+  const folderMode = mode === 'folder' && state.root?.ready === true && state.source !== null;
+  const actions = folderMode ? planActions(files, state.source!) : [];
+  const outcomes =
+    state.run.status === 'running' || state.run.status === 'done' ? state.run.outcomes : {};
+  const fixed = locked(state);
   const save = (extension: 'txt' | 'csv') => {
     const name = exportName(new Date(), extension);
     const text =
@@ -927,7 +958,11 @@ function Overview() {
           {folderText(entry.decision.move, state).short}
         </span>
       )}
-      <Change entry={entry} />
+      {outcomes[entry.id] ? (
+        <Result outcome={outcomes[entry.id]!} name={entry.name} />
+      ) : (
+        !fixed && <Change entry={entry} />
+      )}
     </li>
   );
   return (
@@ -950,6 +985,16 @@ function Overview() {
           >
             {o.csv}
           </button>
+          {folderMode && (
+            <button
+              type="button"
+              class="button triage-run"
+              disabled={actions.length === 0 || fixed}
+              onClick={() => askRun(true)}
+            >
+              {r.button}
+            </button>
+          )}
         </div>
       </Bar>
       {status && (
@@ -957,16 +1002,14 @@ function Overview() {
           {status}
         </p>
       )}
-      {mode === 'folder' && files.length > 0 && (
-        <p class="compare-settings__hint">{tr.folderMode.notYet}</p>
-      )}
+      {folderMode && files.length > 0 && <RunStatus actions={actions.length} />}
       {files.length === 0 && <p class="compare__placeholder">{o.empty}</p>}
       {(['keep', 'move', 'remove', 'none'] as const).map((key) =>
         all[key].length === 0 ? null : (
           <section key={key} class={`triage-group triage-group--${key}`}>
             <div class="triage-group__head">
               <h2 class="triage-group__title">{format(o[key], { n: all[key].length })}</h2>
-              {key === 'none' && (
+              {key === 'none' && !fixed && (
                 <button
                   type="button"
                   class="button button--secondary triage-group__all"
@@ -985,6 +1028,102 @@ function Overview() {
         ),
       )}
     </>
+  );
+}
+
+/**
+ * Bij Map opruimen, boven de lijsten: wat Uitvoeren doet of gedaan heeft. Vooraf de waarschuwing
+ * voor de prullenbakmap (zoals DocumentTriage) of dat er niets te doen is; tijdens de voortgang;
+ * daarna wat er gelukt en mislukt is, met Opnieuw inlezen. En de vraag vooraf (V1).
+ */
+function RunStatus({ actions }: { actions: number }) {
+  const { t } = useI18n();
+  const r = t.triage.run;
+  const state = useTriageState();
+  const { run: current, files, source, newFolders, root } = state;
+  const plan = source ? planActions(files, source) : [];
+  const trash = plan.filter((action) => action.kind === 'trash').length;
+  const moved = plan.length - trash;
+  const created = plannedFolders(plan, newFolders).length;
+  return (
+    <>
+      {current.status === 'idle' || current.status === 'confirm' ? (
+        actions === 0 ? (
+          <p class="compare-settings__hint">{r.nothing}</p>
+        ) : (
+          trash > 0 && (
+            <p class="compare__warning">
+              {format(trash === 1 ? r.warnOne : r.warn, { n: trash, folder: TRASH_FOLDER })}
+            </p>
+          )
+        )
+      ) : current.status === 'running' ? (
+        <p class="plaintext__done triage-run__status" role="status">
+          {format(r.running, { done: current.done, total: current.total })}
+        </p>
+      ) : current.status === 'done' ? (
+        <RunDone outcomes={current.outcomes} />
+      ) : (
+        <p class="compare__warning" role="alert">
+          {current.status === 'denied'
+            ? format(r.denied, { name: root?.name ?? '' })
+            : r.unsupported}
+        </p>
+      )}
+      {current.status === 'confirm' && (
+        <ConfirmDialog
+          title={r.title}
+          text={[
+            moved > 0 && plural(moved, r.moveOne, r.move),
+            trash > 0 && plural(trash, r.trashOne, r.trash),
+            created > 0 && plural(created, r.newOne, r.new),
+          ]
+            .filter(Boolean)
+            .join(' · ')
+            .concat(`. ${r.rest}`)}
+          cancel={r.cancel}
+          confirm={r.confirm}
+          onCancel={() => askRun(false)}
+          onConfirm={() => void run()}
+        />
+      )}
+    </>
+  );
+}
+
+/** Na Uitvoeren: alles gelukt, of hoeveel er mislukten; met Opnieuw inlezen. */
+function RunDone({ outcomes }: { outcomes: Record<number, Outcome> }) {
+  const { t } = useI18n();
+  const r = t.triage.run;
+  const all = Object.values(outcomes);
+  const ok = all.filter((outcome) => outcome.ok).length;
+  const failed = all.length - ok;
+  return (
+    <div class="triage-run__done">
+      <p class={failed > 0 ? 'compare__warning' : 'plaintext__done'} role="status">
+        {failed > 0 ? format(r.doneFailed, { ok, failed }) : plural(ok, r.doneOne, r.done)}
+      </p>
+      <button type="button" class="button button--secondary" onClick={() => void rescanAfterRun()}>
+        {r.again}
+      </button>
+    </div>
+  );
+}
+
+/** De uitkomst bij één PDF: gelukt (eventueel onder een andere naam), of mislukt met de reden. */
+function Result({ outcome, name }: { outcome: Outcome; name: string }) {
+  const { t } = useI18n();
+  const r = t.triage.run;
+  return outcome.ok ? (
+    <span class="triage-result triage-result--ok">
+      <span aria-hidden="true">✓ </span>
+      {outcome.name === name ? r.ok : format(r.okRenamed, { name: outcome.name })}
+    </span>
+  ) : (
+    <span class="triage-result triage-result--failed">
+      <span aria-hidden="true">⚠ </span>
+      {r.reasons[outcome.reason]}
+    </span>
   );
 }
 

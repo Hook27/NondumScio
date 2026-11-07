@@ -9,7 +9,9 @@
 export interface FolderHandle {
   readonly kind: 'directory';
   readonly name: string;
-  getDirectoryHandle(name: string): Promise<FolderHandle>;
+  getDirectoryHandle(name: string, options?: { create?: boolean }): Promise<FolderHandle>;
+  /** Het bestand met deze naam (een fout als het er niet is, of als het een map is). */
+  getFileHandle?(name: string): Promise<FileEntryHandle>;
   values(): AsyncIterable<FolderHandle | FileEntryHandle>;
   queryPermission?(options: { mode: 'read' | 'readwrite' }): Promise<PermissionState>;
   requestPermission?(options: { mode: 'read' | 'readwrite' }): Promise<PermissionState>;
@@ -20,6 +22,8 @@ export interface FileEntryHandle {
   readonly kind: 'file';
   readonly name: string;
   getFile(): Promise<File>;
+  /** Verplaatsen naar een andere map, met een (nieuwe) naam: Edge en Chrome sinds versie 111. */
+  move?(destination: FolderHandle, name: string): Promise<void>;
 }
 
 /** De map waar "Prullenbak" naartoe verplaatst (in de bronmap); wordt zelf niet ingelezen. */
@@ -56,6 +60,18 @@ export async function mayRead(folder: FolderHandle, ask: boolean): Promise<boole
   if (typeof folder.queryPermission !== 'function') return true;
   if ((await folder.queryPermission(options)) === 'granted') return true;
   if (!ask || typeof folder.requestPermission !== 'function') return false;
+  return (await folder.requestPermission(options)) === 'granted';
+}
+
+/**
+ * Of we in de map mogen wijzigen (verplaatsen, mappen aanmaken); de browser vraagt het (alleen na
+ * een klik). Een map zonder deze vragen (zoals een nagemaakte) mag altijd.
+ */
+export async function mayWrite(folder: FolderHandle): Promise<boolean> {
+  const options = { mode: 'readwrite' as const };
+  if (typeof folder.queryPermission !== 'function') return true;
+  if ((await folder.queryPermission(options)) === 'granted') return true;
+  if (typeof folder.requestPermission !== 'function') return false;
   return (await folder.requestPermission(options)) === 'granted';
 }
 
