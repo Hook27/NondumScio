@@ -1,6 +1,15 @@
 import { useEffect, useState } from 'preact/hooks';
 import { closeVisual } from '../compare/visual';
-import { addFiles, nextAfter, toggle, type Decision, type TriageFile } from './triage';
+import {
+  addFiles,
+  addFolder,
+  nextAfter,
+  sortFolders,
+  toggle,
+  type Choice,
+  type Decision,
+  type TriageFile,
+} from './triage';
 
 /** Beoordelen (één PDF tegelijk) of het overzicht met de lijsten. */
 export type TriageView = 'review' | 'overview';
@@ -10,6 +19,13 @@ export type Fit = 'page' | 'width';
 
 /** Wat er bij de laatste keer toevoegen is overgeslagen. */
 export type Skipped = { notPdf: number; duplicate: number };
+
+/**
+ * Voor wie het venster "Verplaatsen naar" open is: de PDF van nu (toets M), één PDF in het
+ * overzicht, of alle PDF's die nog niet beoordeeld zijn.
+ */
+export type FolderTarget =
+  { kind: 'current' } | { kind: 'file'; id: number } | { kind: 'undecided' };
 
 export type TriageState = {
   files: TriageFile[];
@@ -23,6 +39,10 @@ export type TriageState = {
   pageCounts: Record<number, number>;
   skipped: Skipped | null;
   nextId: number;
+  /** De mappen die je gekozen hebt om naar te verplaatsen, in de volgorde van kiezen. */
+  folders: string[];
+  /** Het venster "Verplaatsen naar", als het open is. */
+  asking: FolderTarget | null;
 };
 
 const INITIAL: TriageState = {
@@ -36,6 +56,8 @@ const INITIAL: TriageState = {
   pageCounts: {},
   skipped: null,
   nextId: 1,
+  folders: [],
+  asking: null,
 };
 
 /** Na een besluit zo lang wachten voor het volgende bestand verschijnt: dan zie je het besluit nog even. */
@@ -109,10 +131,10 @@ export function navigate(dir: -1 | 1): void {
 }
 
 /**
- * Bewaren of verwijderen voor het bestand van nu; nog eens dezelfde keuze haalt het besluit weg.
- * Na een besluit volgt na `ADVANCE_MS` het volgende nog niet beoordeelde bestand.
+ * Bewaren, verplaatsen of verwijderen voor het bestand van nu; nog eens dezelfde keuze haalt het
+ * besluit weg. Na een besluit volgt na `ADVANCE_MS` het volgende nog niet beoordeelde bestand.
  */
-export function decide(choice: Exclude<Decision, null>): void {
+export function decide(choice: Choice): void {
   const current = state.files[state.cur];
   if (!current) return;
   stopAdvance();
@@ -126,6 +148,55 @@ export function decide(choice: Exclude<Decision, null>): void {
     advance = null;
     select(next);
   }, ADVANCE_MS);
+}
+
+/** Verplaatsen naar de map met dit nummer (1–9) in de lijst op naam; zonder die map niets. */
+export function moveToNumber(n: number): void {
+  const folder = sortFolders(state.folders)[n - 1];
+  if (folder !== undefined) decide({ move: folder });
+}
+
+/** Een besluit voor één PDF in het overzicht; daar ga je niet vanzelf verder. */
+export function setDecision(id: number, decision: Decision): void {
+  stopAdvance();
+  setState({
+    files: state.files.map((entry) => (entry.id === id ? { ...entry, decision } : entry)),
+  });
+}
+
+/** Het venster "Verplaatsen naar" openen of sluiten. */
+export function askFolder(target: FolderTarget | null): void {
+  setState({ asking: target });
+}
+
+/**
+ * De map uit het venster "Verplaatsen naar": een nieuwe naam komt bij de gekozen mappen (een naam
+ * die er al staat, ook met andere hoofdletters, is dezelfde map). Dan verplaatsen, voor wie het
+ * venster open was: de PDF van nu (en verder naar de volgende), één PDF, of alle PDF's die nog niet
+ * beoordeeld zijn. Geeft false bij een lege naam; het venster blijft dan open.
+ */
+export function chooseFolder(typed: string): boolean {
+  const target = state.asking;
+  const { folders, name } = addFolder(state.folders, typed);
+  if (!target || name === null) return false;
+  setState({ folders, asking: null });
+  const move = { move: name };
+  if (target.kind === 'current') {
+    // Altijd naar deze map, ook als hij al gekozen was: nog eens kiezen haalt het hier niet weg.
+    const current = state.files[state.cur];
+    if (current && current.decision !== null && toggle(current.decision, move) === null)
+      return true;
+    decide(move);
+  } else if (target.kind === 'file') {
+    setDecision(target.id, move);
+  } else {
+    setState({
+      files: state.files.map((entry) =>
+        entry.decision === null ? { ...entry, decision: move } : entry,
+      ),
+    });
+  }
+  return true;
 }
 
 /** Het aantal pagina's van een bestand, zodra de PDF gelezen is. */
@@ -165,7 +236,15 @@ export function clearTriage(): void {
   stopAdvance();
   const current = state.files[state.cur];
   if (current) closeVisual(current.file);
-  setState({ files: [], cur: -1, view: 'review', pageCounts: {}, skipped: null });
+  setState({
+    files: [],
+    cur: -1,
+    view: 'review',
+    pageCounts: {},
+    skipped: null,
+    folders: [],
+    asking: null,
+  });
 }
 
 /** Terug naar het begin (voor de tests). */

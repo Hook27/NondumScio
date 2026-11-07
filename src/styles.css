@@ -1939,6 +1939,73 @@ h1 {
   background: var(--removed-line);
 }
 
+/* Verplaatsen: een stip in de kleur van de knoppen, zoals de gouden stip in DocumentTriage. */
+.triage-list__item--move .triage-list__dot,
+.triage-group--move .triage-list__dot {
+  background: var(--accent);
+}
+
+/* "Verplaatsen naar": een knop per gekozen map (op naam, met het cijfer van de toets) en "+ Nieuwe
+   map". Ze lopen door op een volgende regel; bij veel mappen schuift dit stuk zelf, zodat de knoppen
+   Verwijderen en Bewaren in beeld blijven. */
+.triage-folders {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.3rem;
+  /* Precies twee rijen; bij meer mappen schuift dit stuk (geen halve rij in beeld). */
+  max-height: calc(2 * 1.75rem + 0.3rem);
+  overflow-y: auto;
+}
+
+/* "Verplaatsen naar" en "+ Nieuwe map" op één regel, altijd in beeld; de mappen eronder. */
+.triage-move {
+  display: grid;
+  gap: 0.3rem;
+}
+
+.triage-move__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+}
+
+.triage-folders__label {
+  color: var(--text-muted);
+  font-size: 0.8rem;
+}
+
+.triage-folder {
+  gap: 0.3rem;
+  min-width: 0;
+  max-width: 100%;
+  height: 1.75rem;
+  padding: 0 0.5rem;
+  font-size: 0.85rem;
+  font-weight: 500;
+  line-height: 1;
+}
+
+.triage-folder[aria-pressed='true'] {
+  color: var(--accent-contrast);
+  background: var(--accent);
+  border-color: var(--accent);
+}
+
+.triage-folder__key {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 0.75rem;
+  opacity: 0.75;
+}
+
+.triage-folder__name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .triage-list__name {
   min-width: 0;
   overflow: hidden;
@@ -2033,9 +2100,76 @@ h1 {
   margin: 0 0 1rem;
 }
 
-.triage-group__title {
+.triage-group__head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.4rem 1rem;
   margin: 0 0 0.4rem;
+}
+
+.triage-group__title {
+  margin: 0;
   font-size: 0.95rem;
+}
+
+.triage-group__all {
+  padding: 0.2rem 0.6rem;
+  font-size: 0.85rem;
+}
+
+/* De map achter de naam, en de knoppen om het besluit te wijzigen helemaal rechts. */
+.triage-group__folder {
+  flex: none;
+  max-width: 40%;
+  overflow: hidden;
+  color: var(--text-muted);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.triage-change {
+  display: flex;
+  flex: none;
+  gap: 0.2rem;
+  margin-left: auto;
+}
+
+.triage-change__button {
+  min-width: 1.8rem;
+  padding: 0.1rem 0.35rem;
+  color: var(--text-muted);
+  font: inherit;
+  background: none;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+.triage-change__button:hover {
+  color: var(--text);
+  border-color: var(--accent);
+}
+
+.triage-change__button[aria-pressed='true'] {
+  color: var(--accent-contrast);
+  background: var(--accent);
+  border-color: var(--accent);
+}
+
+.triage-folder-dialog__input {
+  margin-bottom: 0.4rem;
+}
+
+.triage-folder-dialog__error {
+  margin: 0 0 0.5rem;
+  color: var(--removed-line);
+  font-weight: 600;
+}
+
+.triage-folder-dialog .triage-folders {
+  max-height: calc(4 * 1.75rem + 3 * 0.3rem);
+  margin: 0 0 1rem;
 }
 
 .triage-group__list {
