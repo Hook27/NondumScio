@@ -1902,8 +1902,6 @@ h1 {
   border-left: 3px solid transparent;
   border-radius: 4px;
   cursor: pointer;
-  /* Bij in beeld schuiven niet achter de vaste balk met Verwijderen en Bewaren. */
-  scroll-margin-bottom: 8rem;
 }
 
 .triage-list__item:hover {
@@ -3465,6 +3463,13 @@ h1 {
 
   .workspace.triage .workspace__view {
     scrollbar-gutter: stable;
+  }
+
+  /* Elk vak is het kader voor wat erin absoluut staat (zoals tekst alleen voor schermlezers):
+     anders telt de browser dat mee voor de hele pagina, en krijgt de pagina zelf een schuifbalk. */
+  .workspace.triage .workspace__tools,
+  .workspace.triage .workspace__view {
+    position: relative;
   }
 
   /* De balk blijft staan als je bij ingezoomd voorbeeld of lange tekst omlaag schuift. */

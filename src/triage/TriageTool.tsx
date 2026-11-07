@@ -235,8 +235,9 @@ function FileList() {
   const list = useRef<HTMLOListElement>(null);
   // Het bestand van nu in beeld houden, ook als het vanzelf verder gaat na een besluit.
   useLayoutEffect(() => {
-    list.current?.querySelector('[aria-current="true"]')?.scrollIntoView?.({ block: 'nearest' });
-  }, [cur]);
+    const item = list.current?.querySelector<HTMLElement>('[aria-current="true"]');
+    if (item) reveal(item);
+  }, [cur, files.length]);
   if (files.length === 0) return null;
   return (
     <ol ref={list} class="triage-list" aria-label={tr.files}>
@@ -274,6 +275,26 @@ function stateText(decision: Decision, t: Texts): string {
   const states = t.triage.states;
   if (isMove(decision)) return states.move.replace('{folder}', () => decision.move);
   return states[decision ?? 'none'];
+}
+
+/**
+ * Schuift het linkervak zo dat dit bestand in beeld staat, met één regel ruimte erboven en eronder,
+ * en niet achter de vaste balk onderaan (die is hoger met de mappen erin). Alleen dat vak schuift:
+ * `scrollIntoView` zou ook de pagina zelf kunnen schuiven.
+ */
+function reveal(item: HTMLElement) {
+  const pane = item.closest<HTMLElement>('.workspace__tools');
+  if (!pane || pane.scrollHeight <= pane.clientHeight) return;
+  const box = item.getBoundingClientRect();
+  const area = pane.getBoundingClientRect();
+  const bar = pane.querySelector('.triage-decide')?.getBoundingClientRect();
+  const end = bar ? bar.top : area.bottom;
+  // Eén regel ruimte erboven en eronder; is het vak daarvoor te laag, dan minder.
+  const room = Math.max(0, Math.min(box.height, (end - area.top - box.height) / 2));
+  const top = area.top + room;
+  const bottom = end - room;
+  if (box.bottom > bottom) pane.scrollTop += box.bottom - bottom;
+  else if (box.top < top) pane.scrollTop -= top - box.top;
 }
 
 /**

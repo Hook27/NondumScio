@@ -396,5 +396,67 @@ for (const size of [
         expect(shown.width / view.width).toBeGreaterThan(0.8);
       });
     }
+
+    test('de lijst links schuift mee met het bestand van nu, en de pagina zelf schuift niet', async ({
+      page,
+    }) => {
+      // Op 911 × 433 is het linkervak zo laag (175 px) dat de vaste balk het helemaal vult: daar is
+      // de lijst niet te zien. Wel nagaan dat de pagina zelf daar niet schuift.
+      const roomy = size.width >= 1000;
+      test.setTimeout(90_000);
+      await open(page);
+      await page.addStyleTag({
+        content: '.workspace__tools { padding-right: 23px !important; }',
+      });
+      const names = Array.from(
+        { length: 16 },
+        (_, i) => `stuk ${String(i + 1).padStart(2, '0')}.pdf`,
+      );
+      const files = [];
+      for (const name of names) files.push(await pdf(name, 1));
+      await page.locator('#triage-files').setInputFiles(files);
+      await expect(canvas(page, 1)).toBeVisible(SLOW);
+      const pane = page.locator('.workspace__tools');
+      /** Het bestand van nu staat helemaal in het linkervak, boven de vaste balk. */
+      const shown = async (name: string) => {
+        await expect(active(page)).toContainText(name);
+        if (!roomy) return;
+        await expect
+          .poll(() =>
+            active(page).evaluate((item) => {
+              const box = item.getBoundingClientRect();
+              const area = item.closest('.workspace__tools')!.getBoundingClientRect();
+              const bar = document.querySelector('.triage-decide')!.getBoundingClientRect();
+              return box.top >= area.top - 0.5 && box.bottom <= bar.top + 0.5;
+            }),
+          )
+          .toBe(true);
+      };
+      /** De pagina zelf heeft niets om te schuiven. */
+      const pageFits = () =>
+        page.evaluate(
+          () => document.documentElement.scrollHeight <= document.documentElement.clientHeight,
+        );
+      // Een map erbij (de balk onderaan wordt dan hoger), dan om en om bewaren en verplaatsen.
+      await page.keyboard.press('m');
+      await page.keyboard.type('Map');
+      await page.keyboard.press('Enter');
+      for (let i = 1; i < names.length - 1; i++) {
+        await shown(names[i]!);
+        await page.keyboard.press(i % 2 ? 'k' : '1');
+      }
+      await shown(names.at(-1)!);
+      if (roomy) expect(await pane.evaluate((element) => element.scrollTop)).toBeGreaterThan(0);
+      expect(await pageFits()).toBe(true);
+      // Terug naar boven: de lijst schuift mee terug.
+      for (let i = names.length - 2; i >= 0; i--) await page.keyboard.press('ArrowLeft');
+      await shown(names[0]!);
+      // Het overzicht, met verplaatste PDF's (en dus tekst alleen voor schermlezers).
+      await page.getByRole('button', { name: tr.views.overview }).click();
+      await expect(
+        page.getByRole('heading', { name: format(tr.overview.move, { n: 8 }) }),
+      ).toBeVisible();
+      expect(await pageFits()).toBe(true);
+    });
   });
 }
