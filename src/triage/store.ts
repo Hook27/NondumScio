@@ -1,8 +1,10 @@
 import { useEffect, useState } from 'preact/hooks';
 import { closeVisual } from '../compare/visual';
+import { canMove, planActions, runActions, type Outcome } from './execute';
 import {
   folderAt,
   mayRead,
+  mayWrite,
   pathText,
   pickRoot,
   rememberRoot,
@@ -22,6 +24,18 @@ import {
   type Decision,
   type TriageFile,
 } from './triage';
+
+/**
+ * Uitvoeren bij Map opruimen: nog niet (of de vraag staat open), bezig, klaar (met de uitkomst per
+ * PDF, op id), of niet begonnen omdat de toestemming of de browser het niet toeliet.
+ */
+export type RunState =
+  | { status: 'idle' }
+  | { status: 'confirm' }
+  | { status: 'running'; done: number; total: number; outcomes: Record<number, Outcome> }
+  | { status: 'done'; outcomes: Record<number, Outcome> }
+  | { status: 'denied' }
+  | { status: 'unsupported' };
 
 /** Beoordelen (één PDF tegelijk) of het overzicht met de lijsten. */
 export type TriageView = 'review' | 'overview';
@@ -84,6 +98,7 @@ export type TriageState = {
   newFolders: string[];
   /** De laatst gekozen doelmap: het mapvenster begint daarboven, zoals in DocumentTriage. */
   lastMove: string[] | null;
+  run: RunState;
 };
 
 const INITIAL: TriageState = {
@@ -107,6 +122,7 @@ const INITIAL: TriageState = {
   scan: { status: 'idle' },
   newFolders: [],
   lastMove: null,
+  run: { status: 'idle' },
 };
 
 /** Na een besluit zo lang wachten voor het volgende bestand verschijnt: dan zie je het besluit nog even. */
@@ -185,7 +201,7 @@ export function navigate(dir: -1 | 1): void {
  */
 export function decide(choice: Choice): void {
   const current = state.files[state.cur];
-  if (!current) return;
+  if (!current || locked()) return;
   stopAdvance();
   const decision = toggle(current.decision, choice);
   const files = state.files.map((entry, i) => (i === state.cur ? { ...entry, decision } : entry));
@@ -207,6 +223,7 @@ export function moveToNumber(n: number): void {
 
 /** Een besluit voor één PDF in het overzicht; daar ga je niet vanzelf verder. */
 export function setDecision(id: number, decision: Decision): void {
+  if (locked()) return;
   stopAdvance();
   setState({
     files: state.files.map((entry) => (entry.id === id ? { ...entry, decision } : entry)),
@@ -259,7 +276,7 @@ function applyMove(target: Exclude<FolderTarget, { kind: 'source' }>, name: stri
     decide(move);
   } else if (target.kind === 'file') {
     setDecision(target.id, move);
-  } else {
+  } else if (!locked()) {
     setState({
       files: state.files.map((entry) =>
         entry.decision === null ? { ...entry, decision: move } : entry,
@@ -267,6 +284,59 @@ function applyMove(target: Exclude<FolderTarget, { kind: 'source' }>, name: stri
     });
   }
 }
+
+/** Tijdens en na Uitvoeren liggen de besluiten vast (tot Opnieuw inlezen), zoals in DocumentTriage. */
+export const locked = (s: TriageState = state): boolean =>
+  s.run.status === 'running' || s.run.status === 'done';
+
+/** Uitvoeren: eerst de vraag met de samenvatting (V1); Annuleren sluit hem. */
+export function askRun(open: boolean): void {
+  if (locked()) return;
+  setState({ run: open ? { status: 'confirm' } : { status: 'idle' } });
+}
+
+/**
+ * Uitvoeren (na de vraag): toestemming om te wijzigen vragen (dat kan alleen na een klik), dan elke
+ * PDF verplaatsen, één voor één, met de voortgang. Kan de browser niet echt verplaatsen, dan
+ * gebeurt er niets (V8). Daarna liggen de besluiten vast, tot Opnieuw inlezen.
+ */
+export async function run(): Promise<void> {
+  const { root, source, files, newFolders } = state;
+  if (!root?.ready || !source || locked()) return;
+  stopAdvance();
+  const actions = planActions(files, source);
+  if (!canMove(actions)) {
+    setState({ run: { status: 'unsupported' } });
+    return;
+  }
+  // Meteen "bezig", ook al tijdens de vraag om toestemming: dan kan er intussen niets veranderen
+  // (zoals de bronmap opnieuw inlezen).
+  setState({ run: { status: 'running', done: 0, total: actions.length, outcomes: {} } });
+  const allowed = await mayWrite(root.handle).catch(() => false);
+  if (!allowed) {
+    setState({ run: { status: 'denied' } });
+    return;
+  }
+  const outcomes: Record<number, Outcome> = {};
+  await runActions(root.handle, source, actions, newFolders, (action, outcome) => {
+    outcomes[action.id] = outcome;
+    setState({
+      run: {
+        status: 'running',
+        done: Object.keys(outcomes).length,
+        total: actions.length,
+        outcomes: { ...outcomes },
+      },
+    });
+  });
+  setState({ run: { status: 'done', outcomes: { ...outcomes } } });
+}
+
+/**
+ * Opnieuw inlezen na Uitvoeren: de bronmap zoals hij nu is. Wat verplaatst is, staat er niet meer;
+ * wat mislukte of bleef, houdt zijn besluit (zie `scanSource`).
+ */
+export const rescanAfterRun = (): Promise<void> => scanSource();
 
 /**
  * Een nieuwe map in het mapvenster (pad vanaf de hoofdmap; het venster kijkt zelf of hij er al
@@ -343,7 +413,8 @@ let lastScan = 0;
  */
 export async function scanSource(): Promise<void> {
   const { root, source } = state;
-  if (!root?.ready || !source) return;
+  // Tijdens Uitvoeren niet opnieuw inlezen: de lijst hoort dan bij wat er gebeurt.
+  if (!root?.ready || !source || state.run.status === 'running') return;
   const token = ++lastScan;
   const current = () => token === lastScan;
   stopAdvance();
@@ -380,6 +451,8 @@ export async function scanSource(): Promise<void> {
       cur: stay !== -1 ? stay : files.length > 0 ? 0 : -1,
       pageCounts: {},
       scan: { status: 'done', found: files.length },
+      // Een nieuwe lijst: Uitvoeren begint weer opnieuw.
+      run: { status: 'idle' },
     });
   } catch {
     if (current()) setState({ scan: { status: 'error' } });
@@ -435,6 +508,7 @@ export function clearTriage(): void {
     scan: { status: 'idle' },
     newFolders: [],
     lastMove: null,
+    run: { status: 'idle' },
   });
   lastScan++;
 }

@@ -6,9 +6,9 @@ import { LanguageProvider } from '../i18n/LanguageContext';
 import { format } from '../i18n/format';
 import { downloadFile } from '../pdf/save';
 import { TriageTool } from './TriageTool';
-import { rememberRoot, rememberedRoot, type FolderHandle } from './folders';
-import { ADVANCE_MS, getTriageState, resetTriageState } from './store';
-import { fakeFolder, type FakeOptions } from './testFolders';
+import { TRASH_FOLDER, rememberRoot, rememberedRoot, type FolderHandle } from './folders';
+import { ADVANCE_MS, getTriageState, resetTriageState, setDecision, setRecursive } from './store';
+import { fakeFolder, type FakeOptions, type Tree } from './testFolders';
 
 // Het tekenen nagebootst (jsdom kan niet echt tekenen).
 vi.mock('../compare/visual', async (importOriginal) => ({
@@ -291,7 +291,7 @@ describe('Archief / Triage: Map opruimen', () => {
     expect(decisions()[0]).toBe(null);
   });
 
-  it('het overzicht: namen met de submap, mappen met het pad, en nog niets uitgevoerd', async () => {
+  it('het overzicht: namen met de submap, mappen met het pad, en de knop Uitvoeren', async () => {
     vi.useFakeTimers({ toFake: ['Date'] });
     vi.setSystemTime(new Date(2026, 10, 7, 21, 5));
     withPicker();
@@ -309,7 +309,7 @@ describe('Archief / Triage: Map opruimen', () => {
     fireEvent.click(inDialog(b.confirm));
     await settle();
     fireEvent.click(button(tr.views.overview));
-    expect(screen.getByText(f.notYet)).toBeTruthy();
+    expect((button(tr.run.button) as HTMLButtonElement).disabled).toBe(false);
     expect(screen.getByText('2024/c.pdf')).toBeTruthy();
     fireEvent.click(button(tr.overview.csv));
     const [csv, name] = vi.mocked(downloadFile).mock.calls[0]!;
@@ -401,5 +401,186 @@ describe('Archief / Triage: Map opruimen', () => {
     fireEvent.click(button(tr.modes.list));
     expect(getTriageState().mode).toBe('list');
     expect(screen.queryByRole('dialog')).toBeNull();
+  });
+});
+
+describe('Archief / Triage: Uitvoeren (op een nagemaakte map)', () => {
+  const r = tr.run;
+
+  /** Een boom om op te ruimen; hij verandert mee met wat Uitvoeren doet. */
+  const runTree = (): Tree => ({
+    Archief: { 'brief.pdf': 'B', 'factuur.pdf': 'F', 'oud.pdf': 'X', 'rest.pdf': 'R' },
+    Facturen: { 'factuur.pdf': 'al er' },
+  });
+
+  /** Brief bewaren, factuur naar Facturen, oud naar de prullenbak, rest niet beoordeeld; naar het overzicht. */
+  async function decideAll(t: Tree, options: FakeOptions = {}) {
+    withPicker(options, fakeFolder('Documenten', t, options));
+    await openArchief();
+    await key('k');
+    await settle(ADVANCE_MS + 40);
+    await key('m');
+    await settle();
+    fireEvent.click(inDialog(b.up));
+    await settle();
+    fireEvent.click(inDialog('Facturen'));
+    await settle();
+    fireEvent.click(inDialog(b.confirm));
+    await settle(ADVANCE_MS + 40);
+    await key('x');
+    await settle(ADVANCE_MS + 40);
+    fireEvent.click(button(tr.views.overview));
+  }
+
+  it('vraagt eerst, voert dan uit, toont de uitkomst per PDF en legt de besluiten vast; Opnieuw inlezen', async () => {
+    const t = runTree();
+    await decideAll(t);
+    expect(screen.getByText(format(r.warnOne, { folder: TRASH_FOLDER }))).toBeTruthy();
+    fireEvent.click(button(r.button));
+    expect(within(dialog()).getByRole('heading').textContent).toBe(r.title);
+    expect(dialog().textContent).toContain(`${r.moveOne} · ${r.trashOne}. ${r.rest}`);
+    fireEvent.click(inDialog(r.confirm));
+    await settle();
+    expect(t).toEqual({
+      Archief: {
+        'brief.pdf': 'B',
+        'rest.pdf': 'R',
+        [TRASH_FOLDER]: { 'oud.pdf': 'X' },
+      },
+      Facturen: { 'factuur.pdf': 'al er', 'factuur_1.pdf': 'F' },
+    });
+    expect(screen.getByText(format(r.done, { n: 2 }))).toBeTruthy();
+    expect(screen.getByText(format(r.okRenamed, { name: 'factuur_1.pdf' }))).toBeTruthy();
+    expect(screen.getByText(r.ok)).toBeTruthy();
+    // Vast: geen knoppen om te wijzigen, Uitvoeren uit, en toetsen doen niets.
+    expect(
+      screen.queryByRole('button', { name: format(tr.overview.setKeep, { name: 'rest.pdf' }) }),
+    ).toBeNull();
+    expect((button(r.button) as HTMLButtonElement).disabled).toBe(true);
+    expect(screen.queryByRole('button', { name: tr.overview.moveAll })).toBeNull();
+    fireEvent.click(button(tr.views.review));
+    await key('x');
+    expect(decisions()).toEqual(['keep', { move: 'Facturen' }, 'remove', null]);
+    expect((button(tr.keep) as HTMLButtonElement).disabled).toBe(true);
+
+    fireEvent.click(button(tr.views.overview));
+    fireEvent.click(button(r.again));
+    await settle();
+    expect(listNames()).toEqual(['brief.pdf', 'rest.pdf']);
+    expect(decisions()).toEqual(['keep', null]);
+    expect(getTriageState().run.status).toBe('idle');
+    expect(screen.getByText(r.nothing)).toBeTruthy();
+  });
+
+  it('nieuwe mappen worden pas nu aangemaakt, alleen als er een PDF heen gaat', async () => {
+    const t = runTree();
+    withPicker({}, fakeFolder('Documenten', t));
+    await openArchief();
+    await key('m');
+    await settle();
+    fireEvent.input(screen.getByLabelText(b.newLabel), { target: { value: 'Ongebruikt' } });
+    fireEvent.click(inDialog(b.create));
+    await settle();
+    fireEvent.click(inDialog(b.up));
+    await settle();
+    fireEvent.input(screen.getByLabelText(b.newLabel), { target: { value: 'Nieuw' } });
+    fireEvent.click(inDialog(b.create));
+    await settle();
+    fireEvent.click(inDialog(b.confirm));
+    await settle();
+    // Nog niets aangemaakt (Nieuw komt in Archief, naast Ongebruikt).
+    expect(Object.keys(t.Archief as Tree)).toEqual([
+      'brief.pdf',
+      'factuur.pdf',
+      'oud.pdf',
+      'rest.pdf',
+    ]);
+    fireEvent.click(button(tr.views.overview));
+    fireEvent.click(button(r.button));
+    expect(dialog().textContent).toContain(`${r.moveOne} · ${r.newOne}. ${r.rest}`);
+    fireEvent.click(inDialog(r.confirm));
+    await settle();
+    expect((t.Archief as Tree).Nieuw).toEqual({ 'brief.pdf': 'B' });
+    expect('Ongebruikt' in (t.Archief as Tree)).toBe(false);
+  });
+
+  it('Annuleren in de vraag: er gebeurt niets', async () => {
+    const t = runTree();
+    await decideAll(t);
+    fireEvent.click(button(r.button));
+    fireEvent.click(inDialog(r.cancel));
+    expect(t).toEqual(runTree());
+    expect(getTriageState().run.status).toBe('idle');
+  });
+
+  it('geen toestemming om te wijzigen: er is niets veranderd', async () => {
+    const t = runTree();
+    await decideAll(t, { write: { state: 'prompt', answer: 'denied' } });
+    fireEvent.click(button(r.button));
+    fireEvent.click(inDialog(r.confirm));
+    await settle();
+    expect(screen.getByRole('alert').textContent).toBe(format(r.denied, { name: 'Documenten' }));
+    expect(t).toEqual(runTree());
+  });
+
+  it('een browser die niet echt kan verplaatsen: weigeren, er is niets veranderd', async () => {
+    const t = runTree();
+    await decideAll(t, { noMove: true });
+    fireEvent.click(button(r.button));
+    fireEvent.click(inDialog(r.confirm));
+    await settle();
+    expect(screen.getByRole('alert').textContent).toBe(r.unsupported);
+    expect(t).toEqual(runTree());
+  });
+
+  it('mislukt er een, dan staat de reden erbij en gaat de rest door', async () => {
+    const t = runTree();
+    await decideAll(t, { failMove: ['oud.pdf'] });
+    fireEvent.click(button(r.button));
+    fireEvent.click(inDialog(r.confirm));
+    await settle();
+    expect(screen.getByText(format(r.doneFailed, { ok: 1, failed: 1 }))).toBeTruthy();
+    expect(screen.getByText(r.reasons.failed)).toBeTruthy();
+    expect((t.Archief as Tree)['oud.pdf']).toBe('X');
+    expect((t.Facturen as Tree)['factuur_1.pdf']).toBe('F');
+    // Ook de stand zelf weigert nu een ander besluit.
+    const oud = getTriageState().files.find((entry) => entry.name === 'oud.pdf')!;
+    setDecision(oud.id, 'keep');
+    expect(oud.decision).toBe('remove');
+    expect(getTriageState().files.find((entry) => entry.name === 'oud.pdf')!.decision).toBe(
+      'remove',
+    );
+  });
+
+  it('een bestand dat intussen weg is: "bestand niet gevonden"', async () => {
+    const t = runTree();
+    await decideAll(t);
+    delete (t.Archief as Tree)['oud.pdf'];
+    fireEvent.click(button(r.button));
+    fireEvent.click(inDialog(r.confirm));
+    await settle();
+    expect(screen.getByText(format(r.doneFailed, { ok: 1, failed: 1 }))).toBeTruthy();
+    expect(screen.getByText(r.reasons.notFound)).toBeTruthy();
+  });
+
+  it('tijdens Uitvoeren wordt de bronmap niet opnieuw ingelezen', async () => {
+    const t = runTree();
+    await decideAll(t);
+    fireEvent.click(button(r.button));
+    fireEvent.click(inDialog(r.confirm));
+    // Meteen (terwijl het nog bezig is) Ook submappen inlezen aanzetten.
+    setRecursive(true);
+    await settle();
+    expect(getTriageState().run.status).toBe('done');
+    expect(listNames()).toEqual(['brief.pdf', 'factuur.pdf', 'oud.pdf', 'rest.pdf']);
+  });
+
+  it('alleen bewaren: niets uit te voeren', async () => {
+    withPicker({}, fakeFolder('Documenten', runTree()));
+    await openArchief();
+    await key('k');
+    fireEvent.click(button(tr.views.overview));
+    expect(screen.getByText(r.nothing)).toBeTruthy();
+    expect((button(r.button) as HTMLButtonElement).disabled).toBe(true);
   });
 });

@@ -2297,6 +2297,41 @@ h1 {
   gap: 0.4rem;
 }
 
+/* Uitvoeren (Map opruimen): de knop valt op, de uitkomst staat bij elke PDF. */
+.plaintext-bar__actions .button.triage-run {
+  border-color: var(--removed-line);
+  background: var(--removed-line);
+  color: var(--accent-contrast);
+}
+
+.triage-run__done {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.4rem 0.8rem;
+  margin: 0.4rem 0 0.8rem;
+}
+
+.triage-run__done p {
+  margin: 0;
+}
+
+.triage-result {
+  flex: none;
+  margin-left: auto;
+  font-size: 0.85rem;
+  white-space: nowrap;
+}
+
+.triage-result--ok {
+  color: var(--added-line);
+}
+
+.triage-result--failed {
+  color: var(--removed-line);
+  font-weight: 600;
+}
+
 .triage-folder-dialog__input {
   margin-bottom: 0.4rem;
 }

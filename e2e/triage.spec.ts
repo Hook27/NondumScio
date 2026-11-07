@@ -525,6 +525,8 @@ const opfs = (page: Page) =>
     return out.sort();
   });
 
+const TRASH = '_Prullenbak (triage)';
+
 const TREE = {
   'Documenten/Archief/brief.pdf': 'brief',
   'Documenten/Archief/factuur.pdf': 'factuur',
@@ -583,7 +585,7 @@ test.describe('Archief / Triage: Map opruimen', () => {
     await page.keyboard.press('k');
 
     await page.getByRole('button', { name: tr.views.overview }).click();
-    await expect(page.getByText(f.notYet)).toBeVisible();
+    await expect(page.getByRole('button', { name: tr.run.button })).toBeEnabled();
     const [csv] = await Promise.all([
       page.waitForEvent('download'),
       page.getByRole('button', { name: tr.overview.csv }).click(),
@@ -591,9 +593,103 @@ test.describe('Archief / Triage: Map opruimen', () => {
     expect(readFileSync(await csv.path(), 'utf8')).toBe(
       '"Bestandsnaam","Besluit","Map"\n"brief.pdf","verplaatsen","Archief/Facturen"\n"factuur.pdf","verplaatsen","Foto/Bloemen"\n"2024/c.pdf","bewaren",""',
     );
-    // Er is niets veranderd: geen nieuwe map, alle bestanden waar ze waren.
+    // Tot Uitvoeren is er niets veranderd: geen nieuwe map, alle bestanden waar ze waren.
     expect(await opfs(page)).toEqual(before);
     expect(before).not.toContain('Documenten/Archief/Facturen/');
+  });
+
+  test('Uitvoeren: vraagt eerst, verplaatst dan echt (nieuwe map, prullenbakmap met submap, _1 bij dubbel); de datum blijft', async ({
+    page,
+  }) => {
+    await folders(page, {
+      ...TREE,
+      'Documenten/Archief/2024/oud.pdf': 'oud',
+      'Documenten/Foto/Bloemen/factuur.pdf': 'al er',
+    });
+    /** De datum (laatst gewijzigd) van een bestand in de afgeschermde browsermap. */
+    const modified = (path: string) =>
+      page.evaluate(async (p) => {
+        const parts = p.split('/');
+        const name = parts.pop()!;
+        let dir = await navigator.storage.getDirectory();
+        for (const part of parts) dir = await dir.getDirectoryHandle(part);
+        return (await (await dir.getFileHandle(name)).getFile()).lastModified;
+      }, path);
+    const before = await modified('Documenten/Archief/brief.pdf');
+    // Even wachten: een nieuw geschreven bestand zou een latere datum krijgen.
+    await page.waitForTimeout(1100);
+
+    await page.getByRole('button', { name: tr.modes.folder }).click();
+    await page.getByRole('button', { name: f.chooseRoot }).click();
+    await page.getByRole('button', { name: f.chooseSource }).click();
+    const dialog = page.getByRole('dialog');
+    await dialog.getByRole('button', { name: 'Archief' }).click();
+    await dialog.getByRole('button', { name: b.confirm }).click();
+    await page.getByLabel(f.recursive).check();
+    await expect(list(page).getByRole('button')).toHaveCount(4);
+    await expect(canvas(page, 1)).toBeVisible(SLOW);
+    // brief → nieuwe map Facturen; factuur → Foto/Bloemen (daar staat al een factuur.pdf);
+    // 2024/c bewaren; 2024/oud naar de prullenbak.
+    await page.keyboard.press('m');
+    await dialog.getByLabel(b.newLabel).fill('Facturen');
+    await dialog.getByRole('button', { name: b.create }).click();
+    await dialog.getByRole('button', { name: b.confirm }).click();
+    await expect(active(page)).toContainText('factuur.pdf');
+    await page.keyboard.press('m');
+    await dialog.getByRole('button', { name: b.up }).click();
+    await dialog.getByRole('button', { name: 'Foto' }).click();
+    await dialog.getByRole('button', { name: 'Bloemen' }).click();
+    await dialog.getByRole('button', { name: b.confirm }).click();
+    await expect(active(page)).toContainText('c.pdf');
+    await page.keyboard.press('k');
+    await expect(active(page)).toContainText('oud.pdf');
+    await page.keyboard.press('x');
+
+    await page.getByRole('button', { name: tr.views.overview }).click();
+    await expect(page.getByText(format(tr.run.warnOne, { folder: TRASH }))).toBeVisible();
+    await page.getByRole('button', { name: tr.run.button }).click();
+    await expect(dialog.getByRole('heading')).toHaveText(tr.run.title);
+    await expect(dialog).toContainText(
+      `${format(tr.run.move, { n: 2 })} · ${tr.run.trashOne} · ${tr.run.newOne}. ${tr.run.rest}`,
+    );
+    await dialog.getByRole('button', { name: tr.run.confirm }).click();
+    await expect(page.getByText(format(tr.run.done, { n: 3 }))).toBeVisible(SLOW);
+    await expect(page.getByText(format(tr.run.okRenamed, { name: 'factuur_1.pdf' }))).toBeVisible();
+
+    expect(await opfs(page)).toEqual(
+      [
+        'Documenten/',
+        'Documenten/Archief/',
+        'Documenten/Archief/.git/',
+        'Documenten/Archief/.git/x.pdf',
+        'Documenten/Archief/2024/',
+        'Documenten/Archief/2024/c.pdf',
+        'Documenten/Archief/Facturen/',
+        'Documenten/Archief/Facturen/brief.pdf',
+        'Documenten/Archief/notitie.txt',
+        `Documenten/Archief/${TRASH}/`,
+        `Documenten/Archief/${TRASH}/2024/`,
+        `Documenten/Archief/${TRASH}/2024/oud.pdf`,
+        `Documenten/Archief/${TRASH}/oud.pdf`,
+        'Documenten/Foto/',
+        'Documenten/Foto/Bloemen/',
+        'Documenten/Foto/Bloemen/factuur.pdf',
+        'Documenten/Foto/Bloemen/factuur_1.pdf',
+      ].sort(),
+    );
+    // Verplaatsen is geen kopie: de datum van het bestand blijft.
+    expect(await modified('Documenten/Archief/Facturen/brief.pdf')).toBe(before);
+
+    // Opnieuw inlezen: wat er nu in de bronmap staat (Facturen staat in Archief, dus brief.pdf
+    // komt daar weer langs), met het besluit dat erbij hoorde.
+    await page.getByRole('button', { name: tr.run.again }).click();
+    await expect(list(page).getByRole('button')).toHaveCount(2);
+    await expect(
+      list(page).getByRole('button', { name: `c.pdf, ${tr.states.keep}` }),
+    ).toHaveAttribute('data-tip', '2024/c.pdf');
+    await expect(
+      list(page).getByRole('button', { name: `brief.pdf, ${tr.states.none}` }),
+    ).toHaveAttribute('data-tip', 'Facturen/brief.pdf');
   });
 
   test('de hoofdmap wordt onthouden: na herladen meteen verder, zonder opnieuw te kiezen', async ({
