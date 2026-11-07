@@ -9,6 +9,7 @@ import {
   groups,
   isMove,
   isPdfFile,
+  labelOf,
   nextAfter,
   sameDecision,
   sortFolders,
@@ -281,5 +282,39 @@ describe('exportName', () => {
     expect(exportName(new Date(2026, 10, 7, 18, 30, 59), 'txt')).toBe('triage_2026-11-07_1830.txt');
     expect(exportName(new Date(2026, 0, 3, 9, 5), 'csv')).toBe('triage_2026-01-03_0905.csv');
     expect(exportName(new Date(2026, 11, 31, 0, 0), 'txt')).toBe('triage_2026-12-31_0000.txt');
+  });
+});
+
+describe('Map opruimen: namen met de submap, mappen op hun eigen naam', () => {
+  it('labelOf: met de submap ervoor, zonder submap alleen de naam', () => {
+    const [entry] = list('keep');
+    expect(labelOf(entry!)).toBe('a.pdf');
+    expect(labelOf({ ...entry!, dirs: [] })).toBe('a.pdf');
+    expect(labelOf({ ...entry!, dirs: ['2024', 'q1'] })).toBe('2024/q1/a.pdf');
+  });
+
+  it('in de .txt en .csv staat de submap erbij', () => {
+    const files = list('keep', { move: 'Foto/Bloemen' });
+    files[1] = { ...files[1]!, dirs: ['2024'] };
+    expect(triageTxt(files, nl)).toContain('VERPLAATSEN NAAR Foto/Bloemen:\n  2024/b.pdf\n');
+    expect(triageCsv(files, nl)).toContain('"2024/b.pdf","verplaatsen","Foto/Bloemen"');
+  });
+
+  it('sortFolders met lastPart: op de naam van de map zelf, bij gelijke namen op het pad', () => {
+    const folders = ['Zaken/Archief', 'Archief/Zaken', 'Foto/Bloemen', 'Oud/Archief', 'bloemen'];
+    expect(sortFolders(folders, true)).toEqual([
+      'Oud/Archief',
+      'Zaken/Archief',
+      'bloemen',
+      'Foto/Bloemen',
+      'Archief/Zaken',
+    ]);
+    expect(sortFolders(folders)).toEqual([
+      'Archief/Zaken',
+      'bloemen',
+      'Foto/Bloemen',
+      'Oud/Archief',
+      'Zaken/Archief',
+    ]);
   });
 });
