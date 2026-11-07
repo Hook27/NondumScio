@@ -282,24 +282,22 @@ function DecideBar() {
           class="button triage-decide__remove"
           aria-pressed={current.decision === 'remove'}
           aria-keyshortcuts="X"
+          data-tip={`${tr.remove} (X)`}
           onClick={() => decide('remove')}
         >
-          <span aria-hidden="true">✕</span> {tr.remove}{' '}
-          <kbd class="triage-kbd" aria-hidden="true">
-            X
-          </kbd>
+          <span aria-hidden="true">✕</span>
+          <span class="triage-decide__label">{tr.remove}</span>
         </button>
         <button
           type="button"
           class="button triage-decide__keep"
           aria-pressed={current.decision === 'keep'}
           aria-keyshortcuts="K"
+          data-tip={`${tr.keep} (K)`}
           onClick={() => decide('keep')}
         >
-          <span aria-hidden="true">✓</span> {tr.keep}{' '}
-          <kbd class="triage-kbd" aria-hidden="true">
-            K
-          </kbd>
+          <span aria-hidden="true">✓</span>
+          <span class="triage-decide__label">{tr.keep}</span>
         </button>
       </div>
     </div>

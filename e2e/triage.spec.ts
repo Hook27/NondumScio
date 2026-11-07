@@ -230,43 +230,76 @@ test.describe('Archief / Triage', () => {
   }
 });
 
-test.describe('Archief / Triage op een klein scherm (1366 × 768 bij 150 %)', () => {
-  test.skip(({ isMobile }) => isMobile, 'Alleen op de computer');
-  // Zoals een laptop met Windows-schaal 150 %, met de balken van de browser en Windows eraf.
-  test.use({ viewport: { width: 911, height: 433 }, deviceScaleFactor: 1.5 });
+/**
+ * Zoals een laptop met Windows-schaal 150 %: 1366 × 768 met de balken van de browser en Windows eraf
+ * (911 × 433), en een groter scherm op 150 % zoals in de review van PR 91 (1333 × 722).
+ */
+for (const size of [
+  { width: 911, height: 433 },
+  { width: 1333, height: 722 },
+]) {
+  test.describe(`Archief / Triage op ${size.width} × ${size.height} bij 150 %`, () => {
+    test.skip(({ isMobile }) => isMobile, 'Alleen op de computer');
+    test.use({ viewport: size, deviceScaleFactor: 1.5 });
 
-  for (const lang of ['nl', 'en'] as const) {
-    test(`de knoppen staan op één regel en Bewaren/Verwijderen zijn in beeld (${lang})`, async ({
-      page,
-    }) => {
-      const t = messages[lang].triage;
-      await open(page, lang);
-      // Een gewone schuifbalk (17 px op Windows) kost breedte; de testbrowser toont er geen.
-      await page.addStyleTag({ content: '.workspace__tools { padding-right: 23px !important; }' });
-      await addThree(page);
-      await expect(canvas(page, 1, lang)).toBeVisible(SLOW);
-      const viewport = page.viewportSize()!;
-      for (const name of [
-        t.keep,
-        t.remove,
-        t.views.review,
-        t.views.overview,
-        t.modes.list,
-        t.modes.folder,
-      ]) {
-        const button = page.getByRole('button', { name, exact: true });
-        expect(await lines(button), name).toBe(1);
-      }
-      for (const name of [t.keep, t.remove]) {
-        const box = (await page.getByRole('button', { name, exact: true }).boundingBox())!;
-        expect(box.y + box.height, name).toBeLessThanOrEqual(viewport.height);
-      }
-      // De pagina zelf krijgt het grootste deel van de breedte.
-      const view = (await page.locator('.workspace__view').boundingBox())!;
-      expect(view.width / viewport.width).toBeGreaterThan(0.55);
-      // Zoals pdf-triage.html staat de pagina op de breedte van het vak: goed te lezen.
-      const shown = (await canvas(page, 1, lang).boundingBox())!;
-      expect(shown.width / view.width).toBeGreaterThan(0.8);
-    });
-  }
-});
+    for (const lang of ['nl', 'en'] as const) {
+      test(`de knoppen passen, op één regel, en Bewaren/Verwijderen zijn in beeld (${lang})`, async ({
+        page,
+      }) => {
+        const t = messages[lang].triage;
+        await open(page, lang);
+        // Een gewone schuifbalk (17 px op Windows) kost breedte; de testbrowser toont er geen.
+        await page.addStyleTag({
+          content: '.workspace__tools { padding-right: 23px !important; }',
+        });
+        await addThree(page);
+        await expect(canvas(page, 1, lang)).toBeVisible(SLOW);
+        const viewport = page.viewportSize()!;
+        for (const name of [
+          t.keep,
+          t.remove,
+          t.views.review,
+          t.views.overview,
+          t.modes.list,
+          t.modes.folder,
+        ]) {
+          const button = page.getByRole('button', { name, exact: true });
+          expect(await lines(button), name).toBe(1);
+        }
+        // Verwijderen en Bewaren: in beeld, binnen het vak (ook met de schuifbalk), niet afgekapt,
+        // en de toets staat in de hint.
+        const tools = page.locator('.workspace__tools');
+        const inner = await tools.evaluate((element) => {
+          const box = element.getBoundingClientRect();
+          const style = getComputedStyle(element);
+          return {
+            right: box.left + element.clientWidth - parseFloat(style.paddingRight),
+            overflow: element.scrollWidth - element.clientWidth,
+          };
+        });
+        expect(inner.overflow, 'zijwaarts schuiven in het linkervak').toBeLessThanOrEqual(0);
+        for (const [name, key] of [
+          [t.keep, 'K'],
+          [t.remove, 'X'],
+        ] as const) {
+          const button = page.getByRole('button', { name, exact: true });
+          const box = (await button.boundingBox())!;
+          expect(box.y + box.height, name).toBeLessThanOrEqual(viewport.height);
+          expect(box.x + box.width, name).toBeLessThanOrEqual(inner.right + 0.5);
+          const label = button.locator('.triage-decide__label');
+          expect(
+            await label.evaluate((element) => element.scrollWidth - element.clientWidth),
+            `${name} afgekapt`,
+          ).toBeLessThanOrEqual(0);
+          await expect(button).toHaveAttribute('data-tip', `${name} (${key})`);
+        }
+        // De pagina zelf krijgt het grootste deel van de breedte.
+        const view = (await page.locator('.workspace__view').boundingBox())!;
+        expect(view.width / viewport.width).toBeGreaterThan(0.55);
+        // Zoals pdf-triage.html staat de pagina op de breedte van het vak: goed te lezen.
+        const shown = (await canvas(page, 1, lang).boundingBox())!;
+        expect(shown.width / view.width).toBeGreaterThan(0.8);
+      });
+    }
+  });
+}

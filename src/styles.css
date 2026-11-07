@@ -1970,9 +1970,20 @@ h1 {
   gap: 0.5rem;
 }
 
+/* Op de maat van de andere knoppen links; de toets (X of K) staat in de hint. Ze mogen krimpen:
+   nooit breder dan het vak, ook niet met een schuifbalk ernaast. */
 .triage-decide__buttons .button {
-  padding: 0.5rem 0.6rem;
+  min-width: 0;
+  gap: 0.3rem;
+  padding: 0.35rem 0.5rem;
+  font-size: 0.9rem;
   white-space: nowrap;
+}
+
+.triage-decide__label {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .triage-decide__keep {
@@ -1989,15 +2000,6 @@ h1 {
 .triage-decide__buttons .button[aria-pressed='true'] {
   outline: 2px solid var(--text);
   outline-offset: 2px;
-}
-
-.triage-kbd {
-  padding: 0 0.3rem;
-  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
-  font-size: 0.75rem;
-  border: 1px solid currentColor;
-  border-radius: 3px;
-  opacity: 0.8;
 }
 
 /* De naam en het aantal pagina's, achteraan in de balk; te lang = afgekapt (de hele naam als hint). */
