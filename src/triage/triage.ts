@@ -4,6 +4,8 @@
  * bestand).
  */
 
+import type { FileEntryHandle } from './folders';
+
 /** Verplaatsen naar een map (in de lijstvariant de naam zoals je hem typte). */
 export type Move = { move: string };
 
@@ -21,7 +23,15 @@ export type TriageFile = {
   name: string;
   decision: Decision;
   page: number;
+  /** Bij Map opruimen: de mappen tussen de bronmap en het bestand (leeg = in de bronmap). */
+  dirs?: string[];
+  /** Bij Map opruimen: het bestand in de map, om het later te verplaatsen. */
+  handle?: FileEntryHandle;
 };
+
+/** Hoe een PDF in de lijsten heet: bij Map opruimen met de submap ervoor ("2024/brief.pdf"). */
+export const labelOf = (entry: TriageFile): string =>
+  entry.dirs && entry.dirs.length > 0 ? `${entry.dirs.join('/')}/${entry.name}` : entry.name;
 
 /** Of het bestand een PDF is: op naam (".pdf", ook in hoofdletters) of op het opgegeven type. */
 export const isPdfFile = (file: File): boolean =>
@@ -87,9 +97,16 @@ export function addFolder(
   return { folders: [...folders, name], name };
 }
 
-/** De gekozen mappen op naam, zoals in DocumentTriage; de eerste negen hebben een sneltoets 1–9. */
-export const sortFolders = (folders: readonly string[]): string[] =>
-  [...folders].sort((a, b) => a.localeCompare(b, 'nl', { sensitivity: 'base' }));
+/**
+ * De gekozen mappen op naam, zoals in DocumentTriage; de eerste negen hebben een sneltoets 1–9.
+ * Met `lastPart` (bij Map opruimen, waar een map een pad is) op de naam van de map zelf, zoals
+ * DocumentTriage, en bij gelijke namen op het hele pad.
+ */
+export function sortFolders(folders: readonly string[], lastPart = false): string[] {
+  const compare = (a: string, b: string) => a.localeCompare(b, 'nl', { sensitivity: 'base' });
+  const name = (folder: string) => (lastPart ? folder.slice(folder.lastIndexOf('/') + 1) : folder);
+  return [...folders].sort((a, b) => compare(name(a), name(b)) || compare(a, b));
+}
 
 /**
  * Waar je na een besluit heen gaat: het eerstvolgende bestand dat nog niet beoordeeld is; is er
@@ -159,7 +176,7 @@ export function triageTxt(list: readonly TriageFile[], texts: ExportTexts): stri
   const group = (head: string, entries: readonly TriageFile[]) => {
     if (entries.length === 0) return;
     lines.push(`${head}:`);
-    for (const entry of entries) lines.push(`  ${entry.name}`);
+    for (const entry of entries) lines.push(`  ${labelOf(entry)}`);
     lines.push('');
   };
   group(texts.keep, all.keep);
@@ -181,7 +198,9 @@ export function triageTxt(list: readonly TriageFile[], texts: ExportTexts): stri
  */
 export function triageCsv(list: readonly TriageFile[], texts: ExportTexts): string {
   const rows = [[texts.columnName, texts.columnDecision, texts.columnFolder]];
-  for (const { name, decision } of list) {
+  for (const entry of list) {
+    const { decision } = entry;
+    const name = labelOf(entry);
     if (isMove(decision)) rows.push([name, texts.decisions.move, decision.move]);
     else rows.push([name, texts.decisions[decision ?? 'none'], '']);
   }

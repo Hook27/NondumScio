@@ -76,7 +76,8 @@ test.describe('Archief / Triage', () => {
   test('PDF’s beoordelen met toetsen, bladeren, en de lijst downloaden', async ({ page }) => {
     await open(page);
     await expect(page.getByText(tr.placeholder)).toBeVisible();
-    await expect(page.getByRole('button', { name: tr.modes.folder })).toBeDisabled();
+    // Chromium kan mappen kiezen: Map opruimen staat aan.
+    await expect(page.getByRole('button', { name: tr.modes.folder })).toBeEnabled();
 
     await addThree(page);
     await expect(list(page).getByRole('button')).toHaveCount(3);
@@ -460,3 +461,198 @@ for (const size of [
     });
   });
 }
+
+/**
+ * Map opruimen gebruikt de mappen-toegang van de browser. Het Windows-venster om een map te kiezen
+ * kan een test niet bedienen; daarom geeft `showDirectoryPicker` hier de map "Documenten" uit het
+ * afgeschermde bestandssysteem van de browser zelf (OPFS), gevuld met verzonnen bestanden.
+ */
+async function folders(page: Page, tree: Record<string, string | null>) {
+  await page.addInitScript(() => {
+    const w = window as unknown as { showDirectoryPicker: unknown; __picks: number };
+    w.__picks = 0;
+    w.showDirectoryPicker = async () => {
+      w.__picks++;
+      return (await navigator.storage.getDirectory()).getDirectoryHandle('Documenten');
+    };
+  });
+  await open(page);
+  const entries: [string, string | null][] = [];
+  for (const [path, content] of Object.entries(tree)) {
+    entries.push([
+      path,
+      content === null
+        ? null
+        : path.endsWith('.pdf')
+          ? (await pdf(content, 1)).buffer.toString('base64')
+          : Buffer.from(content).toString('base64'),
+    ]);
+  }
+  await page.evaluate(async (list) => {
+    const root = await navigator.storage.getDirectory();
+    for await (const name of (root as unknown as { keys(): AsyncIterable<string> }).keys())
+      await root.removeEntry(name, { recursive: true });
+    for (const [path, data] of list) {
+      const parts = path.split('/');
+      const name = parts.pop();
+      let dir = root;
+      for (const part of parts) dir = await dir.getDirectoryHandle(part, { create: true });
+      if (!name || data === null) continue;
+      const handle = await dir.getFileHandle(name, { create: true });
+      const writer = await handle.createWritable();
+      await writer.write(Uint8Array.from(atob(data), (c) => c.charCodeAt(0)));
+      await writer.close();
+    }
+  }, entries);
+}
+
+/** Alle paden in het afgeschermde bestandssysteem (mappen eindigen op "/"). */
+const opfs = (page: Page) =>
+  page.evaluate(async () => {
+    type Dir = FileSystemDirectoryHandle & {
+      entries(): AsyncIterable<[string, FileSystemHandle]>;
+    };
+    const out: string[] = [];
+    const walk = async (dir: Dir, prefix: string) => {
+      for await (const [name, handle] of dir.entries()) {
+        if (handle.kind === 'directory') {
+          out.push(`${prefix}${name}/`);
+          await walk(handle as Dir, `${prefix}${name}/`);
+        } else out.push(`${prefix}${name}`);
+      }
+    };
+    await walk((await navigator.storage.getDirectory()) as Dir, '');
+    return out.sort();
+  });
+
+const TREE = {
+  'Documenten/Archief/brief.pdf': 'brief',
+  'Documenten/Archief/factuur.pdf': 'factuur',
+  'Documenten/Archief/notitie.txt': 'hallo',
+  'Documenten/Archief/2024/c.pdf': 'c',
+  'Documenten/Archief/.git/x.pdf': 'x',
+  'Documenten/Archief/_Prullenbak (triage)/oud.pdf': 'oud',
+  'Documenten/Foto/Bloemen/': null,
+};
+
+test.describe('Archief / Triage: Map opruimen', () => {
+  test.skip(({ isMobile }) => isMobile, 'Archief / Triage is er alleen op een breed scherm');
+  const f = tr.folderMode;
+  const b = tr.browser;
+
+  test('hoofdmap, bronmap, submappen, verplaatsen naar een nieuwe en een bestaande map; niets op schijf veranderd', async ({
+    page,
+  }) => {
+    await folders(page, TREE);
+    const before = await opfs(page);
+    await page.getByRole('button', { name: tr.modes.folder }).click();
+    await expect(page.getByText(f.placeholder)).toBeVisible();
+    await page.getByRole('button', { name: f.chooseRoot }).click();
+    await page.getByRole('button', { name: f.chooseSource }).click();
+    const dialog = page.getByRole('dialog');
+    await expect(dialog.getByRole('heading')).toHaveText(b.titleSource);
+    await dialog.getByRole('button', { name: 'Archief' }).click();
+    await dialog.getByRole('button', { name: b.confirm }).click();
+    const region = page.getByRole('region', { name: f.root });
+    await expect(region.getByRole('status')).toHaveText(format(f.found, { n: 2 }));
+    await expect(canvas(page, 1)).toBeVisible(SLOW);
+    await page.getByLabel(f.recursive).check();
+    await expect(region.getByRole('status')).toHaveText(format(f.found, { n: 3 }));
+    await expect(list(page).getByRole('button')).toHaveCount(3);
+    await expect(list(page).getByRole('button').nth(2)).toHaveAttribute('data-tip', '2024/c.pdf');
+
+    // M (met de focus nog op het vinkje): een nieuwe map in Archief.
+    await page.keyboard.press('m');
+    await expect(dialog.getByRole('heading')).toHaveText(b.titleTarget);
+    await dialog.getByLabel(b.newLabel).fill('Facturen');
+    await dialog.getByRole('button', { name: b.create }).click();
+    await expect(dialog.getByText(b.empty)).toBeVisible();
+    await dialog.getByRole('button', { name: b.confirm }).click();
+    await expect(active(page)).toContainText('factuur.pdf');
+    // Nog eens: het venster begint in Archief, met Facturen (nieuw); naar Foto/Bloemen.
+    await page.getByRole('button', { name: f.choose }).click();
+    await expect(dialog.getByRole('button', { name: `Facturen (${b.isNew})` })).toBeVisible();
+    await dialog.getByRole('button', { name: b.up }).click();
+    await dialog.getByRole('button', { name: 'Foto' }).click();
+    await dialog.getByRole('button', { name: 'Bloemen' }).click();
+    await dialog.getByRole('button', { name: b.confirm }).click();
+    await expect(active(page)).toContainText('c.pdf');
+    const move = page.getByRole('group', { name: tr.moveTo });
+    await expect(move.getByRole('button', { name: '.../Archief/Facturen' })).toBeVisible();
+    await expect(move.getByRole('button', { name: '.../Foto/Bloemen' })).toBeVisible();
+    await page.keyboard.press('k');
+
+    await page.getByRole('button', { name: tr.views.overview }).click();
+    await expect(page.getByText(f.notYet)).toBeVisible();
+    const [csv] = await Promise.all([
+      page.waitForEvent('download'),
+      page.getByRole('button', { name: tr.overview.csv }).click(),
+    ]);
+    expect(readFileSync(await csv.path(), 'utf8')).toBe(
+      '"Bestandsnaam","Besluit","Map"\n"brief.pdf","verplaatsen","Archief/Facturen"\n"factuur.pdf","verplaatsen","Foto/Bloemen"\n"2024/c.pdf","bewaren",""',
+    );
+    // Er is niets veranderd: geen nieuwe map, alle bestanden waar ze waren.
+    expect(await opfs(page)).toEqual(before);
+    expect(before).not.toContain('Documenten/Archief/Facturen/');
+  });
+
+  test('de hoofdmap wordt onthouden: na herladen meteen verder, zonder opnieuw te kiezen', async ({
+    page,
+  }) => {
+    await folders(page, TREE);
+    await page.getByRole('button', { name: tr.modes.folder }).click();
+    await page.getByRole('button', { name: f.chooseRoot }).click();
+    await expect(page.getByRole('button', { name: f.chooseSource })).toBeVisible();
+    await page.reload();
+    await page.getByRole('button', { name: tr.modes.folder }).click();
+    await expect(page.getByRole('button', { name: f.chooseSource })).toBeVisible();
+    await expect(page.getByRole('region', { name: f.root })).toContainText('Documenten');
+    expect(await page.evaluate(() => (window as unknown as { __picks: number }).__picks)).toBe(0);
+  });
+
+  test('wisselen van werkwijze met besluiten vraagt eerst', async ({ page }) => {
+    await folders(page, TREE);
+    await page.getByRole('button', { name: tr.modes.folder }).click();
+    await page.getByRole('button', { name: f.chooseRoot }).click();
+    await page.getByRole('button', { name: f.chooseSource }).click();
+    await page.getByRole('dialog').getByRole('button', { name: 'Archief' }).click();
+    await page.getByRole('dialog').getByRole('button', { name: b.confirm }).click();
+    await expect(canvas(page, 1)).toBeVisible(SLOW);
+    await page.keyboard.press('x');
+    await page.getByRole('button', { name: tr.modes.list }).click();
+    const dialog = page.getByRole('dialog');
+    await expect(dialog.getByRole('heading')).toHaveText(tr.switchMode.title);
+    await dialog.getByRole('button', { name: tr.switchMode.confirm }).click();
+    await expect(page.getByText(tr.placeholder)).toBeVisible();
+    await expect(page.getByRole('button', { name: tr.slot.choose })).toBeVisible();
+  });
+
+  for (const theme of ['light', 'dark'] as const) {
+    test(`geen toegankelijkheidsfouten bij Map opruimen, ook met het mapvenster open (${theme})`, async ({
+      page,
+    }) => {
+      await folders(page, TREE);
+      if (theme === 'dark') await open(page, 'nl', 'dark');
+      await page.getByRole('button', { name: tr.modes.folder }).click();
+      await page.getByRole('button', { name: f.chooseRoot }).click();
+      await page.getByRole('button', { name: f.chooseSource }).click();
+      await page.getByRole('dialog').getByRole('button', { name: 'Archief' }).click();
+      await page.getByRole('dialog').getByRole('button', { name: b.confirm }).click();
+      await expect(canvas(page, 1)).toBeVisible(SLOW);
+      const check = async () => {
+        const result = await new AxeBuilder({ page })
+          .withTags(['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa'])
+          .analyze();
+        expect(
+          result.violations.map((v) => [v.id, v.nodes.map((n) => n.target.join(' '))]),
+        ).toEqual([]);
+      };
+      await check();
+      await page.keyboard.press('m');
+      await page.getByRole('dialog').getByLabel(b.newLabel).fill('a/b');
+      await page.getByRole('dialog').getByRole('button', { name: b.create }).click();
+      await expect(page.getByRole('alert')).toHaveText(b.badName);
+      await check();
+    });
+  }
+});

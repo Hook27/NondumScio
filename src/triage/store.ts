@@ -1,9 +1,21 @@
 import { useEffect, useState } from 'preact/hooks';
 import { closeVisual } from '../compare/visual';
 import {
+  folderAt,
+  mayRead,
+  pathText,
+  pickRoot,
+  rememberRoot,
+  rememberedRoot,
+  scanPdfs,
+  type FolderHandle,
+} from './folders';
+import {
   addFiles,
   addFolder,
+  labelOf,
   nextAfter,
+  sameFolder,
   sortFolders,
   toggle,
   type Choice,
@@ -22,10 +34,27 @@ export type Skipped = { notPdf: number; duplicate: number };
 
 /**
  * Voor wie het venster "Verplaatsen naar" open is: de PDF van nu (toets M), één PDF in het
- * overzicht, of alle PDF's die nog niet beoordeeld zijn.
+ * overzicht, of alle PDF's die nog niet beoordeeld zijn. Bij Map opruimen kies je in hetzelfde
+ * soort venster ook de bronmap.
  */
 export type FolderTarget =
-  { kind: 'current' } | { kind: 'file'; id: number } | { kind: 'undecided' };
+  { kind: 'current' } | { kind: 'file'; id: number } | { kind: 'undecided' } | { kind: 'source' };
+
+/** De werkwijze: een lijst maken van gekozen PDF's, of een map op de computer opruimen. */
+export type TriageMode = 'list' | 'folder';
+
+/** De hoofdmap bij Map opruimen; `ready` = we mogen erin lezen (anders eerst om toestemming vragen). */
+export type RootFolder = { handle: FolderHandle; name: string; ready: boolean };
+
+/** Het inlezen van de bronmap. */
+export type ScanState =
+  | { status: 'idle' }
+  | { status: 'reading'; found: number }
+  | { status: 'done'; found: number }
+  | { status: 'error' };
+
+/** Waarom het kiezen van de hoofdmap niet lukte: geweigerd door de browser, of geen toestemming. */
+export type RootProblem = 'refused' | 'noAccess' | null;
 
 export type TriageState = {
   files: TriageFile[];
@@ -43,6 +72,18 @@ export type TriageState = {
   folders: string[];
   /** Het venster "Verplaatsen naar", als het open is. */
   asking: FolderTarget | null;
+  mode: TriageMode;
+  root: RootFolder | null;
+  rootProblem: RootProblem;
+  /** De bronmap: het pad vanaf de hoofdmap (leeg = de hoofdmap zelf); null = nog niet gekozen. */
+  source: string[] | null;
+  /** Ook de submappen inlezen. */
+  recursive: boolean;
+  scan: ScanState;
+  /** Nieuwe mappen (pad vanaf de hoofdmap); die worden pas aangemaakt bij Uitvoeren. */
+  newFolders: string[];
+  /** De laatst gekozen doelmap: het mapvenster begint daarboven, zoals in DocumentTriage. */
+  lastMove: string[] | null;
 };
 
 const INITIAL: TriageState = {
@@ -58,6 +99,14 @@ const INITIAL: TriageState = {
   nextId: 1,
   folders: [],
   asking: null,
+  mode: 'list',
+  root: null,
+  rootProblem: null,
+  source: null,
+  recursive: false,
+  scan: { status: 'idle' },
+  newFolders: [],
+  lastMove: null,
 };
 
 /** Na een besluit zo lang wachten voor het volgende bestand verschijnt: dan zie je het besluit nog even. */
@@ -152,7 +201,7 @@ export function decide(choice: Choice): void {
 
 /** Verplaatsen naar de map met dit nummer (1–9) in de lijst op naam; zonder die map niets. */
 export function moveToNumber(n: number): void {
-  const folder = sortFolders(state.folders)[n - 1];
+  const folder = sortFolders(state.folders, state.mode === 'folder')[n - 1];
   if (folder !== undefined) decide({ move: folder });
 }
 
@@ -178,14 +227,35 @@ export function askFolder(target: FolderTarget | null): void {
 export function chooseFolder(typed: string): boolean {
   const target = state.asking;
   const { folders, name } = addFolder(state.folders, typed);
-  if (!target || name === null) return false;
+  if (!target || target.kind === 'source' || name === null) return false;
   setState({ folders, asking: null });
+  applyMove(target, name);
+  return true;
+}
+
+/**
+ * Bij Map opruimen: de doelmap uit het mapvenster (pad vanaf de hoofdmap; leeg = de hoofdmap zelf).
+ * Daarna begint het mapvenster de volgende keer daarboven.
+ */
+export function chooseFolderPath(path: readonly string[]): void {
+  const target = state.asking;
+  if (!target || target.kind === 'source') return;
+  const name = pathText(path);
+  const folders = state.folders.some((folder) => sameFolder(folder, name))
+    ? state.folders
+    : [...state.folders, name];
+  const existing = folders.find((folder) => sameFolder(folder, name))!;
+  setState({ folders, asking: null, lastMove: [...path] });
+  applyMove(target, existing);
+}
+
+/** Verplaatsen naar `name` voor wie het venster open was. */
+function applyMove(target: Exclude<FolderTarget, { kind: 'source' }>, name: string): void {
   const move = { move: name };
   if (target.kind === 'current') {
     // Altijd naar deze map, ook als hij al gekozen was: nog eens kiezen haalt het hier niet weg.
     const current = state.files[state.cur];
-    if (current && current.decision !== null && toggle(current.decision, move) === null)
-      return true;
+    if (current && current.decision !== null && toggle(current.decision, move) === null) return;
     decide(move);
   } else if (target.kind === 'file') {
     setDecision(target.id, move);
@@ -196,7 +266,124 @@ export function chooseFolder(typed: string): boolean {
       ),
     });
   }
-  return true;
+}
+
+/**
+ * Een nieuwe map in het mapvenster (pad vanaf de hoofdmap; het venster kijkt zelf of hij er al
+ * is). Hij wordt nog niet aangemaakt: dat gebeurt pas bij Uitvoeren, zodat er tot dan niets op je
+ * computer verandert.
+ */
+export function addNewFolder(path: readonly string[]): void {
+  setState({ newFolders: [...state.newFolders, pathText(path)] });
+}
+
+/** Naar de andere werkwijze: de lijst en de besluiten gaan weg (de vraag stelt het scherm). */
+export function setMode(mode: TriageMode): void {
+  if (mode === state.mode) return;
+  // Bij Map opruimen haalt het scherm daarna een eerder gekozen hoofdmap terug.
+  clearTriage();
+  setState({ mode });
+}
+
+/** Een eerder gekozen hoofdmap terughalen; zonder toestemming moet je eerst klikken ("Verder met …"). */
+export async function loadRememberedRoot(): Promise<void> {
+  const handle = await rememberedRoot();
+  if (!handle || state.root) return;
+  const ready = await mayRead(handle, false).catch(() => false);
+  if (state.root) return;
+  setState({ root: { handle, name: handle.name, ready }, rootProblem: null });
+}
+
+/** "Verder met …": om toestemming vragen voor de onthouden hoofdmap (alleen na een klik). */
+export async function resumeRoot(): Promise<void> {
+  const root = state.root;
+  if (!root) return;
+  const ready = await mayRead(root.handle, true).catch(() => false);
+  if (state.root !== root) return;
+  setState({ root: { ...root, ready }, rootProblem: ready ? null : 'noAccess' });
+}
+
+/**
+ * Een hoofdmap aanwijzen in het Windows-venster. Annuleren laat alles zoals het was; een andere
+ * hoofdmap begint opnieuw (zonder bronmap en lijst).
+ */
+export async function chooseRoot(): Promise<void> {
+  let handle: FolderHandle | null;
+  try {
+    handle = await pickRoot();
+  } catch {
+    setState({ rootProblem: 'refused' });
+    return;
+  }
+  if (!handle) return;
+  const ready = await mayRead(handle, true).catch(() => false);
+  clearTriage();
+  setState({ root: { handle, name: handle.name, ready }, rootProblem: ready ? null : 'noAccess' });
+  if (ready) void rememberRoot(handle);
+}
+
+/** De bronmap kiezen (pad vanaf de hoofdmap) en inlezen. */
+export function setSource(path: readonly string[]): void {
+  setState({ source: [...path], asking: null });
+  void scanSource();
+}
+
+/** Ook de submappen inlezen, of niet; met een bronmap meteen opnieuw inlezen. */
+export function setRecursive(recursive: boolean): void {
+  setState({ recursive });
+  if (state.source) void scanSource();
+}
+
+/** Het nummer van de laatste keer inlezen, zodat een oudere keer een nieuwere niet overschrijft. */
+let lastScan = 0;
+
+/**
+ * De bronmap inlezen. Een PDF die er de vorige keer ook was (zelfde pad), houdt zijn besluit en
+ * pagina; zo kun je Submappen aan- en uitzetten zonder opnieuw te beginnen.
+ */
+export async function scanSource(): Promise<void> {
+  const { root, source } = state;
+  if (!root?.ready || !source) return;
+  const token = ++lastScan;
+  const current = () => token === lastScan;
+  stopAdvance();
+  setState({ scan: { status: 'reading', found: 0 } });
+  try {
+    const folder = await folderAt(root.handle, source);
+    if (!folder) throw new Error('Map niet gevonden');
+    const found = await scanPdfs(folder, state.recursive, (n) => {
+      if (current()) setState({ scan: { status: 'reading', found: n } });
+    });
+    if (!current()) return;
+    const before = new Map(state.files.map((entry) => [labelOf(entry), entry]));
+    let id = state.nextId;
+    const files: TriageFile[] = found.map(({ file, handle, dirs }) => {
+      const entry: TriageFile = {
+        id: id++,
+        file,
+        name: file.name,
+        decision: null,
+        page: 1,
+        dirs,
+        handle,
+      };
+      const old = before.get(labelOf(entry));
+      return old ? { ...entry, decision: old.decision, page: old.page } : entry;
+    });
+    // Bij de PDF van nu blijven als die er nog is; anders de eerste.
+    const previous = state.files[state.cur];
+    const stay = previous ? files.findIndex((entry) => labelOf(entry) === labelOf(previous)) : -1;
+    if (previous) closeVisual(previous.file);
+    setState({
+      files,
+      nextId: id,
+      cur: stay !== -1 ? stay : files.length > 0 ? 0 : -1,
+      pageCounts: {},
+      scan: { status: 'done', found: files.length },
+    });
+  } catch {
+    if (current()) setState({ scan: { status: 'error' } });
+  }
 }
 
 /** Het aantal pagina's van een bestand, zodra de PDF gelezen is. */
@@ -244,7 +431,12 @@ export function clearTriage(): void {
     skipped: null,
     folders: [],
     asking: null,
+    source: null,
+    scan: { status: 'idle' },
+    newFolders: [],
+    lastMove: null,
   });
+  lastScan++;
 }
 
 /** Terug naar het begin (voor de tests). */

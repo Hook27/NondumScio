@@ -2155,6 +2155,148 @@ h1 {
   border-color: var(--accent);
 }
 
+/* Map opruimen: de hoofdmap en de bronmap, elk op een regel met een knop om te wisselen. */
+.dropzone.triage-root {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 0.35rem;
+  margin: 0 0 0.6rem;
+  padding: 0.5rem 0.6rem;
+  text-align: left;
+}
+
+.triage-root > .button:first-child {
+  justify-self: stretch;
+}
+
+.triage-root .button {
+  padding: 0.3rem 0.7rem;
+  white-space: nowrap;
+}
+
+.triage-root__line {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  grid-template-areas: 'label button' 'path path';
+  align-items: center;
+  column-gap: 0.5rem;
+  margin: 0;
+}
+
+.triage-root__label {
+  grid-area: label;
+  color: var(--text-muted);
+  font-size: 0.8rem;
+}
+
+.triage-root__path {
+  grid-area: path;
+  min-width: 0;
+  overflow: hidden;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 0.85rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.triage-root__change {
+  grid-area: button;
+  font-size: 0.85rem;
+}
+
+.triage-root .compare-settings__check {
+  margin: 0;
+  font-size: 0.9rem;
+}
+
+.triage-root__clear {
+  justify-self: start;
+}
+
+/* Het mapvenster: waar je bent, de submappen, een nieuwe map. */
+.triage-browser__path {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.3rem;
+  margin: 0 0 0.6rem;
+}
+
+.triage-browser__crumb {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  color: var(--text-muted);
+}
+
+.triage-browser__crumb-button {
+  padding: 0.1rem 0.2rem;
+  color: var(--accent);
+  font: inherit;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 0.9rem;
+  background: none;
+  border: 0;
+  cursor: pointer;
+  text-decoration: underline;
+}
+
+.triage-browser__crumb-button[aria-current='location'] {
+  color: var(--text);
+  font-weight: 700;
+  text-decoration: none;
+}
+
+.triage-browser__list {
+  display: grid;
+  max-height: min(16rem, 40vh);
+  margin: 0 0 0.75rem;
+  padding: 0.25rem 0;
+  overflow-y: auto;
+  list-style: none;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+}
+
+.triage-browser__folder {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  width: 100%;
+  padding: 0.35rem 0.75rem;
+  color: var(--text);
+  font: inherit;
+  text-align: left;
+  background: none;
+  border: 0;
+  cursor: pointer;
+}
+
+.triage-browser__folder:hover,
+.triage-browser__folder:focus-visible {
+  background: var(--bg);
+}
+
+.triage-browser__new {
+  color: var(--text-muted);
+  font-size: 0.85rem;
+}
+
+.triage-browser__empty {
+  padding: 0.35rem 0.75rem;
+  color: var(--text-muted);
+  font-size: 0.9rem;
+}
+
+.triage-browser__create {
+  margin: 0 0 0.5rem;
+}
+
+.triage-browser__create-row {
+  display: flex;
+  gap: 0.4rem;
+}
+
 .triage-folder-dialog__input {
   margin-bottom: 0.4rem;
 }

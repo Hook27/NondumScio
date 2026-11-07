@@ -9,16 +9,25 @@ import { formatFileSize } from '../lib/format';
 import type { LoadErrorCode } from '../pdf/detect';
 import { PdfLoadError } from '../pdf/loader';
 import { downloadFile } from '../pdf/save';
+import { canPickFolders, folderAt, parentOf, pathOf, shortPath, subfolders } from './folders';
 import {
+  addNewFolder,
   addTriageFiles,
   askFolder,
   chooseFolder,
+  chooseFolderPath,
+  chooseRoot,
   clearTriage,
   decide,
   getTriageState,
+  loadRememberedRoot,
   moveToNumber,
   navigate,
+  resumeRoot,
   select,
+  setMode,
+  setRecursive,
+  setSource,
   setFit,
   setPage,
   setDecision,
@@ -27,6 +36,9 @@ import {
   setZoom,
   useTriageState,
   type Fit,
+  type FolderTarget,
+  type TriageMode,
+  type TriageState,
   type TriageView,
 } from './store';
 import {
@@ -35,7 +47,9 @@ import {
   exportName,
   groups,
   isMove,
+  labelOf,
   sameDecision,
+  sameFolder,
   sortFolders,
   triageCsv,
   triageTxt,
@@ -60,13 +74,17 @@ const FITS: readonly Fit[] = ['page', 'width'];
  */
 export function TriageTool() {
   const { t } = useI18n();
-  const { view } = useTriageState();
+  const { view, mode } = useTriageState();
   useKeys();
+  // Bij Map opruimen: een eerder gekozen hoofdmap terughalen.
+  useEffect(() => {
+    if (mode === 'folder' && !getTriageState().root) void loadRememberedRoot();
+  }, [mode]);
   return (
     <section class="workspace triage" aria-label={t.triage.toolbar}>
       <div class="workspace__tools">
         <ModeChoice />
-        <Slot />
+        {mode === 'list' ? <Slot /> : <FolderSlot />}
         <Progress />
         <FileList />
         <DecideBar />
@@ -87,8 +105,11 @@ export function TriageTool() {
 function useKeys() {
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
-      const tag = (event.target as HTMLElement | null)?.tagName?.toLowerCase();
-      if (tag === 'input' || tag === 'select' || tag === 'textarea') return;
+      const element = event.target as HTMLElement | null;
+      const tag = element?.tagName?.toLowerCase();
+      // Een vinkje (zoals "Ook submappen inlezen") is geen tekstveld: daar werken de toetsen gewoon.
+      const box = tag === 'input' && (element as HTMLInputElement).type === 'checkbox';
+      if ((tag === 'input' && !box) || tag === 'select' || tag === 'textarea') return;
       if (event.ctrlKey || event.metaKey || event.altKey) return;
       if (document.querySelector('dialog[open]')) return;
       const now = getTriageState();
@@ -121,23 +142,184 @@ function useKeys() {
   }, []);
 }
 
-/** De werkwijze: een lijst maken (nu), of een map opruimen (volgt). */
+/**
+ * De werkwijze: een lijst maken van gekozen PDF's, of een map op de computer opruimen (alleen in
+ * Edge en Chrome). Wisselen wist de lijst; zijn er al besluiten, dan eerst een vraag.
+ */
 function ModeChoice() {
   const { t } = useI18n();
-  const m = t.triage.modes;
+  const tr = t.triage;
+  const m = tr.modes;
+  const { mode, files } = useTriageState();
+  const [asking, setAsking] = useState<TriageMode | null>(null);
+  const folders = canPickFolders();
+  const pick = (next: TriageMode) => {
+    if (next === mode) return;
+    if (files.some((entry) => entry.decision !== null)) setAsking(next);
+    else setMode(next);
+  };
   return (
     <>
       <div class="segmented triage-mode" role="group" aria-label={m.label}>
-        <button type="button" class="segmented__button" aria-pressed="true">
-          {m.list}
-        </button>
-        <button type="button" class="segmented__button" aria-pressed="false" disabled>
-          {m.folder}
-        </button>
+        {(['list', 'folder'] as const).map((option) => (
+          <button
+            key={option}
+            type="button"
+            class="segmented__button"
+            aria-pressed={mode === option}
+            disabled={option === 'folder' && !folders}
+            onClick={() => pick(option)}
+          >
+            {m[option]}
+          </button>
+        ))}
       </div>
-      <p class="compare-settings__hint triage-mode__hint">{t.triage.folderSoon}</p>
+      {!folders && <p class="compare-settings__hint triage-mode__hint">{tr.folderOnly}</p>}
+      {asking && (
+        <ConfirmDialog
+          title={tr.switchMode.title}
+          text={tr.switchMode.text}
+          cancel={tr.switchMode.cancel}
+          confirm={tr.switchMode.confirm}
+          onCancel={() => setAsking(null)}
+          onConfirm={() => {
+            setMode(asking);
+            setAsking(null);
+          }}
+        />
+      )}
     </>
   );
+}
+
+/**
+ * Map opruimen: de hoofdmap (aanwijzen, of verder met de onthouden), de bronmap (kiezen in het
+ * mapvenster) met "Ook submappen inlezen", wat er gevonden is, en Wis alles.
+ */
+function FolderSlot() {
+  const { t } = useI18n();
+  const tr = t.triage;
+  const f = tr.folderMode;
+  const { root, rootProblem, source, recursive, scan, files } = useTriageState();
+  const [asking, setAsking] = useState(false);
+  const problem = rootProblem && (
+    <p class="plaintext-slot__meta dropzone__error" role="alert">
+      {f[rootProblem]}
+    </p>
+  );
+  if (!root || !root.ready) {
+    return (
+      <section class="dropzone triage-root" aria-label={f.root}>
+        {root ? (
+          <button type="button" class="button" onClick={() => void resumeRoot()}>
+            {format(f.resume, { name: root.name })}
+          </button>
+        ) : (
+          <button type="button" class="button" onClick={() => void chooseRoot()}>
+            {f.chooseRoot}
+          </button>
+        )}
+        {root && (
+          <button type="button" class="button button--secondary" onClick={() => void chooseRoot()}>
+            {f.otherRoot}
+          </button>
+        )}
+        <p class="plaintext-slot__meta">{f.rootHint}</p>
+        {problem}
+      </section>
+    );
+  }
+  const status =
+    scan.status === 'reading'
+      ? format(f.reading, { n: scan.found })
+      : scan.status === 'error'
+        ? f.readError
+        : scan.status === 'done'
+          ? scan.found === 0
+            ? f.none
+            : plural(scan.found, f.foundOne, f.found)
+          : null;
+  return (
+    <section class="dropzone triage-root" aria-label={f.root}>
+      <p class="triage-root__line">
+        <span class="triage-root__label">{f.root}</span>
+        <span class="triage-root__path" data-tip={root.name}>
+          {root.name}
+        </span>
+        <button
+          type="button"
+          class="button button--secondary triage-root__change"
+          onClick={() => void chooseRoot()}
+        >
+          {f.otherRoot}
+        </button>
+      </p>
+      <p class="triage-root__line">
+        <span class="triage-root__label">{f.source}</span>
+        <span class="triage-root__path" data-tip={source ? fullPath(root.name, source) : undefined}>
+          {source ? shortPath([root.name, ...source]) : f.noSource}
+        </span>
+        <button
+          type="button"
+          class={`button ${source ? 'button--secondary ' : ''}triage-root__change`}
+          onClick={() => askFolder({ kind: 'source' })}
+        >
+          {source ? f.otherSource : f.chooseSource}
+        </button>
+      </p>
+      <label class="compare-settings__check triage-root__check">
+        <input
+          type="checkbox"
+          checked={recursive}
+          onChange={(event) => setRecursive(event.currentTarget.checked)}
+        />
+        {f.recursive}
+      </label>
+      {status && (
+        <p
+          class={`plaintext-slot__meta${scan.status === 'error' ? ' dropzone__error' : ''}`}
+          role="status"
+        >
+          {status}
+        </p>
+      )}
+      {problem}
+      <button
+        type="button"
+        class="button button--secondary triage-root__clear"
+        disabled={files.length === 0}
+        onClick={() => setAsking(true)}
+      >
+        {tr.clear}
+      </button>
+      {asking && (
+        <ConfirmDialog
+          title={tr.clearTitle}
+          text={tr.clearText}
+          cancel={tr.cancel}
+          confirm={tr.clearConfirm}
+          onCancel={() => setAsking(false)}
+          onConfirm={() => {
+            setAsking(false);
+            clearTriage();
+          }}
+        />
+      )}
+    </section>
+  );
+}
+
+/** Het hele pad vanaf de hoofdmap, als tekst: "Documenten/Archief/2024". */
+const fullPath = (root: string, path: readonly string[]) => [root, ...path].join('/');
+
+/**
+ * Hoe een doelmap heet op het scherm: bij Map opruimen een deel van het pad ("…/Foto/Bloemen",
+ * zoals DocumentTriage), met het hele pad als hint; bij Lijst maken de naam zoals je hem typte.
+ */
+function folderText(folder: string, state: TriageState): { short: string; full: string } {
+  if (state.mode !== 'folder' || !state.root) return { short: folder, full: folder };
+  const path = pathOf(folder);
+  return { short: shortPath([state.root.name, ...path]), full: fullPath(state.root.name, path) };
 }
 
 /** PDF's kiezen of slepen (meer keren toevoegen kan), en Wis alles; wat er is overgeslagen. */
@@ -254,7 +436,7 @@ function FileList() {
             aria-current={index === cur ? 'true' : undefined}
             // Een schermlezer hoort "brief.pdf, bewaren": de naam zoals hij er staat, en het besluit.
             aria-label={`${entry.name}, ${stateText(entry.decision, t)}`}
-            data-tip={entry.name}
+            data-tip={labelOf(entry)}
             onClick={() => select(index)}
           >
             <span class="triage-list__dot" aria-hidden="true" />
@@ -304,10 +486,12 @@ function reveal(item: HTMLElement) {
 function DecideBar() {
   const { t } = useI18n();
   const tr = t.triage;
-  const { files, cur, folders } = useTriageState();
+  const state = useTriageState();
+  const { files, cur, folders, mode } = state;
   const current = files[cur];
   if (!current) return null;
   const decision = current.decision;
+  const f = tr.folderMode;
   return (
     <div class="triage-decide">
       <div class="plaintext-nav triage-filenav" role="group" aria-label={tr.fileNav}>
@@ -345,32 +529,37 @@ function DecideBar() {
             type="button"
             class="button button--secondary triage-folder"
             aria-keyshortcuts="M"
-            data-tip={tr.newFolderTip}
+            data-tip={mode === 'folder' ? f.chooseTip : tr.newFolderTip}
             onClick={() => askFolder({ kind: 'current' })}
           >
-            {tr.newFolder}
+            {mode === 'folder' ? f.choose : tr.newFolder}
           </button>
         </div>
         {folders.length > 0 && (
           <div class="triage-folders">
-            {sortFolders(folders).map((folder, i) => (
-              <button
-                key={folder}
-                type="button"
-                class="button button--secondary triage-folder"
-                aria-pressed={sameDecision(decision, { move: folder })}
-                aria-keyshortcuts={i < 9 ? String(i + 1) : undefined}
-                data-tip={i < 9 ? format(tr.folderTip, { folder, n: i + 1 }) : folder}
-                onClick={() => decide({ move: folder })}
-              >
-                {i < 9 && (
-                  <span class="triage-folder__key" aria-hidden="true">
-                    {i + 1}
-                  </span>
-                )}
-                <span class="triage-folder__name">{folder}</span>
-              </button>
-            ))}
+            {sortFolders(folders, mode === 'folder').map((folder, i) => {
+              const text = folderText(folder, state);
+              return (
+                <button
+                  key={folder}
+                  type="button"
+                  class="button button--secondary triage-folder"
+                  aria-pressed={sameDecision(decision, { move: folder })}
+                  aria-keyshortcuts={i < 9 ? String(i + 1) : undefined}
+                  data-tip={
+                    i < 9 ? format(tr.folderTip, { folder: text.full, n: i + 1 }) : text.full
+                  }
+                  onClick={() => decide({ move: folder })}
+                >
+                  {i < 9 && (
+                    <span class="triage-folder__key" aria-hidden="true">
+                      {i + 1}
+                    </span>
+                  )}
+                  <span class="triage-folder__name">{text.short}</span>
+                </button>
+              );
+            })}
           </div>
         )}
       </div>
@@ -437,13 +626,15 @@ function Bar({ children }: { children?: ComponentChildren }) {
 /** Beoordelen: de PDF van nu, of uitleg zolang er nog niets is. */
 function Review() {
   const { t } = useI18n();
-  const { files, cur } = useTriageState();
+  const { files, cur, mode } = useTriageState();
   const current = files[cur];
   if (!current) {
     return (
       <>
         <Bar />
-        <p class="compare__placeholder">{t.triage.placeholder}</p>
+        <p class="compare__placeholder">
+          {mode === 'folder' ? t.triage.folderMode.placeholder : t.triage.placeholder}
+        </p>
         <p class="compare-settings__hint">{t.triage.keys}</p>
       </>
     );
@@ -563,6 +754,7 @@ function PageView({ entry }: { entry: TriageFile }) {
   const percent = size ? Math.round((widths.css / size.w) * 100) : 100;
   const meta = [
     entry.name,
+    entry.dirs && entry.dirs.length > 0 && entry.dirs.join('/'),
     size && plural(size.count, t.compare.pagesOne, t.compare.pages),
     formatFileSize(file.size, language),
   ]
@@ -646,7 +838,7 @@ function PageView({ entry }: { entry: TriageFile }) {
           ))}
         </div>
         {/* In de balk zelf: op een klein scherm kost een eigen regel te veel ruimte. */}
-        <p class="triage-meta" data-tip={entry.name}>
+        <p class="triage-meta" data-tip={labelOf(entry)}>
           {meta}
         </p>
       </Bar>
@@ -709,7 +901,8 @@ function Overview() {
   const { t } = useI18n();
   const tr = t.triage;
   const o = tr.overview;
-  const { files } = useTriageState();
+  const state = useTriageState();
+  const { files, mode } = state;
   const [status, setStatus] = useState<string | null>(null);
   const all = groups(files);
   const save = (extension: 'txt' | 'csv') => {
@@ -726,12 +919,12 @@ function Overview() {
   const item = (entry: TriageFile) => (
     <li key={entry.id} class="triage-group__item">
       <span class="triage-list__dot" aria-hidden="true" />
-      <span class="triage-list__name">{entry.name}</span>
+      <span class="triage-list__name">{labelOf(entry)}</span>
       {isMove(entry.decision) && (
-        <span class="triage-group__folder">
+        <span class="triage-group__folder" data-tip={folderText(entry.decision.move, state).full}>
           <span aria-hidden="true">→ </span>
           <span class="visually-hidden">{`${tr.moveTo} `}</span>
-          {entry.decision.move}
+          {folderText(entry.decision.move, state).short}
         </span>
       )}
       <Change entry={entry} />
@@ -763,6 +956,9 @@ function Overview() {
         <p class="plaintext__done" role="status">
           {status}
         </p>
+      )}
+      {mode === 'folder' && files.length > 0 && (
+        <p class="compare-settings__hint">{tr.folderMode.notYet}</p>
       )}
       {files.length === 0 && <p class="compare__placeholder">{o.empty}</p>}
       {(['keep', 'move', 'remove', 'none'] as const).map((key) =>
@@ -839,8 +1035,198 @@ function Change({ entry }: { entry: TriageFile }) {
  * aanklikken. Enter verplaatst, Escape of Annuleren sluit. Een lege naam geeft een melding.
  */
 function FolderDialog() {
-  const { asking } = useTriageState();
-  return asking ? <FolderForm undecided={asking.kind === 'undecided'} /> : null;
+  const { asking, mode, root } = useTriageState();
+  if (!asking) return null;
+  if (mode === 'folder' && root?.ready) return <FolderBrowser target={asking} />;
+  return asking.kind === 'source' ? null : <FolderForm undecided={asking.kind === 'undecided'} />;
+}
+
+/** Een mapnaam die op Windows mag: niet leeg, niet met een punt ervoor, zonder / \ : * ? " < > |. */
+const goodName = (name: string) =>
+  name !== '' && !name.startsWith('.') && !/[\\/:*?"<>|]/.test(name);
+
+/**
+ * Het mapvenster binnen de hoofdmap, zoals in DocumentTriage: waar je bent (klik om terug te gaan),
+ * een map omhoog, de submappen (klik = erin), een nieuwe map (die pas bij Uitvoeren wordt
+ * aangemaakt) en "Deze map kiezen". Voor de bronmap, of voor een doelmap: dan begint het boven de
+ * vorige doelmap, of in de bronmap.
+ */
+function FolderBrowser({ target }: { target: FolderTarget }) {
+  const { t } = useI18n();
+  const b = t.triage.browser;
+  const state = useTriageState();
+  const { root, source, lastMove, newFolders } = state;
+  const forSource = target.kind === 'source';
+  const [path, setPath] = useState<string[]>(() =>
+    forSource ? (source ?? []) : lastMove ? parentOf(lastMove) : (source ?? []),
+  );
+  const [subs, setSubs] = useState<string[] | null>(null);
+  const [newName, setNewName] = useState('');
+  const [bad, setBad] = useState(false);
+  const dialog = useRef<HTMLDialogElement>(null);
+
+  useLayoutEffect(() => {
+    const element = dialog.current;
+    if (!element) return;
+    if (typeof element.showModal === 'function') element.showModal();
+    else element.setAttribute('open', '');
+    element.querySelector<HTMLElement>('.triage-browser__choose')?.focus();
+    return () => {
+      if (element.open && typeof element.close === 'function') element.close();
+    };
+  }, []);
+
+  // De submappen van waar je bent; een nieuwe map (nog niet aangemaakt) heeft er geen.
+  useEffect(() => {
+    let cancelled = false;
+    setSubs(null);
+    void (async () => {
+      const folder = root ? await folderAt(root.handle, path) : null;
+      const names = folder ? await subfolders(folder).catch(() => []) : [];
+      if (!cancelled) setSubs(names);
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [root, path.join('/')]);
+
+  if (!root) return null;
+  const here = path.join('/');
+  const pending = newFolders
+    .map(pathOf)
+    .filter((p) => p.length === path.length + 1 && parentOf(p).join('/') === here)
+    .map((p) => p[p.length - 1]!)
+    .filter((name) => !(subs ?? []).some((sub) => sameFolder(sub, name)));
+  const create = () => {
+    const name = newName.trim();
+    if (!goodName(name)) {
+      setBad(true);
+      return;
+    }
+    const existing = [...(subs ?? []), ...pending].find((sub) => sameFolder(sub, name));
+    if (!existing) addNewFolder([...path, name]);
+    setNewName('');
+    setPath([...path, existing ?? name]);
+  };
+  const title = forSource
+    ? b.titleSource
+    : target.kind === 'undecided'
+      ? b.titleUndecided
+      : b.titleTarget;
+  return (
+    <dialog
+      ref={dialog}
+      class="save-dialog triage-browser"
+      aria-labelledby="triage-browser-title"
+      onCancel={(event) => {
+        event.preventDefault();
+        askFolder(null);
+      }}
+    >
+      <h2 id="triage-browser-title" class="save-dialog__title">
+        {title}
+      </h2>
+      <nav class="triage-browser__path" aria-label={b.path}>
+        <button
+          type="button"
+          class="button button--secondary triage-folder"
+          aria-label={b.up}
+          data-tip={b.up}
+          disabled={path.length === 0}
+          onClick={() => setPath(parentOf(path))}
+        >
+          ↑
+        </button>
+        {[root.name, ...path].map((name, i) => (
+          <span key={i} class="triage-browser__crumb">
+            {i > 0 && <span aria-hidden="true">/</span>}
+            <button
+              type="button"
+              class="triage-browser__crumb-button"
+              aria-current={i === path.length ? 'location' : undefined}
+              onClick={() => setPath(path.slice(0, i))}
+            >
+              {name}
+            </button>
+          </span>
+        ))}
+      </nav>
+      <ul class="triage-browser__list" aria-label={b.folders} aria-busy={subs === null}>
+        {subs === null && <li class="triage-browser__empty">{b.loading}</li>}
+        {subs !== null && subs.length + pending.length === 0 && (
+          <li class="triage-browser__empty">{b.empty}</li>
+        )}
+        {[
+          ...(subs ?? []).map((name) => ({ name, isNew: false })),
+          ...pending.map((name) => ({ name, isNew: true })),
+        ].map(({ name, isNew }) => (
+          <li key={name}>
+            <button
+              type="button"
+              class="triage-browser__folder"
+              onClick={() => setPath([...path, name])}
+            >
+              <span aria-hidden="true">📁</span>
+              <span class="triage-folder__name">{name}</span>
+              {isNew && <span class="triage-browser__new">{` (${b.isNew})`}</span>}
+            </button>
+          </li>
+        ))}
+      </ul>
+      {!forSource && (
+        <form
+          class="triage-browser__create"
+          onSubmit={(event) => {
+            event.preventDefault();
+            create();
+          }}
+        >
+          <label for="triage-new-folder" class="save-dialog__label">
+            {b.newLabel}
+          </label>
+          <div class="triage-browser__create-row">
+            <input
+              id="triage-new-folder"
+              class="save-dialog__input"
+              type="text"
+              value={newName}
+              spellcheck={false}
+              autocomplete="off"
+              aria-describedby="triage-new-folder-hint"
+              aria-invalid={bad}
+              onInput={(event) => {
+                setNewName(event.currentTarget.value);
+                setBad(false);
+              }}
+            />
+            <button type="submit" class="button button--secondary">
+              {b.create}
+            </button>
+          </div>
+          <p id="triage-new-folder-hint" class="compare-settings__hint">
+            {b.newHint}
+          </p>
+          {bad && (
+            <p class="triage-folder-dialog__error" role="alert">
+              {b.badName}
+            </p>
+          )}
+        </form>
+      )}
+      <div class="save-dialog__actions">
+        <button type="button" class="button button--secondary" onClick={() => askFolder(null)}>
+          {b.cancel}
+        </button>
+        <button
+          type="button"
+          class="button triage-browser__choose"
+          onClick={() => (forSource ? setSource(path) : chooseFolderPath(path))}
+        >
+          {b.confirm}
+        </button>
+      </div>
+    </dialog>
+  );
 }
 
 function FolderForm({ undecided }: { undecided: boolean }) {
