@@ -161,10 +161,10 @@ async function buildPlain(
       if (keep.size < sourcePages.length) (await import('./tags')).dropTagsOf(lib, doc, keep);
       links.detachPageRefs(lib, doc, { source: id, whole: true });
       // Blijft er een deel van de pagina's over, dan geen afbeeldingen van de rest via een gedeelde
-      // lijst met hulpbronnen (zie `resources.ts`).
+      // of overvolle lijst met hulpbronnen: elke pagina wordt uitgedund (zie `resources.ts`).
       const kept = [...new Set(pages.map((item) => item.source))];
       const resources = kept.length < sourcePages.length ? await import('./resources') : null;
-      resources?.trimSharedResources(lib, doc, kept);
+      resources?.trimPageResources(lib, doc, kept);
       // Alle pagina's uit de paginaboom halen en in de nieuwe volgorde terugzetten.
       for (let i = sourcePages.length - 1; i >= 0; i -= 1) doc.removePage(i);
       const fonts: FontCache = {};
@@ -247,8 +247,8 @@ export async function buildParts(
 /** Wat er bij het maken van een deel gebeurde. */
 export type PartReport = {
   /**
-   * Hoeveel pagina's hun gedeelde lijst met hulpbronnen hielden, omdat uitdunnen niet veilig kon
-   * (zie `trimSharedResources`): dan kan het deel gegevens van andere pagina's bevatten.
+   * Hoeveel pagina's hun lijst met hulpbronnen hielden, omdat uitdunnen niet veilig kon (zie
+   * `trimPageResources`): dan kan het deel gegevens van andere pagina's bevatten.
    */
   untrimmed: number;
 };
@@ -301,7 +301,7 @@ async function assemble(
   const rotated = rotation(lib);
   // Anders haalt het kopiëren via koppelingen pagina's mee die niet meedoen (zie `links.ts`).
   const links = await import('./links');
-  const { trimSharedResources } = await import('./resources');
+  const { trimPageResources } = await import('./resources');
   for (const [id, doc] of docs) {
     if (detached.has(doc)) continue;
     links.detachPageRefs(lib, doc, { source: id });
@@ -320,8 +320,8 @@ async function assemble(
   for (const [id, doc] of docs) {
     const indices = [...new Set(pages.filter((p) => p.doc === id).map((p) => p.source))];
     if (indices.length === 0) continue;
-    // Anders neemt elke pagina met een gedeelde lijst hulpbronnen alle afbeeldingen mee.
-    const doubtful = trimSharedResources(lib, doc, indices);
+    // Anders neemt elke pagina met een gedeelde (of overvolle) lijst hulpbronnen alle afbeeldingen mee.
+    const doubtful = trimPageResources(lib, doc, indices);
     if (report) report.untrimmed += doubtful.length;
     const copied = await out.copyPages(doc, indices);
     indices.forEach((index, i) => copies.set(`${id}:${index}`, copied[i]!));

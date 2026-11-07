@@ -48,3 +48,36 @@ test('splitsen van een scan met gedeelde hulpbronnen: kleine delen die er hetzel
   expect(near(colors[0]!, grayOf(4)), `afbeelding: ${colors[0]!.join(',')}`).toBe(true);
   expect(near(colors[1]!, grayOf(0)), `logo: ${colors[1]!.join(',')}`).toBe(true);
 });
+
+test('ook als elke pagina haar scan via een eigen formulier met de volle lijst tekent', async ({
+  page,
+}) => {
+  test.setTimeout(60_000);
+  await openPage(page, '/#/split', { lang: 'nl' });
+  await page.locator('#pdf-file').setInputFiles({
+    name: 'scan.pdf',
+    mimeType: 'application/pdf',
+    buffer: Buffer.from(await makeSharedResourcesPdf(6, { viaForms: true })),
+  });
+  const parts = page.getByRole('list', { name: nl.split.parts }).getByRole('listitem');
+  await expect(parts).toHaveCount(6, { timeout: 30_000 });
+  await page.getByLabel(nl.split.size).fill('3');
+  await expect(parts).toHaveCount(2);
+  const download = await downloadVia(
+    page,
+    page.getByRole('button', { name: 'Alle 2 delen downloaden (ZIP)' }),
+  );
+  const files = Object.values(unzipSync(new Uint8Array(readFileSync((await download.path())!))));
+  // De lijsten van de formulieren zijn ook uitgedund: alleen het logo en de eigen scans.
+  expect(await imagesIn(files[0]!)).toEqual([0, 1, 2, 3]);
+  expect(await imagesIn(files[1]!)).toEqual([0, 4, 5, 6]);
+  // En pagina 4 (de eerste van deel 2) ziet er nog hetzelfde uit: zijn eigen scan en het logo.
+  const { colors } = await pixels(page, Buffer.from(files[1]!), [
+    [300, 342],
+    [525, 57],
+  ]);
+  const near = (color: number[], gray: number) =>
+    color.every((value) => Math.abs(value - gray) <= 3);
+  expect(near(colors[0]!, grayOf(4)), `afbeelding: ${colors[0]!.join(',')}`).toBe(true);
+  expect(near(colors[1]!, grayOf(0)), `logo: ${colors[1]!.join(',')}`).toBe(true);
+});

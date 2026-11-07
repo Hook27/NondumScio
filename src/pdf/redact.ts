@@ -11,7 +11,7 @@ import { addTextLayer, squash, wordsOutside, type OcrWord } from './ocrText';
 import type { PixelRect } from './paint';
 import { pruneUnreachable } from './prune';
 import { DEFAULT_REDACTION, DPI_CHOICES, type RedactionOptions } from './redactOptions';
-import { imagesReachable, trimSharedResources } from './resources';
+import { imagesReachable, trimPageResources } from './resources';
 
 /**
  * Redigeren: echt weglakken. Een zwart vak over tekst laat de tekst gewoon in het bestand
@@ -140,11 +140,11 @@ export async function redactPdf(
   if (source.getPageCount() !== pages.length) throw new RedactionError('raster');
   // Anders haalt het kopiëren via een koppeling de originele pagina met vak mee (zie `links.ts`).
   detachPageRefs(lib, source);
-  // Anders neemt een gekopieerde pagina via een gedeelde lijst met hulpbronnen (zoals bij veel
-  // scans) ook de originele afbeelding van een pagina met vak mee (zie `resources.ts`). Ook de
-  // pagina's met vak worden uitgedund: dan weten we welke afbeeldingen die echt gebruiken.
+  // Anders neemt een gekopieerde pagina via een gedeelde of overvolle lijst met hulpbronnen (zoals
+  // bij veel scans) ook de originele afbeelding van een pagina met vak mee (zie `resources.ts`). Ook
+  // de pagina's met vak worden uitgedund: dan weten we welke afbeeldingen die echt gebruiken.
   const doubtful = new Set(
-    trimSharedResources(
+    trimPageResources(
       lib,
       source,
       pages.map((_, index) => index),
@@ -152,7 +152,7 @@ export async function redactPdf(
   );
   const hidden = new Map(affected.flatMap((index) => [...imagesReachable(lib, source, index)]));
   // Een pagina zonder vak die niet uit te dunnen was en zo'n afbeelding kan bereiken, wordt ook
-  // een afbeelding: dan gaat de gedeelde lijst niet mee.
+  // een afbeelding: dan gaat haar (gedeelde) lijst niet mee.
   const extra = boxesPerPage.flatMap((boxes, index) =>
     boxes.length === 0 &&
     doubtful.has(index) &&

@@ -551,7 +551,6 @@ async function redactSharedScan(options: Parameters<typeof makeSharedResourcesPd
 describe('redactPdf: scans met gedeelde hulpbronnen', () => {
   it.each([
     ['onleesbare inhoud', 'unreadable'],
-    ['een formulier-XObject zonder eigen hulpbronnen', 'formWithoutResources'],
     ['een aantekening zonder eigen hulpbronnen', 'appearanceWithoutResources'],
   ])(
     'een pagina zonder vak die niet uit te dunnen is (%s), wordt ook een afbeelding',
@@ -566,6 +565,14 @@ describe('redactPdf: scans met gedeelde hulpbronnen', () => {
 
   it('een pagina die wel uit te dunnen is, blijft gewoon staan', async () => {
     const { bytes, report } = await redactSharedScan();
+    expect(await imagesIn(bytes)).toEqual([0, 1, 3, 4]);
+    expect(report.pages).toEqual([1]);
+    expect(report.extra).toEqual([]);
+  });
+
+  it('ook met een formulier-XObject zonder eigen hulpbronnen (dat wordt meegelezen)', async () => {
+    const { bytes, report } = await redactSharedScan({ formWithoutResources: true });
+    // Pagina 1 is uitgedund (met het formulier): geen afbeelding nodig, scan 2 komt niet mee.
     expect(await imagesIn(bytes)).toEqual([0, 1, 3, 4]);
     expect(report.pages).toEqual([1]);
     expect(report.extra).toEqual([]);
