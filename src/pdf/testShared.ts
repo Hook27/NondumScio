@@ -16,6 +16,11 @@ type Options = {
   formWithoutResources?: boolean;
   /** Pagina 1 heeft een aantekening waarvan de weergave geen eigen hulpbronnen heeft. */
   appearanceWithoutResources?: boolean;
+  /**
+   * Elke pagina tekent haar afbeelding via een eigen formulier-XObject (`/Fm<n>`), waarvan de eigen
+   * lijst met hulpbronnen weer de gedeelde lijst is (zoals bij veel Word- en Acrobat-PDF's).
+   */
+  viaForms?: boolean;
 };
 
 /**
@@ -55,7 +60,21 @@ export async function makeSharedResourcesPdf(
       }),
     );
   }
-  const shared = context.register(
+  const shared = context.nextRef();
+  if (options.viaForms) {
+    for (let n = 1; n <= count; n += 1) {
+      xobjects[`Fm${n}`] = context.register(
+        context.flateStream(`/Im${n} Do`, {
+          Type: 'XObject',
+          Subtype: 'Form',
+          BBox: [0, 0, 1, 1],
+          Resources: shared,
+        }),
+      );
+    }
+  }
+  context.assign(
+    shared,
     context.obj({
       ProcSet: ['PDF', 'Text', 'ImageB'],
       Font: { F1: font.ref },
@@ -68,7 +87,7 @@ export async function makeSharedResourcesPdf(
   for (let n = 1; n <= count; n += 1) {
     const page = doc.addPage([595, 842]);
     const content =
-      `q ${size} 0 0 ${size} ${x} ${842 - y - size} cm /Im${n} Do Q ` +
+      `q ${size} 0 0 ${size} ${x} ${842 - y - size} cm /${options.viaForms ? 'Fm' : 'Im'}${n} Do Q ` +
       `q 50 0 0 50 500 760 cm /Logo Do Q ` +
       `BT /F1 24 Tf 100 200 Td (Pagina ${n}) Tj ET` +
       (n === 1 && options.formWithoutResources ? ' /Fm1 Do' : '');
