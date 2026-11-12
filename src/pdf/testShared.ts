@@ -24,10 +24,17 @@ type Options = {
   /**
    * Elke pagina zet een teken in een lettertype dat zijn tekens zelf tekent (Type 3, `/F3`),
    * waarvan de eigen lijst met hulpbronnen de gedeelde lijst is: een omweg naar alle afbeeldingen
-   * waar het uitdunnen niet komt. Met `'empty'` heeft het lettertype een eigen lijst zonder
-   * afbeeldingen (dan is er niets aan de hand).
+   * naar alle afbeeldingen. Met `'empty'` heeft het lettertype een eigen lijst zonder afbeeldingen.
+   * Met `'inherit'` heeft het geen eigen lijst (het leent die van de pagina) en tekent zijn teken
+   * een afbeelding (`/Glyph`, nummer 99) die de pagina zelf niet aanroept. Met `'draws'` tekent
+   * het teken die afbeelding ook, maar heeft het lettertype de gedeelde lijst als eigen lijst.
    */
-  type3?: boolean | 'empty';
+  type3?: boolean | 'empty' | 'inherit' | 'draws';
+  /**
+   * Elke pagina heeft een eigen sleutel (`/NondumScioExtra`) met daaronder een lijst met
+   * hulpbronnen die de gedeelde lijst is: een omweg waar het uitdunnen niet komt, voor het vangnet.
+   */
+  foreignList?: boolean;
 };
 
 /**
@@ -81,6 +88,9 @@ export async function makeSharedResourcesPdf(
     }
   }
   const fonts: Record<string, PDFRef> = { F1: font.ref };
+  const inherit = options.type3 === 'inherit';
+  const glyphImage = inherit || options.type3 === 'draws';
+  if (glyphImage) xobjects.Glyph = image(99);
   if (options.type3) {
     fonts.F3 = context.register(
       context.obj({
@@ -88,12 +98,24 @@ export async function makeSharedResourcesPdf(
         Subtype: 'Type3',
         FontBBox: [0, 0, 100, 100],
         FontMatrix: [0.01, 0, 0, 0.01, 0, 0],
-        CharProcs: { a: context.register(context.stream('100 0 0 0 100 100 d1 0 0 100 100 re f')) },
+        CharProcs: {
+          a: context.register(
+            context.stream(
+              glyphImage
+                ? '100 0 d0 q 100 0 0 100 0 0 cm /Glyph Do Q'
+                : '100 0 0 0 100 100 d1 0 0 100 100 re f',
+            ),
+          ),
+        },
         Encoding: { Type: 'Encoding', Differences: [97, 'a'] },
         FirstChar: 97,
         LastChar: 97,
         Widths: [100],
-        Resources: options.type3 === 'empty' ? context.obj({ ProcSet: ['PDF'] }) : shared,
+        ...(inherit
+          ? {}
+          : {
+              Resources: options.type3 === 'empty' ? context.obj({ ProcSet: ['PDF'] }) : shared,
+            }),
       }),
     );
   }
@@ -122,6 +144,9 @@ export async function makeSharedResourcesPdf(
         : context.flateStream(content);
     page.node.set(PDFName.of('Contents'), context.register(stream));
     page.node.set(PDFName.of('Resources'), shared);
+    if (options.foreignList) {
+      page.node.set(PDFName.of('NondumScioExtra'), context.obj({ Resources: shared }));
+    }
     if (n === 1 && options.appearanceWithoutResources) {
       const appearance = context.register(
         context.stream('q 10 0 0 10 0 0 cm /Logo Do Q', {

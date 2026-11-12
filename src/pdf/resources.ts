@@ -17,8 +17,10 @@ const NAMED = ['XObject', 'Font', 'ExtGState', 'ColorSpace', 'Pattern', 'Shading
  *   tellen niet);
  * - leest ze ook de inhoud van formulier-XObjects zonder eigen hulpbronnen (die lenen die van de
  *   pagina);
- * - dunt ze ook de eigen lijsten uit van formulier-XObjects, patronen, maskers (SMask) en de
- *   weergaven van aantekeningen: die wijzen vaak weer naar dezelfde volle lijst.
+ * - dunt ze ook de eigen lijsten uit van formulier-XObjects, patronen, maskers (SMask), de
+ *   weergaven van aantekeningen en lettertypen die hun tekens zelf tekenen (Type 3): die wijzen
+ *   vaak weer naar dezelfde volle lijst;
+ * - leest ze de tekens van een Type 3-lettertype zonder eigen lijst mee (die lenen die van de pagina).
  *
  * De afbeeldingen zelf blijven gedeeld (dezelfde verwijzing), dus binnen één resultaat staan ze
  * niet dubbel. Het verandert alleen het ingelezen document in het geheugen, niet het bestand.
@@ -182,10 +184,36 @@ function decoded(lib: PdfLib, stream: unknown): Uint8Array {
   }
 }
 
+/** Of `value` een lettertype is dat zijn tekens zelf tekent (Type 3). */
+function isType3(lib: PdfLib, value: unknown): value is PDFDict {
+  const { PDFDict, PDFName } = lib;
+  return value instanceof PDFDict && value.get(PDFName.of('Subtype')) === PDFName.of('Type3');
+}
+
+/** De inhoud van alle tekens van een Type 3-lettertype achter elkaar, of `Unreadable`. */
+function glyphContents(lib: PdfLib, font: PDFDict): Uint8Array {
+  const { PDFDict, PDFName } = lib;
+  const procs = font.lookup(PDFName.of('CharProcs'));
+  const chunks =
+    procs instanceof PDFDict
+      ? procs.entries().map(([name]) => decoded(lib, procs.lookup(name)))
+      : [];
+  const all = new Uint8Array(chunks.reduce((sum, chunk) => sum + chunk.length + 1, 0));
+  let offset = 0;
+  for (const chunk of chunks) {
+    all.set(chunk, offset);
+    offset += chunk.length;
+    // Een spatie tussen de tekens: een naam loopt niet door in het volgende teken.
+    all[offset] = 32;
+    offset += 1;
+  }
+  return all;
+}
+
 /**
- * De namen die de inhoud aanroept, aangevuld met die van formulier-XObjects zonder eigen
- * hulpbronnen (die gebruiken de lijst van wie ze aanroept), ook als die weer zulke formulieren
- * aanroepen.
+ * De namen die de inhoud aanroept, aangevuld met die van wat de lijst van de aanroeper leent: een
+ * formulier-XObject zonder eigen hulpbronnen, en de tekens van een Type 3-lettertype zonder eigen
+ * hulpbronnen. Ook als die weer zulke formulieren of lettertypen aanroepen.
  */
 function usedNames(
   lib: PdfLib,
@@ -194,24 +222,37 @@ function usedNames(
   resources: PDFDict,
 ): Set<string> {
   const { PDFDict, PDFName, PDFRawStream } = lib;
+  const RESOURCES = PDFName.of('Resources');
   const names = new Set<string>();
   contentNames(content, names);
   const xobjects = resources.lookup(PDFName.of('XObject'));
-  if (!(xobjects instanceof PDFDict)) return names;
+  const fonts = resources.lookup(PDFName.of('Font'));
   const scanned = new Set<string>();
+  /** De nog niet bekeken, aangeroepen onderdelen van een lijst. */
+  const fresh = (list: unknown, kind: string) =>
+    list instanceof PDFDict
+      ? list.entries().flatMap(([key, value]) => {
+          const name = key.decodeText();
+          if (!names.has(name) || scanned.has(`${kind}:${name}`)) return [];
+          scanned.add(`${kind}:${name}`);
+          return [doc.context.lookup(value)];
+        })
+      : [];
   for (let again = true; again;) {
     again = false;
-    for (const [key, value] of xobjects.entries()) {
-      const name = key.decodeText();
-      if (!names.has(name) || scanned.has(name)) continue;
-      scanned.add(name);
-      const target = doc.context.lookup(value);
+    for (const target of fresh(xobjects, 'XObject')) {
       if (
         target instanceof PDFRawStream &&
         target.dict.get(PDFName.of('Subtype')) === PDFName.of('Form') &&
-        !target.dict.has(PDFName.of('Resources'))
+        !target.dict.has(RESOURCES)
       ) {
         contentNames(decoded(lib, target), names);
+        again = true;
+      }
+    }
+    for (const target of fresh(fonts, 'Font')) {
+      if (isType3(lib, target) && !target.has(RESOURCES)) {
+        contentNames(glyphContents(lib, target), names);
         again = true;
       }
     }
@@ -244,6 +285,7 @@ function trimmedList(
       kept.set(name, entry);
       const target = doc.context.lookup(entry);
       if (kind === 'XObject' || kind === 'Pattern') trimStream(lib, doc, target);
+      else if (kind === 'Font') trimFont(lib, doc, target);
       else if (kind === 'ExtGState' && target instanceof PDFDict) {
         const mask = target.lookup(PDFName.of('SMask'));
         if (mask instanceof PDFDict) trimStream(lib, doc, mask.lookup(PDFName.of('G')));
@@ -283,6 +325,42 @@ function trimStream(lib: PdfLib, doc: PDFDocument, stream: unknown) {
     throw error;
   } finally {
     visiting.delete(stream);
+  }
+}
+
+/** Type 3-lettertypen waarvan de eigen lijst al is uitgedund, die niet te lezen waren, of die nu bezig zijn. */
+const trimmedFonts = new WeakSet<PDFDict>();
+const unreadableFonts = new WeakSet<PDFDict>();
+const visitingFonts = new WeakSet<PDFDict>();
+
+/**
+ * Een lettertype dat zijn tekens zelf tekent (Type 3) met een eigen lijst: die lijst uitdunnen op
+ * wat de tekens aanroepen (hij kan ook naar de gedeelde lijst wijzen, en dan gaan anders de
+ * afbeeldingen van alle pagina's mee). Eén keer per lettertype; niet te lezen geeft `Unreadable`,
+ * ook de volgende keren.
+ */
+function trimFont(lib: PdfLib, doc: PDFDocument, font: unknown) {
+  const { PDFDict, PDFName } = lib;
+  if (!isType3(lib, font)) return;
+  if (unreadableFonts.has(font)) throw new Unreadable();
+  if (trimmedFonts.has(font) || visitingFonts.has(font)) return;
+  const resources = font.lookup(PDFName.of('Resources'));
+  if (!(resources instanceof PDFDict)) return;
+  visitingFonts.add(font);
+  try {
+    const own = trimmedList(
+      lib,
+      doc,
+      resources,
+      usedNames(lib, doc, glyphContents(lib, font), resources),
+    );
+    font.set(PDFName.of('Resources'), own);
+    trimmedFonts.add(font);
+  } catch (error) {
+    unreadableFonts.add(font);
+    throw error;
+  } finally {
+    visitingFonts.delete(font);
   }
 }
 
