@@ -43,7 +43,7 @@ jobs:
     # 10 minuten). De versie moet gelijk zijn aan @playwright/test in package-lock.json;
     # scripts/playwright-container.test.ts bewaakt dat.
     container:
-      image: mcr.microsoft.com/playwright:v1.64.1-noble
+      image: mcr.microsoft.com/playwright:v1.65.0-noble
       options: --user 1001
     steps:
       - uses: actions/checkout@v7
