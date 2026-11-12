@@ -21,6 +21,13 @@ type Options = {
    * lijst met hulpbronnen weer de gedeelde lijst is (zoals bij veel Word- en Acrobat-PDF's).
    */
   viaForms?: boolean;
+  /**
+   * Elke pagina zet een teken in een lettertype dat zijn tekens zelf tekent (Type 3, `/F3`),
+   * waarvan de eigen lijst met hulpbronnen de gedeelde lijst is: een omweg naar alle afbeeldingen
+   * waar het uitdunnen niet komt. Met `'empty'` heeft het lettertype een eigen lijst zonder
+   * afbeeldingen (dan is er niets aan de hand).
+   */
+  type3?: boolean | 'empty';
 };
 
 /**
@@ -73,11 +80,28 @@ export async function makeSharedResourcesPdf(
       );
     }
   }
+  const fonts: Record<string, PDFRef> = { F1: font.ref };
+  if (options.type3) {
+    fonts.F3 = context.register(
+      context.obj({
+        Type: 'Font',
+        Subtype: 'Type3',
+        FontBBox: [0, 0, 100, 100],
+        FontMatrix: [0.01, 0, 0, 0.01, 0, 0],
+        CharProcs: { a: context.register(context.stream('100 0 0 0 100 100 d1 0 0 100 100 re f')) },
+        Encoding: { Type: 'Encoding', Differences: [97, 'a'] },
+        FirstChar: 97,
+        LastChar: 97,
+        Widths: [100],
+        Resources: options.type3 === 'empty' ? context.obj({ ProcSet: ['PDF'] }) : shared,
+      }),
+    );
+  }
   context.assign(
     shared,
     context.obj({
       ProcSet: ['PDF', 'Text', 'ImageB'],
-      Font: { F1: font.ref },
+      Font: fonts,
       XObject: xobjects,
     }),
   );
@@ -90,6 +114,7 @@ export async function makeSharedResourcesPdf(
       `q ${size} 0 0 ${size} ${x} ${842 - y - size} cm /${options.viaForms ? 'Fm' : 'Im'}${n} Do Q ` +
       `q 50 0 0 50 500 760 cm /Logo Do Q ` +
       `BT /F1 24 Tf 100 200 Td (Pagina ${n}) Tj ET` +
+      (options.type3 ? ' BT /F3 24 Tf 100 100 Td (a) Tj ET' : '') +
       (n === 1 && options.formWithoutResources ? ' /Fm1 Do' : '');
     const stream =
       n === 1 && options.unreadable

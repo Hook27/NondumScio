@@ -563,6 +563,20 @@ describe('redactPdf: scans met gedeelde hulpbronnen', () => {
     },
   );
 
+  it('vangnet: kan een pagina zonder vak via een omweg (een lettertype) nog bij de scan van de pagina met vak, dan wordt ze ook een afbeelding', async () => {
+    const { bytes, report } = await redactSharedScan({ type3: true });
+    // Elke pagina kan via het lettertype bij alle afbeeldingen: geen enkele originele scan blijft.
+    expect(await imagesIn(bytes)).toEqual([]);
+    expect(report.pages).toEqual([0, 1, 2, 3]);
+    expect(report.extra).toEqual([0, 2, 3]);
+  });
+
+  it('een lettertype met een eigen lijst zonder afbeeldingen is geen omweg', async () => {
+    const { bytes, report } = await redactSharedScan({ type3: 'empty' });
+    expect(await imagesIn(bytes)).toEqual([0, 1, 3, 4]);
+    expect(report.extra).toEqual([]);
+  });
+
   it('een pagina die wel uit te dunnen is, blijft gewoon staan', async () => {
     const { bytes, report } = await redactSharedScan();
     expect(await imagesIn(bytes)).toEqual([0, 1, 3, 4]);
