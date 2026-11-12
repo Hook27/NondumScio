@@ -28,6 +28,11 @@ const NAMED = ['XObject', 'Font', 'ExtGState', 'ColorSpace', 'Pattern', 'Shading
  * zonder eigen hulpbronnen, die sommige PDF-lezers met die van de pagina tekenen (voorzichtiger dan
  * het origineel, dat de pagina dan toch uitdunt).
  *
+ * Als vangnet telt ook als twijfel: een pagina die na het uitdunnen nog langs een omweg bij een
+ * lijst kan die wij niet hebben uitgedund en waar afbeeldingen aan hangen (zie
+ * `reachesForeignImages`). Haar eigen lijst is dan wel uitgedund, maar wat ze via die omweg
+ * meeneemt, weten we niet.
+ *
  * Geeft de pagina's terug die niet uitgedund konden worden (Redigeren zet die zo nodig om in een
  * afbeelding, zie `redact.ts`; Splitsen toont er een ⚠ bij).
  */
@@ -71,10 +76,77 @@ function trimPage(lib: PdfLib, doc: PDFDocument, node: PDFPageLeaf): boolean {
       : null;
     for (const stream of appearanceStreams(lib, node)) trimStream(lib, doc, stream);
     if (own) node.set(lib.PDFName.of('Resources'), own);
-    return true;
+    // Het vangnet: kan de pagina nu nog langs een omweg bij een lijst die wij niet hebben
+    // uitgedund, en hangen daar afbeeldingen aan, dan weten we niet wat ze meeneemt.
+    return !reachesForeignImages(lib, doc, node);
   } catch {
     return false;
   }
+}
+
+/** De lijsten met hulpbronnen die wij zelf hebben gemaakt: daar staat alleen in wat gebruikt wordt. */
+const ownLists = new WeakSet<PDFDict>();
+/** Per lijst die niet van ons is: of er (ergens onder) een afbeelding aan hangt. */
+const foreignLists = new WeakMap<PDFDict, boolean>();
+
+/**
+ * Of pagina `node` nog bij een lijst met hulpbronnen kan die wij niet hebben uitgedund en waar
+ * afbeeldingen aan hangen. Zo'n lijst kan overal zitten waar wij niet uitdunnen (bijvoorbeeld bij
+ * een lettertype dat zijn tekens zelf tekent) en kan de gedeelde lijst van het hele document
+ * zijn: dan gaan bij het kopiëren de afbeeldingen van alle pagina's mee. Andere pagina's worden
+ * niet betreden.
+ */
+function reachesForeignImages(lib: PdfLib, doc: PDFDocument, node: PDFPageLeaf): boolean {
+  const { PDFArray, PDFDict, PDFName, PDFPageLeaf, PDFRawStream, PDFRef } = lib;
+  const RESOURCES = PDFName.of('Resources');
+  const PARENT = PDFName.of('Parent');
+  const IMAGE = PDFName.of('Image');
+  const SUBTYPE = PDFName.of('Subtype');
+
+  /** Loopt door alles wat `start` kan bereiken; stopt zodra `found` iets vindt. */
+  const search = (start: unknown, found: (value: unknown) => boolean): boolean => {
+    const seen = new Set<string>();
+    const queue: unknown[] = [start];
+    while (queue.length > 0) {
+      let value = queue.pop();
+      if (value instanceof PDFRef) {
+        const key = value.toString();
+        if (seen.has(key)) continue;
+        seen.add(key);
+        value = doc.context.lookup(value);
+      }
+      if (value instanceof PDFPageLeaf && value !== node) continue;
+      if (found(value)) return true;
+      if (value instanceof PDFRawStream) {
+        if (value.dict.get(SUBTYPE) === IMAGE) continue;
+        value = value.dict;
+      }
+      if (value instanceof PDFDict) {
+        for (const [name, entry] of value.entries()) if (name !== PARENT) queue.push(entry);
+      } else if (value instanceof PDFArray) {
+        queue.push(...value.asArray());
+      }
+    }
+    return false;
+  };
+
+  const isImage = (value: unknown) =>
+    value instanceof PDFRawStream && value.dict.get(SUBTYPE) === IMAGE;
+  const hasImages = (list: PDFDict): boolean => {
+    let known = foreignLists.get(list);
+    if (known === undefined) {
+      known = search(list, isImage);
+      foreignLists.set(list, known);
+    }
+    return known;
+  };
+
+  return search(node, (value) => {
+    const dict = value instanceof PDFRawStream ? value.dict : value;
+    if (!(dict instanceof PDFDict) || !dict.has(RESOURCES)) return false;
+    const list = dict.lookup(RESOURCES);
+    return list instanceof PDFDict && !ownLists.has(list) && hasImages(list);
+  });
 }
 
 /** De inhoud van een pagina (alle stukken achter elkaar), of `Unreadable`. */
@@ -179,6 +251,7 @@ function trimmedList(
     }
     own.set(key, kept);
   }
+  ownLists.add(own);
   return own;
 }
 

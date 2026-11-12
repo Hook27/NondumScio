@@ -99,6 +99,48 @@ describe('gedeelde hulpbronnen (zoals bij veel scans)', () => {
     expect(clean).toEqual([0, 0]);
   });
 
+  it('vangnet: een omweg naar de gedeelde lijst (via een lettertype) telt als twijfel', async () => {
+    const plan = initialPages(4, 1);
+    const report = async (type3: boolean | 'empty') => {
+      const untrimmed: number[] = [];
+      await buildParts(
+        new Map([[1, await makeSharedResourcesPdf(4, { type3 })]]),
+        [plan.slice(0, 2), plan.slice(2)],
+        undefined,
+        [],
+        undefined,
+        (_, index, part) => (untrimmed[index] = part.untrimmed),
+      );
+      return untrimmed;
+    };
+    // Elke pagina kan via het lettertype nog bij alle afbeeldingen: dat wordt gemeld (⚠ bij Splitsen).
+    expect(await report(true)).toEqual([2, 2]);
+    // Een lettertype met een eigen lijst zonder afbeeldingen is geen omweg.
+    expect(await report('empty')).toEqual([0, 0]);
+    const [first] = await split(await makeSharedResourcesPdf(4, { type3: 'empty' }), 4, 2);
+    expect(await imagesIn(first!)).toEqual([0, 1, 2]);
+  });
+
+  it('vangnet: een koppeling naar een andere pagina is geen omweg (die pagina wordt niet betreden)', async () => {
+    const doc = await PDFDocument.load(await makeSharedResourcesPdf(3));
+    const [first, second] = doc.getPages();
+    // Pagina 1 wijst naar pagina 2, die zelf nog de volle gedeelde lijst heeft.
+    first!.node.set(
+      PDFName.of('Annots'),
+      doc.context.obj([
+        doc.context.register(
+          doc.context.obj({
+            Type: 'Annot',
+            Subtype: 'Link',
+            Rect: [0, 0, 10, 10],
+            Dest: [second!.ref, 'Fit'],
+          }),
+        ),
+      ]),
+    );
+    expect(trimPageResources(lib, doc, [0])).toEqual([]);
+  });
+
   it('laat een pagina waarvan de inhoud niet te lezen is ongemoeid', async () => {
     // Een pagina die pdf-lib net zelf maakte (nog geen gecodeerde stream): niet te lezen, dus twijfel.
     const doc = await PDFDocument.create();
