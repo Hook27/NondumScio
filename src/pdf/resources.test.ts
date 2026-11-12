@@ -99,12 +99,12 @@ describe('gedeelde hulpbronnen (zoals bij veel scans)', () => {
     expect(clean).toEqual([0, 0]);
   });
 
-  it('vangnet: een omweg naar de gedeelde lijst (via een lettertype) telt als twijfel', async () => {
+  it('vangnet: een omweg naar de gedeelde lijst waar het uitdunnen niet komt, telt als twijfel', async () => {
     const plan = initialPages(4, 1);
-    const report = async (type3: boolean | 'empty') => {
+    const report = async (options: Parameters<typeof makeSharedResourcesPdf>[1]) => {
       const untrimmed: number[] = [];
       await buildParts(
-        new Map([[1, await makeSharedResourcesPdf(4, { type3 })]]),
+        new Map([[1, await makeSharedResourcesPdf(4, options)]]),
         [plan.slice(0, 2), plan.slice(2)],
         undefined,
         [],
@@ -113,12 +113,57 @@ describe('gedeelde hulpbronnen (zoals bij veel scans)', () => {
       );
       return untrimmed;
     };
-    // Elke pagina kan via het lettertype nog bij alle afbeeldingen: dat wordt gemeld (⚠ bij Splitsen).
-    expect(await report(true)).toEqual([2, 2]);
+    // Elke pagina kan via de omweg nog bij alle afbeeldingen: dat wordt gemeld (⚠ bij Splitsen).
+    expect(await report({ foreignList: true })).toEqual([2, 2]);
     // Een lettertype met een eigen lijst zonder afbeeldingen is geen omweg.
-    expect(await report('empty')).toEqual([0, 0]);
+    expect(await report({ type3: 'empty' })).toEqual([0, 0]);
     const [first] = await split(await makeSharedResourcesPdf(4, { type3: 'empty' }), 4, 2);
     expect(await imagesIn(first!)).toEqual([0, 1, 2]);
+  });
+
+  it('dunt de eigen lijst van een lettertype dat zijn tekens zelf tekent (Type 3) uit, ook als die de gedeelde lijst is', async () => {
+    const bytes = await makeSharedResourcesPdf(4, { type3: true });
+    const [first, second] = await split(bytes, 4, 2);
+    // Zonder uitdunnen nam elke pagina via het lettertype alle afbeeldingen mee.
+    expect(await imagesIn(first!)).toEqual([0, 1, 2]);
+    expect(await imagesIn(second!)).toEqual([0, 3, 4]);
+    // Geen twijfel meer: het vangnet hoeft hier niets te melden.
+    const untrimmed: number[] = [];
+    const plan = initialPages(4, 1);
+    await buildParts(
+      new Map([[1, bytes]]),
+      [plan.slice(0, 2), plan.slice(2)],
+      undefined,
+      [],
+      undefined,
+      (_, index, part) => (untrimmed[index] = part.untrimmed),
+    );
+    expect(untrimmed).toEqual([0, 0]);
+    // Uitpakken van één pagina: alleen haar eigen afbeelding en het logo.
+    const one = await buildPdf(new Map([[1, bytes]]), [plan[0]!]);
+    expect(await imagesIn(one)).toEqual([0, 1]);
+  });
+
+  it('wat de tekens van een Type 3-lettertype met eigen lijst aanroepen, blijft in die lijst en komt niet bij de pagina', async () => {
+    const [first] = await split(await makeSharedResourcesPdf(4, { type3: 'draws' }), 4, 2);
+    // Afbeelding 99 gaat mee via het lettertype, de andere pagina's niet.
+    expect(await imagesIn(first!)).toEqual([0, 1, 2, 99]);
+    // De pagina's zelf roepen 99 niet aan: hun eigen lijst blijft zonder.
+    expect(await resourceNames(first!)).toEqual([
+      { xobjects: ['Im1', 'Logo'], fonts: ['F1', 'F3'] },
+      { xobjects: ['Im2', 'Logo'], fonts: ['F1', 'F3'] },
+    ]);
+  });
+
+  it('een Type 3-lettertype zonder eigen lijst leent die van de pagina: wat zijn tekens aanroepen, blijft', async () => {
+    const [first, second] = await split(
+      await makeSharedResourcesPdf(4, { type3: 'inherit' }),
+      4,
+      2,
+    );
+    // Afbeelding 99 wordt alleen door het teken getekend, niet door de pagina zelf.
+    expect(await imagesIn(first!)).toEqual([0, 1, 2, 99]);
+    expect(await imagesIn(second!)).toEqual([0, 3, 4, 99]);
   });
 
   it('vangnet: een koppeling naar een andere pagina is geen omweg (die pagina wordt niet betreden)', async () => {
