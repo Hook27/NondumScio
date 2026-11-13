@@ -16,7 +16,9 @@ import {
   normalizeRotation,
   record,
   redo,
+  rememberPages,
   removePages,
+  type PageMemory,
   rotatePages,
   startHistory,
   undo,
@@ -364,6 +366,37 @@ describe('meerdere bestanden', () => {
       const result = setDocPages(merged(), 2, new Set([1]), keys());
       const swapped = setDocPages(result, 2, new Set([0]), keys());
       expect(plan(swapped)).toEqual(['1:1', '1:2', '2:1', '3:1']);
+    });
+
+    it('zet een pagina terug met haar eerdere sleutel en draaiing (dan horen haar vakken er weer bij)', () => {
+      const memory: PageMemory = new Map();
+      // B2 gedraaid; B2 eruit en weer erin.
+      const pages = merged().map((p) => (p.key === 3 ? { ...p, rotation: 90 as const } : p));
+      rememberPages(memory, pages);
+      const fewer = setDocPages(pages, 2, new Set([0, 2]), keys(), memory);
+      rememberPages(memory, fewer);
+      const back = setDocPages(fewer, 2, new Set([0, 1, 2]), keys(), memory);
+      expect(plan(back)).toEqual(plan(merged()));
+      expect(back[3]).toEqual({ key: 3, doc: 2, source: 1, rotation: 90 });
+    });
+
+    it('onthoudt de laatste stand, en geeft een nieuwe sleutel als de oude al gebruikt wordt', () => {
+      const memory: PageMemory = new Map();
+      rememberPages(memory, merged());
+      rememberPages(memory, [{ key: 3, doc: 2, source: 1, rotation: 180 }]);
+      expect(memory.get('2:1')).toEqual({ key: 3, rotation: 180 });
+      // Zonder herinnering: een nieuwe sleutel en geen draaiing, zoals altijd.
+      const fewer = setDocPages(merged(), 2, new Set([0, 2]), keys());
+      expect(setDocPages(fewer, 2, new Set([0, 1, 2]), keys())[3]).toEqual({
+        key: 100,
+        doc: 2,
+        source: 1,
+        rotation: 0,
+      });
+      // Staat sleutel 3 al ergens anders in het plan, dan niet hergebruiken.
+      const clash = fewer.map((p) => (p.key === 2 ? { ...p, key: 3 } : p));
+      const back = setDocPages(clash, 2, new Set([0, 1, 2]), keys(), memory);
+      expect(back[3]).toEqual({ key: 100, doc: 2, source: 1, rotation: 180 });
     });
 
     it('verandert niets bij een lege keuze, een onbekend bestand of dezelfde keuze', () => {

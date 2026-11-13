@@ -18,6 +18,7 @@ import {
   moveDocTo,
   record,
   redo as redoHistory,
+  rememberPages,
   removeDoc,
   samePlan,
   setDocPages,
@@ -25,6 +26,7 @@ import {
   undo as undoHistory,
   type History,
   type PageItem,
+  type PageMemory,
 } from '../pages/plan';
 import { looksLikePdf, type LoadErrorCode } from '../pdf/detect';
 import { PdfLoadError, closePdf, loadPdf, type LoadedPdf } from '../pdf/loader';
@@ -174,6 +176,12 @@ export function DocumentProvider({
   // Doorlopende nummers voor bestanden en paginasleutels.
   const nextSource = useRef(1);
   const nextKey = useRef(0);
+  // Per bestand en paginanummer de laatste sleutel en draaiing: zet je een pagina uit en weer aan,
+  // dan komt ze terug met haar vakken en draaiing. Los van de ongedaan-reeks, want die is begrensd.
+  // Bijgewerkt bij elke weergave (niet in een effect): zo kent het geheugen elke stand die je hebt
+  // gezien, ook als je meteen daarna een pagina terugzet.
+  const remembered = useRef<PageMemory>(new Map());
+  rememberPages(remembered.current, history.present.pages);
 
   const release = useCallback(() => {
     for (const pdf of loaded.current) unload(pdf);
@@ -265,6 +273,7 @@ export function DocumentProvider({
       loaded.current = sources.map((source) => source.pdf);
       const start: Snapshot = { pages: pagesOf(sources), annotations: [] };
       lastMerge.current = null;
+      remembered.current.clear();
       setHistory(startHistory(start));
       setSaved(start);
       setBookmarks(NO_BOOKMARKS);
@@ -308,6 +317,7 @@ export function DocumentProvider({
     setHistory(startHistory(EMPTY));
     setSaved(null);
     lastMerge.current = null;
+    remembered.current.clear();
     setFileErrors([]);
     setBookmarks(NO_BOOKMARKS);
     setOutlineViewState(CLOSED_OUTLINE);
@@ -379,7 +389,7 @@ export function DocumentProvider({
       setHistory((h) =>
         withPages(
           h,
-          setDocPages(h.present.pages, id, sources, () => nextKey.current++),
+          setDocPages(h.present.pages, id, sources, () => nextKey.current++, remembered.current),
         ),
       ),
     [],
