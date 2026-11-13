@@ -266,6 +266,24 @@ test.describe('redigeren: de vakken gelden bij elke taak', () => {
     expect((await textOf(result))[0]).toContain('OPENBAAR een');
   });
 
+  test('een pagina via het paginabereik uit en weer aan: het vak blijft en wordt toegepast', async ({
+    page,
+  }) => {
+    await openRedact(page);
+    await boxOverSecret(page);
+    const range = page.locator('.merge-range__input').first();
+    await range.fill('1');
+    await range.press('Enter');
+    await expect(pages(page)).toHaveCount(1);
+    await range.fill('1-3');
+    await range.press('Enter');
+    await expect(pages(page)).toHaveCount(3);
+    await expect(boxes(page)).toHaveCount(1);
+    const result = await download(page);
+    expect(await leaks(result, SECRET)).toBe(false);
+    expect((await textOf(result))[1]!.trim()).toBe('');
+  });
+
   test('Samenvoegen en Splitsen: ook daar geen restanten', async ({ page }) => {
     await openRedact(page);
     await boxOverSecret(page);

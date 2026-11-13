@@ -174,12 +174,17 @@ export function moveDocTo(pages: PageItem[], doc: number, target: number): PageI
  * met het hoogste lagere nummer (of vóór die met het laagste hogere), en anders op de plek waar
  * het bestand stond. De volgorde verander je bij Pagina's. Een lege keuze verandert niets: een
  * heel bestand weghalen gaat met `removeDoc`.
+ *
+ * Een pagina die eerder in het plan stond, komt terug met haar sleutel en draaiing uit `memory`
+ * (zie `rememberPages`): dan horen haar redactievakken en andere annotaties er weer bij. Anders
+ * krijgt ze een nieuwe sleutel en geen draaiing.
  */
 export function setDocPages(
   pages: PageItem[],
   doc: number,
   sources: ReadonlySet<number>,
   newKey: () => number,
+  memory: ReadonlyMap<string, RememberedPage> = new Map(),
 ): PageItem[] {
   const firstIndex = pages.findIndex((page) => page.doc === doc);
   if (sources.size === 0 || firstIndex < 0) return pages;
@@ -209,9 +214,27 @@ export function setDocPages(
     }
     // Van de oude pagina's is niets over: op de plek van het bestand (alles ervoor bleef staan).
     if (at < 0) at = firstIndex;
-    result.splice(at, 0, { key: newKey(), doc, source, rotation: 0 });
+    const earlier = memory.get(pageId(doc, source));
+    const key =
+      earlier && !result.some((page) => page.key === earlier.key) ? earlier.key : newKey();
+    result.splice(at, 0, { key, doc, source, rotation: earlier?.rotation ?? 0 });
   }
   return result;
+}
+
+/** Hoe een pagina er in het plan uitzag: haar sleutel (waar de annotaties aan hangen) en draaiing. */
+export type RememberedPage = Pick<PageItem, 'key' | 'rotation'>;
+
+/** Per bestand en paginanummer (`"doc:source"`) de laatste stand in het plan. */
+export type PageMemory = Map<string, RememberedPage>;
+
+const pageId = (doc: number, source: number) => `${doc}:${source}`;
+
+/** Onthoudt van elke pagina in het plan haar sleutel en draaiing (voor `setDocPages`). */
+export function rememberPages(memory: PageMemory, pages: readonly PageItem[]): void {
+  for (const page of pages) {
+    memory.set(pageId(page.doc, page.source), { key: page.key, rotation: page.rotation });
+  }
 }
 
 /** Of twee plannen hetzelfde resultaat geven (zelfde pagina's, volgorde en draaiing). */
