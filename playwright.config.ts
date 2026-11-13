@@ -12,7 +12,11 @@ export default defineConfig({
   testDir: 'e2e',
   fullyParallel: true,
   forbidOnly: Boolean(process.env.CI),
-  retries: process.env.CI ? 1 : 0,
+  // Eén herkansing, ook lokaal: een wisselvallige test heet dan "flaky" in plaats van "mislukt"
+  // (en staat zo apart in het verslag). Lokaal hooguit 4 tegelijk: met meer zit een machine met
+  // 8 GB op de rand, en lukt het lezen van een bestand soms niet (zie de audit, F3 en E1).
+  retries: 1,
+  workers: process.env.CI ? undefined : 4,
   reporter: process.env.CI ? [['github'], ['html', { open: 'never' }]] : [['list']],
   use: {
     baseURL: external ?? `http://localhost:${PORT}`,

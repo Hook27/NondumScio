@@ -26,23 +26,36 @@ export function url(path: string): string {
   return `.${path}`;
 }
 
+/** Hoe vaak `openPage` per pagina is aangeroepen (zie daar). */
+const openCalls = new WeakMap<Page, number>();
+
 /**
  * Opent een pagina met een bepaalde taal en/of thema alsof de bezoeker die eerder gekozen
- * had. Dat gebeurt via de opslag van de browser, en één keer: een latere herlaadbeurt
- * (`page.reload()`) laat de keuzes van de test zelf dus ongemoeid.
+ * had. Dat gebeurt via de opslag van de browser, vóórdat de app start, en één keer: een latere
+ * herlaadbeurt (`page.reload()`) laat de keuzes van de test zelf dus ongemoeid.
+ *
+ * Eén keer laden in plaats van drie: een opstartscript zet de opslag vóór de app, alleen bij het
+ * eerste laden na deze aanroep (elke aanroep krijgt een volgnummer, dat in de sessie-opslag van het
+ * tabblad bewaard wordt). Staat de pagina al op de site, dan wordt er nog herladen: een ander adres
+ * na het hekje laadt de app anders niet opnieuw.
  */
 export async function openPage(page: Page, path = '/', prefs: Preferences = {}): Promise<void> {
-  await page.goto(url('/'));
-  await page.evaluate(
-    ({ lang, theme, langKey, themeKey }) => {
+  const round = (openCalls.get(page) ?? 0) + 1;
+  openCalls.set(page, round);
+  await page.addInitScript(
+    ({ lang, theme, langKey, themeKey, round }) => {
+      const KEY = 'e2e-open-page';
+      if (Number(sessionStorage.getItem(KEY) ?? 0) >= round) return;
+      sessionStorage.setItem(KEY, String(round));
       localStorage.clear();
       if (lang) localStorage.setItem(langKey, lang);
       if (theme) localStorage.setItem(themeKey, theme);
     },
-    { ...prefs, langKey: STORAGE_KEY, themeKey: THEME_STORAGE_KEY },
+    { ...prefs, langKey: STORAGE_KEY, themeKey: THEME_STORAGE_KEY, round },
   );
+  const fresh = page.url() === 'about:blank';
   await page.goto(url(path));
-  await page.reload();
+  if (!fresh) await page.reload();
 }
 
 /**
