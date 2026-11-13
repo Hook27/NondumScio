@@ -22,9 +22,26 @@ export async function readPdf(
     const pages: PageText[] = [];
     for (let no = 1; no <= pageCount; no += 1) {
       const page = await pdf.getPage(no);
-      const { width, height } = page.getViewport({ scale: 1 });
+      const viewport = page.getViewport({ scale: 1 });
+      const { width, height } = viewport;
       const content = await page.getTextContent();
-      pages.push({ no, w: width, h: height, ...piecesFrom(content.items as RawTextItem[]) });
+      // De plek van de tekst zoals je de pagina ziet: met haar draaiing en uitsnede (zoals bij
+      // Redigeren, `search/source.ts`), en dan in punten vanaf linksonder. Een gewone pagina (geen
+      // draaiing, uitsnede vanaf linksonder) blijft precies zoals hij was.
+      const plain =
+        page.rotate % 360 === 0 && viewport.viewBox[0] === 0 && viewport.viewBox[1] === 0;
+      const toPage = plain
+        ? undefined
+        : (x: number, y: number): [number, number] => {
+            const [vx, vy] = viewport.convertToViewportPoint(x, y) as [number, number];
+            return [vx, height - vy];
+          };
+      pages.push({
+        no,
+        w: width,
+        h: height,
+        ...piecesFrom(content.items as RawTextItem[], toPage),
+      });
       page.cleanup();
       onProgress?.(no, pageCount);
     }

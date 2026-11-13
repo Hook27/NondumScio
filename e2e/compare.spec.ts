@@ -1,7 +1,7 @@
 import AxeBuilder from '@axe-core/playwright';
 import { readFileSync } from 'node:fs';
 import { expect, test, type Locator, type Page } from '@playwright/test';
-import { PDFDocument, StandardFonts, rgb } from 'pdf-lib';
+import { PDFDocument, StandardFonts, degrees, rgb } from 'pdf-lib';
 import { format } from '../src/i18n/format';
 import { messages, openPage, type Theme } from './helpers';
 
@@ -22,26 +22,34 @@ const c = nl.compare;
 
 /**
  * Een huurovereenkomst: per pagina een kop, alinea's (elk over twee regels, met een witregel
- * ertussen) en een voet met het paginanummer. `scan` voegt een pagina zonder tekstlaag toe.
+ * ertussen) en een voet met het paginanummer. `scan` voegt een pagina zonder tekstlaag toe. Met
+ * `lying` is elke pagina liggend opgeslagen met "draai 90°" (zoals een scan): op het scherm
+ * precies hetzelfde.
  */
-async function contract(pages: string[][], { scan = false } = {}): Promise<Buffer> {
+async function contract(pages: string[][], { scan = false, lying = false } = {}): Promise<Buffer> {
   const doc = await PDFDocument.create();
   const font = await doc.embedFont(StandardFonts.Helvetica);
   pages.forEach((paragraphs, index) => {
-    const page = doc.addPage([595, 842]);
-    page.drawText('Huurovereenkomst Voorbeeldstraat 1', { x: 60, y: 800, size: 10, font });
+    const page = lying ? doc.addPage([842, 595]) : doc.addPage([595, 842]);
+    if (lying) page.setRotation(degrees(90));
+    // Een regel op een plek zoals je hem ziet (punten vanaf linksonder van de staande pagina).
+    const drawText = (text: string, { x, y, size }: { x: number; y: number; size: number }) =>
+      lying
+        ? page.drawText(text, { x: 842 - y, y: x, size, font, rotate: degrees(90) })
+        : page.drawText(text, { x, y, size, font });
+    drawText('Huurovereenkomst Voorbeeldstraat 1', { x: 60, y: 800, size: 10 });
     let y = 740;
     for (const paragraph of paragraphs) {
       const words = paragraph.split(' ');
       const half = Math.ceil(words.length / 2);
       for (const line of [words.slice(0, half).join(' '), words.slice(half).join(' ')]) {
         if (!line) continue;
-        page.drawText(line, { x: 60, y, size: 11, font });
+        drawText(line, { x: 60, y, size: 11 });
         y -= 14;
       }
       y -= 16;
     }
-    page.drawText(`Pagina ${index + 1} van ${pages.length}`, { x: 260, y: 40, size: 9, font });
+    drawText(`Pagina ${index + 1} van ${pages.length}`, { x: 260, y: 40, size: 9 });
   });
   if (scan) {
     // Alleen een vlak, geen tekst: zoals een gescande pagina.
@@ -81,7 +89,11 @@ const NEW = [
   ],
 ];
 
-const file = async (name: string, pages: string[][], options?: { scan?: boolean }) => ({
+const file = async (
+  name: string,
+  pages: string[][],
+  options?: { scan?: boolean; lying?: boolean },
+) => ({
   name,
   mimeType: 'application/pdf',
   buffer: await contract(pages, options),
@@ -235,6 +247,15 @@ test.describe('PDF’s vergelijken', () => {
 
     await page.getByRole('button', { name: c.clear }).click();
     await expect(page.getByText(c.placeholder)).toBeVisible();
+  });
+
+  test('een liggend opgeslagen kopie (draai 90°) heeft geen verschillen', async ({ page }) => {
+    await openPage(page, '/#/advanced/compare', { lang: 'nl' });
+    await page.locator('#compare-file-a').setInputFiles(await file('staand.pdf', OLD));
+    await page
+      .locator('#compare-file-b')
+      .setInputFiles(await file('liggend.pdf', OLD, { lying: true }));
+    await expect(page.getByText(c.noDiff)).toBeVisible(SLOW);
   });
 });
 
