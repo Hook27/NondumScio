@@ -38,13 +38,14 @@ function fakeLoad(bytes: Uint8Array): Promise<LoadedPdf> {
 }
 
 async function setup(pages = 3, mode: 'edit' | 'redact' = 'edit') {
-  render(
+  const tree = (current: 'edit' | 'redact') => (
     <LanguageProvider initial="nl">
       <DocumentProvider load={fakeLoad} unload={() => {}}>
-        <Workspace mode={mode} />
+        <Workspace mode={current} />
       </DocumentProvider>
-    </LanguageProvider>,
+    </LanguageProvider>
   );
+  const view = render(tree(mode));
   fireEvent.change(document.querySelector('input[type="file"]')!, {
     target: { files: [new File([`%PDF-1.7 ${pages}\n`], 'rapport.pdf')] },
   });
@@ -55,6 +56,14 @@ async function setup(pages = 3, mode: 'edit' | 'redact' = 'edit') {
   await waitFor(() =>
     expect(document.querySelectorAll('.annotate-page[data-rendered="true"]')).toHaveLength(pages),
   );
+  /** Naar de andere taak (Bewerken of Redigeren), zoals via het menu: het document blijft open. */
+  const switchTo = async (next: 'edit' | 'redact') => {
+    view.rerender(tree(next));
+    await waitFor(() =>
+      expect(document.querySelectorAll('.annotate-page[data-rendered="true"]')).toHaveLength(pages),
+    );
+  };
+  return { switchTo };
 }
 
 const button = (name: string) => screen.getByRole('button', { name }) as HTMLButtonElement;
@@ -464,5 +473,36 @@ describe('Bewerken: tekst typen direct na het klikken', () => {
     await new Promise((resolve) => queueMicrotask(() => resolve(null)));
     const field = screen.getByRole('textbox', { name: nl.edit.textLabel });
     expect(document.activeElement).toBe(field);
+  });
+});
+
+describe('Bewerken en Redigeren: elk een eigen scherm', () => {
+  const pressed = (name: string) => button(name).getAttribute('aria-pressed');
+
+  it('van Bewerken (Markeren gekozen) naar Redigeren: daar staat Selecteren, geen markeerstift', async () => {
+    const { switchTo } = await setup(2, 'edit');
+    fireEvent.click(button(nl.edit.highlight));
+    expect(pressed(nl.edit.highlight)).toBe('true');
+    await switchTo('redact');
+    expect(pressed(nl.redact.select)).toBe('true');
+    expect(pressed(nl.redact.redact)).toBe('false');
+    // Enter op een pagina met Redactievak gekozen zet een redactievak, geen markering.
+    fireEvent.click(button(nl.redact.redact));
+    fireEvent.keyDown(pageNr(1), { key: 'Enter' });
+    expect(within(pageNr(1)).getByRole('button', { name: nl.redact.boxOf })).toBeTruthy();
+  });
+
+  it('van Redigeren naar Bewerken: Selecteren, en de vakken blijven bewaard', async () => {
+    const { switchTo } = await setup(2, 'redact');
+    fireEvent.click(button(nl.redact.redact));
+    fireEvent.keyDown(pageNr(1), { key: 'Enter' });
+    expect(shapes()).toHaveLength(1);
+    await switchTo('edit');
+    expect(pressed(nl.edit.select)).toBe('true');
+    expect(shapes()).toHaveLength(1);
+    // Terug: het vak staat er nog, en het gereedschap begint weer bij Selecteren.
+    await switchTo('redact');
+    expect(shapes()).toHaveLength(1);
+    expect(pressed(nl.redact.select)).toBe('true');
   });
 });

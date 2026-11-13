@@ -21,6 +21,9 @@ export function Workspace({ mode }: { mode: WorkspaceMode }) {
   if (mode === 'pages') return <PageEditor />;
   if (mode === 'merge') return <MergeView />;
   if (mode === 'split') return <SplitView />;
-  if (mode === 'edit') return <AnnotateView />;
-  return <AnnotateView mode="redact" />;
+  // Bewerken en Redigeren gebruiken hetzelfde scherm, maar elk met een eigen sleutel: anders gaan
+  // het gekozen gereedschap, de selectie en de meldingen mee naar de andere taak. De aantekeningen
+  // zelf horen bij het document en blijven.
+  if (mode === 'edit') return <AnnotateView key="edit" />;
+  return <AnnotateView key="redact" mode="redact" />;
 }
