@@ -191,6 +191,16 @@ describe('freeName en reasonOf', () => {
     expect(await freeName(folder, 'nieuw.pdf')).toBe('nieuw.pdf');
   });
 
+  it('freeName: alleen "niet gevonden" is een vrije naam; bij een andere fout geen gok', async () => {
+    const folder: FolderHandle = {
+      ...fakeFolder('x', {}),
+      getFileHandle: async () => {
+        throw new DOMException('Geen toegang', 'NotAllowedError');
+      },
+    };
+    await expect(freeName(folder, 'a.pdf')).rejects.toMatchObject({ name: 'NotAllowedError' });
+  });
+
   it('reasonOf: de soorten fouten', () => {
     expect(reasonOf(new DOMException('', 'NotFoundError'))).toBe('notFound');
     expect(reasonOf(new DOMException('', 'NotAllowedError'))).toBe('denied');

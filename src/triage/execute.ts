@@ -127,7 +127,11 @@ async function taken(folder: FolderHandle, name: string): Promise<boolean> {
     return true;
   } catch (error) {
     // Een map met die naam: ook bezet (server.py kijkt met os.path.exists).
-    return errorName(error) === 'TypeMismatchError';
+    if (errorName(error) === 'TypeMismatchError') return true;
+    // Alleen "niet gevonden" betekent vrij. Bij elke andere fout (geen toegang, onbekend) niet
+    // gokken: dan mislukt het verplaatsen van deze PDF, in plaats van iets te overschrijven.
+    if (errorName(error) === 'NotFoundError') return false;
+    throw error;
   }
 }
 

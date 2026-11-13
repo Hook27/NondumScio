@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { act, cleanup, fireEvent, render, screen, within } from '@testing-library/preact';
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/preact';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { closeVisual, pageSize, renderPage } from '../compare/visual';
 import { messages } from '../i18n';
@@ -61,9 +61,21 @@ function choose(...files: File[]) {
   fireEvent.change(document.querySelector('#triage-files')!, { target: { files } });
 }
 
-/** Effecten en het lezen van de PDF lopen pas na het tekenen. */
-const settle = (ms = 30) => act(() => new Promise((resolve) => setTimeout(resolve, ms)));
-/** Wachten tot na een besluit het volgende bestand verschijnt. */
+/** Even wachten: effecten en het lezen van de PDF lopen pas na het tekenen. */
+const pause = (ms = 30) => act(() => new Promise((resolve) => setTimeout(resolve, ms)));
+/**
+ * Even wachten, en bij Beoordelen tot de pagina van de PDF van nu in beeld is: pas dan werken de
+ * besluittoetsen (zoals voor iemand die kijkt).
+ */
+async function settle(ms = 30) {
+  await pause(ms);
+  await waitFor(() => {
+    const now = getTriageState();
+    const current = now.files[now.cur];
+    if (current && now.view === 'review') expect(now.shown).toBe(current.id);
+  });
+}
+/** Wachten tot na een besluit het volgende bestand verschijnt (en in beeld is). */
 const advance = () => settle(ADVANCE_MS + 60);
 
 const key = (k: string, init: KeyboardEventInit = {}) =>
@@ -156,6 +168,8 @@ describe('TriageTool', () => {
     await key('ArrowLeft');
     await key('ArrowLeft');
     expect(current()?.textContent).toContain('a.pdf');
+    // Beslissen kan pas als a weer in beeld is.
+    await settle();
     await key('x');
     await advance();
     expect(current()?.textContent).toContain('c.pdf');
@@ -184,6 +198,7 @@ describe('TriageTool', () => {
     choose(pdf('a.pdf'), pdf('b.pdf'));
     await settle();
     await key('ArrowRight');
+    await settle();
     await key('k');
     await advance();
     expect(current()?.textContent).toContain('b.pdf');
@@ -304,6 +319,50 @@ describe('TriageTool', () => {
     await key('ArrowRight');
     expect(names()[0]![1]).toBe(null);
     expect(getTriageState().cur).toBe(0);
+  });
+
+  it('een besluittoets werkt pas als de pagina van die PDF in beeld is', async () => {
+    setup();
+    choose(pdf('a.pdf'), pdf('b.pdf'));
+    await settle();
+    // Het tekenen van b.pdf duurt even.
+    let finish: () => void = () => {};
+    vi.mocked(renderPage).mockImplementationOnce(
+      (_file, _no, width) =>
+        new Promise((resolve) => {
+          finish = () => {
+            const canvas = document.createElement('canvas');
+            canvas.width = width;
+            resolve(canvas);
+          };
+        }),
+    );
+    await key('k');
+    // Wachten tot b.pdf aan de beurt is en het tekenen begonnen is, maar níet tot hij getekend is.
+    await pause(ADVANCE_MS + 60);
+    await waitFor(() =>
+      expect(vi.mocked(renderPage).mock.calls.some(([file]) => file.name === 'b.pdf')).toBe(true),
+    );
+    expect(current()?.textContent).toContain('b.pdf');
+    // Nog niet in beeld: X beslist niets.
+    await key('x');
+    expect(names()[1]![1]).toBeNull();
+    await act(async () => finish());
+    await settle();
+    await key('x');
+    expect(names()[1]![1]).toBe('remove');
+  });
+
+  it('een ingedrukt gehouden besluittoets beslist niet (bladeren mag wel herhalen)', async () => {
+    setup();
+    choose(pdf('a.pdf'), pdf('b.pdf'));
+    await settle();
+    await key('x', { repeat: true });
+    expect(names()[0]![1]).toBeNull();
+    await key('ArrowDown', { repeat: true });
+    expect(names()[0]![2]).toBe(2);
+    await key('x');
+    expect(names()[0]![1]).toBe('remove');
   });
 
   it('een PDF die niet open kan: de reden, en beslissen kan nog steeds', async () => {

@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { act, cleanup, fireEvent, render, screen, within } from '@testing-library/preact';
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/preact';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { messages } from '../i18n';
 import { LanguageProvider } from '../i18n/LanguageContext';
@@ -8,7 +8,15 @@ import { unsavedSources } from '../lib/unsavedWarning';
 import { downloadFile } from '../pdf/save';
 import { TriageTool } from './TriageTool';
 import { TRASH_FOLDER, rememberRoot, rememberedRoot, type FolderHandle } from './folders';
-import { ADVANCE_MS, getTriageState, resetTriageState, setDecision, setRecursive } from './store';
+import {
+  ADVANCE_MS,
+  clearTriage,
+  getTriageState,
+  resetTriageState,
+  setDecision,
+  setMode,
+  setRecursive,
+} from './store';
 import { fakeFolder, type FakeOptions, type Tree } from './testFolders';
 
 // Het tekenen nagebootst (jsdom kan niet echt tekenen).
@@ -69,7 +77,19 @@ function setup() {
   );
 }
 
-const settle = (ms = 40) => act(() => new Promise((resolve) => setTimeout(resolve, ms)));
+const pause = (ms = 40) => act(() => new Promise((resolve) => setTimeout(resolve, ms)));
+/**
+ * Even wachten, en bij Beoordelen tot de pagina van de PDF van nu in beeld is: pas dan werken de
+ * besluittoetsen (zoals voor iemand die kijkt).
+ */
+async function settle(ms = 40) {
+  await pause(ms);
+  await waitFor(() => {
+    const now = getTriageState();
+    const current = now.files[now.cur];
+    if (current && now.view === 'review') expect(now.shown).toBe(current.id);
+  });
+}
 const key = (k: string, target: Document | Element = document) =>
   act(() => {
     fireEvent.keyDown(target, { key: k });
@@ -432,6 +452,25 @@ describe('Archief / Triage: Uitvoeren (op een nagemaakte map)', () => {
     await settle(ADVANCE_MS + 40);
     fireEvent.click(button(tr.views.overview));
   }
+
+  it('tijdens Uitvoeren kun je niet van werkwijze wisselen of alles wissen; het verslag komt', async () => {
+    const t = runTree();
+    await decideAll(t);
+    fireEvent.click(button(r.button));
+    fireEvent.click(inDialog(r.confirm));
+    // Uitvoeren loopt nu: de keuze staat uit, en ook via de stand verandert er niets.
+    expect(getTriageState().run.status).toBe('running');
+    expect((button(tr.modes.list) as HTMLButtonElement).disabled).toBe(true);
+    act(() => {
+      setMode('list');
+      clearTriage();
+    });
+    expect(getTriageState().mode).toBe('folder');
+    expect(getTriageState().files).toHaveLength(4);
+    await settle();
+    expect(screen.getByText(format(r.done, { n: 2 }))).toBeTruthy();
+    expect((button(tr.modes.list) as HTMLButtonElement).disabled).toBe(false);
+  });
 
   it('vraagt eerst, voert dan uit, toont de uitkomst per PDF en legt de besluiten vast; Opnieuw inlezen', async () => {
     const t = runTree();

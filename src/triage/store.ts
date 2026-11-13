@@ -105,6 +105,11 @@ export type TriageState = {
    * het sluiten van het tabblad (zie `lib/unsavedWarning.ts`).
    */
   unsaved: boolean;
+  /**
+   * Het bestand (id) waarvan de pagina in beeld is: getekend, of de reden waarom hij niet open
+   * kan. Besluittoetsen werken pas als dat het huidige bestand is (anders beslis je ongezien).
+   */
+  shown: number | null;
 };
 
 const INITIAL: TriageState = {
@@ -130,6 +135,7 @@ const INITIAL: TriageState = {
   lastMove: null,
   run: { status: 'idle' },
   unsaved: false,
+  shown: null,
 };
 
 /** Na een besluit zo lang wachten voor het volgende bestand verschijnt: dan zie je het besluit nog even. */
@@ -359,7 +365,8 @@ export function addNewFolder(path: readonly string[]): void {
 
 /** Naar de andere werkwijze: de lijst en de besluiten gaan weg (de vraag stelt het scherm). */
 export function setMode(mode: TriageMode): void {
-  if (mode === state.mode) return;
+  // Tijdens Uitvoeren niet: dan zou het scherm leeg zijn terwijl het verplaatsen doorloopt.
+  if (mode === state.mode || state.run.status === 'running') return;
   // Bij Map opruimen haalt het scherm daarna een eerder gekozen hoofdmap terug.
   clearTriage();
   setState({ mode });
@@ -503,6 +510,8 @@ export function setView(view: TriageView): void {
 
 /** Alles wissen: de lijst en de besluiten. Zoom en passend blijven. */
 export function clearTriage(): void {
+  // Tijdens Uitvoeren niet: het verslag moet er komen.
+  if (state.run.status === 'running') return;
   stopAdvance();
   const current = state.files[state.cur];
   if (current) closeVisual(current.file);
@@ -522,6 +531,11 @@ export function clearTriage(): void {
     unsaved: false,
   });
   lastScan++;
+}
+
+/** De pagina van bestand `id` is in beeld (getekend, of de reden waarom hij niet open kan). */
+export function markShown(id: number): void {
+  if (state.shown !== id) setState({ shown: id });
 }
 
 /** De lijst is gedownload (.txt of .csv): de besluiten zijn bewaard. */
