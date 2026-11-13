@@ -139,8 +139,11 @@ test.describe('Archief / Triage', () => {
       page.getByRole('button', { name: tr.overview.csv }).click(),
     ]);
     expect(csv.suggestedFilename()).toMatch(/^triage_\d{4}-\d{2}-\d{2}_\d{4}\.csv$/);
-    expect(readFileSync(await csv.path(), 'utf8')).toBe(
-      '"Bestandsnaam","Besluit","Map"\n"brief.pdf","bewaren",""\n"factuur.pdf","verwijderen",""\n"offerte.pdf","niet beoordeeld",""',
+    // Voor een Nederlandse Excel: het coderingsteken (BOM) vooraan, puntkomma's en Windows-regeleinden.
+    const bytes = readFileSync(await csv.path());
+    expect([...bytes.subarray(0, 3)]).toEqual([0xef, 0xbb, 0xbf]);
+    expect(bytes.subarray(3).toString('utf8')).toBe(
+      '"Bestandsnaam";"Besluit";"Map"\r\n"brief.pdf";"bewaren";""\r\n"factuur.pdf";"verwijderen";""\r\n"offerte.pdf";"niet beoordeeld";""',
     );
   });
 
@@ -246,7 +249,7 @@ test.describe('Archief / Triage', () => {
       page.getByRole('button', { name: tr.overview.csv }).click(),
     ]);
     expect(readFileSync(await csv.path(), 'utf8')).toBe(
-      '"Bestandsnaam","Besluit","Map"\n"brief.pdf","verplaatsen","Facturen"\n"factuur.pdf","bewaren",""\n"offerte.pdf","verplaatsen","Archief"',
+      '﻿"Bestandsnaam";"Besluit";"Map"\r\n"brief.pdf";"verplaatsen";"Facturen"\r\n"factuur.pdf";"bewaren";""\r\n"offerte.pdf";"verplaatsen";"Archief"',
     );
     const [txt] = await Promise.all([
       page.waitForEvent('download'),
@@ -599,7 +602,7 @@ test.describe('Archief / Triage: Map opruimen', () => {
       page.getByRole('button', { name: tr.overview.csv }).click(),
     ]);
     expect(readFileSync(await csv.path(), 'utf8')).toBe(
-      '"Bestandsnaam","Besluit","Map"\n"brief.pdf","verplaatsen","Archief/Facturen"\n"factuur.pdf","verplaatsen","Foto/Bloemen"\n"2024/c.pdf","bewaren",""',
+      '﻿"Bestandsnaam";"Besluit";"Map"\r\n"brief.pdf";"verplaatsen";"Archief/Facturen"\r\n"factuur.pdf";"verplaatsen";"Foto/Bloemen"\r\n"2024/c.pdf";"bewaren";""',
     );
     // Tot Uitvoeren is er niets veranderd: geen nieuwe map, alle bestanden waar ze waren.
     expect(await opfs(page)).toEqual(before);

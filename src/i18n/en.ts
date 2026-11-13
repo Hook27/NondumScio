@@ -1164,6 +1164,7 @@ export const en: Messages = {
       columnName: 'File name',
       columnDecision: 'Decision',
       columnFolder: 'Folder',
+      csvSeparator: ',',
       move: 'MOVE TO {folder}',
       decisions: { keep: 'keep', move: 'move', remove: 'delete', none: 'not reviewed' },
     },

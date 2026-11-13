@@ -162,6 +162,8 @@ export type ExportTexts = {
   columnName: string;
   columnDecision: string;
   columnFolder: string;
+  /** Het scheidingsteken in de CSV, zoals Excel het in deze taal verwacht (NL ";", EN ","). */
+  csvSeparator: string;
   decisions: { keep: string; move: string; remove: string; none: string };
 };
 
@@ -193,8 +195,10 @@ export function triageTxt(list: readonly TriageFile[], texts: ExportTexts): stri
 
 /**
  * De lijst als CSV, zoals triage.csv van pdf-triage.html: elke cel tussen aanhalingstekens
- * (aanhalingstekens erin verdubbeld), komma's ertussen, in de volgorde van de lijst. Met een derde
- * kolom voor de map, alleen ingevuld bij verplaatsen.
+ * (aanhalingstekens erin verdubbeld), in de volgorde van de lijst. Met een derde kolom voor de map,
+ * alleen ingevuld bij verplaatsen. Zo dat een dubbelklik hem in Excel goed opent: het
+ * coderingsteken (BOM) vooraan, zodat letters als ö en é kloppen; het scheidingsteken van de taal
+ * (een Nederlandse Excel verwacht puntkomma's); en Windows-regeleinden.
  */
 export function triageCsv(list: readonly TriageFile[], texts: ExportTexts): string {
   const rows = [[texts.columnName, texts.columnDecision, texts.columnFolder]];
@@ -204,7 +208,10 @@ export function triageCsv(list: readonly TriageFile[], texts: ExportTexts): stri
     if (isMove(decision)) rows.push([name, texts.decisions.move, decision.move]);
     else rows.push([name, texts.decisions[decision ?? 'none'], '']);
   }
-  return rows.map((row) => row.map((cell) => `"${cell.replace(/"/g, '""')}"`).join(',')).join('\n');
+  const csv = rows
+    .map((row) => row.map((cell) => `"${cell.replace(/"/g, '""')}"`).join(texts.csvSeparator))
+    .join('\r\n');
+  return `\uFEFF${csv}`;
 }
 
 /**

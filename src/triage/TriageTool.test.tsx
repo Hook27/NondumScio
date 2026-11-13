@@ -416,8 +416,9 @@ describe('TriageTool', () => {
     const [csv, csvName, csvType] = vi.mocked(downloadFile).mock.calls[1]!;
     expect(csvName).toBe('triage_2026-11-07_1830.csv');
     expect(csvType).toBe('text/csv');
-    expect(new TextDecoder().decode(csv as Uint8Array)).toBe(
-      '"Bestandsnaam","Besluit","Map"\n"a.pdf","bewaren",""\n"b.pdf","verwijderen",""\n"c.pdf","niet beoordeeld",""',
+    // Voor een Nederlandse Excel: het coderingsteken vooraan, puntkomma's, Windows-regeleinden.
+    expect(new TextDecoder('utf-8', { ignoreBOM: true }).decode(csv as Uint8Array)).toBe(
+      '﻿"Bestandsnaam";"Besluit";"Map"\r\n"a.pdf";"bewaren";""\r\n"b.pdf";"verwijderen";""\r\n"c.pdf";"niet beoordeeld";""',
     );
     vi.useRealTimers();
 

@@ -254,26 +254,36 @@ describe('triageTxt', () => {
   });
 });
 
+/** Het coderingsteken (BOM) waaraan Excel ziet dat het bestand UTF-8 is. */
+const BOM = '﻿';
+
 describe('triageCsv', () => {
-  it('maakt de lijst zoals triage.csv: elke cel tussen aanhalingstekens, in de volgorde van de lijst', () => {
+  it('voor een Nederlandse Excel: coderingsteken, puntkomma’s en Windows-regeleinden, elke cel tussen aanhalingstekens', () => {
     expect(triageCsv(list('keep', null, 'remove', { move: 'Foto/Bloemen' }), nl)).toBe(
-      [
-        '"Bestandsnaam","Besluit","Map"',
-        '"a.pdf","bewaren",""',
-        '"b.pdf","niet beoordeeld",""',
-        '"c.pdf","verwijderen",""',
-        '"d.pdf","verplaatsen","Foto/Bloemen"',
-      ].join('\n'),
+      BOM +
+        [
+          '"Bestandsnaam";"Besluit";"Map"',
+          '"a.pdf";"bewaren";""',
+          '"b.pdf";"niet beoordeeld";""',
+          '"c.pdf";"verwijderen";""',
+          '"d.pdf";"verplaatsen";"Foto/Bloemen"',
+        ].join('\r\n'),
     );
   });
 
-  it('verdubbelt aanhalingstekens in een naam; komma’s blijven binnen de cel', () => {
+  it('in het Engels met komma’s; aanhalingstekens verdubbeld, scheidingstekens blijven binnen de cel', () => {
     const files = list('keep');
     files[0] = { ...files[0]!, name: 'brief "oud", 2024.pdf' };
     files.push({ ...files[0]!, id: 2, name: 'b.pdf', decision: { move: 'map "x", y' } });
     expect(triageCsv(files, en)).toBe(
-      '"File name","Decision","Folder"\n"brief ""oud"", 2024.pdf","keep",""\n"b.pdf","move","map ""x"", y"',
+      `${BOM}"File name","Decision","Folder"\r\n"brief ""oud"", 2024.pdf","keep",""\r\n"b.pdf","move","map ""x"", y"`,
     );
+  });
+
+  it('letters als ö en é, en een puntkomma in een naam, blijven in één cel', () => {
+    const files = list('remove');
+    files[0] = { ...files[0]!, name: 'Müller; é "oud".pdf' };
+    expect(triageCsv(files, nl).split('\r\n')[1]).toBe('"Müller; é ""oud"".pdf";"verwijderen";""');
   });
 });
 
@@ -297,7 +307,7 @@ describe('Map opruimen: namen met de submap, mappen op hun eigen naam', () => {
     const files = list('keep', { move: 'Foto/Bloemen' });
     files[1] = { ...files[1]!, dirs: ['2024'] };
     expect(triageTxt(files, nl)).toContain('VERPLAATSEN NAAR Foto/Bloemen:\n  2024/b.pdf\n');
-    expect(triageCsv(files, nl)).toContain('"2024/b.pdf","verplaatsen","Foto/Bloemen"');
+    expect(triageCsv(files, nl)).toContain('"2024/b.pdf";"verplaatsen";"Foto/Bloemen"');
   });
 
   it('sortFolders met lastPart: op de naam van de map zelf, bij gelijke namen op het pad', () => {
