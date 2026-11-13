@@ -666,6 +666,14 @@ h1 {
   font-weight: 600;
 }
 
+/* Waarschuwing na opslaan: op een eigen regel, in dezelfde kleur als de ⚠ bij Splitsen. */
+.page-editor__warning {
+  display: block;
+  margin-top: 0.25rem;
+  color: var(--removed-line);
+  font-weight: 600;
+}
+
 .page-option {
   position: relative;
   border-radius: var(--radius);

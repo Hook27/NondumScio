@@ -4,6 +4,7 @@ import type { PDFDocumentProxy } from 'pdfjs-dist';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { DocumentProvider } from '../document/DocumentContext';
 import { messages } from '../i18n';
+import { format } from '../i18n/format';
 import { LanguageProvider } from '../i18n/LanguageContext';
 import type { LoadedPdf } from '../pdf/loader';
 import { PdfSaveError, buildPdf, downloadPdf } from '../pdf/save';
@@ -267,6 +268,42 @@ describe('PageEditor', () => {
     expect(vi.mocked(downloadPdf).mock.calls[0]![1]).toBe("rapport (pagina's 2, 4-5).pdf");
     expect(options()).toHaveLength(5);
     expect(status()).not.toContain(nl.pages.unsaved);
+  });
+
+  it.each([
+    ['uitpakken', 1, nl.pages.untrimmedOne],
+    ['opslaan', 2, format(nl.pages.untrimmedOther, { n: 2 })],
+  ])(
+    'waarschuwt na %s als pagina’s niet uitgedund konden worden',
+    async (kind, untrimmed, warning) => {
+      vi.mocked(buildPdf).mockImplementationOnce(async (_, __, options) => {
+        options?.onReport?.({ untrimmed });
+        return new Uint8Array([1, 2, 3]);
+      });
+      await openEditor(3);
+      fireEvent.click(options()[0]!);
+      fireEvent.click(button(kind === 'uitpakken' ? nl.pages.extract : nl.pages.remove));
+      if (kind === 'opslaan') fireEvent.click(button(nl.pages.save));
+      confirmSave();
+
+      await waitFor(() => expect(downloadPdf).toHaveBeenCalledTimes(1));
+      const saved = screen.getByRole('status');
+      expect(saved.textContent).toContain(warning);
+      expect(saved.querySelector('[aria-hidden="true"]')!.textContent).toBe('⚠');
+    },
+  );
+
+  it('waarschuwt niet als alles uitgedund kon worden', async () => {
+    vi.mocked(buildPdf).mockImplementationOnce(async (_, __, options) => {
+      options?.onReport?.({ untrimmed: 0 });
+      return new Uint8Array([1, 2, 3]);
+    });
+    await openEditor(3);
+    fireEvent.click(options()[0]!);
+    fireEvent.click(button(nl.pages.extract));
+    confirmSave();
+    await waitFor(() => expect(downloadPdf).toHaveBeenCalledTimes(1));
+    expect(screen.getByRole('status').textContent).toBe("Opgeslagen als rapport (pagina's 1).pdf.");
   });
 
   it('kan alleen uitpakken als er iets gekozen is', async () => {

@@ -99,6 +99,46 @@ describe('gedeelde hulpbronnen (zoals bij veel scans)', () => {
     expect(clean).toEqual([0, 0]);
   });
 
+  it('een deel met alle pagina’s van een bestand krijgt geen melding: er valt niets weg', async () => {
+    const plan = initialPages(4, 1);
+    const untrimmed: number[] = [];
+    await buildParts(
+      new Map([[1, await makeSharedResourcesPdf(4, { unreadable: true })]]),
+      [plan, plan.slice(0, 1)],
+      undefined,
+      [],
+      undefined,
+      (_, index, report) => (untrimmed[index] = report.untrimmed),
+    );
+    expect(untrimmed).toEqual([0, 1]);
+  });
+
+  it('Pagina’s en Uitpakken: meldt hoeveel pagina’s niet uitgedund konden worden', async () => {
+    const bytes = await makeSharedResourcesPdf(4, { unreadable: true });
+    const plan = initialPages(4, 1);
+    /** Wat `buildPdf` meldt voor deze pagina's (bestand 1 heeft de twijfelpagina 1). */
+    const report = async (pages: typeof plan, sources = new Map([[1, bytes]])) => {
+      let untrimmed: number | undefined;
+      await buildPdf(sources, pages, { onReport: (result) => (untrimmed = result.untrimmed) });
+      return untrimmed;
+    };
+    // Uitpakken van pagina 1, of pagina 3 weghalen: pagina 1 houdt haar hele lijst.
+    expect(await report([plan[0]!])).toBe(1);
+    expect(await report([plan[0]!, plan[1]!, plan[3]!])).toBe(1);
+    // Zonder pagina 1 is er niets te melden.
+    expect(await report([plan[2]!])).toBe(0);
+    // Alle pagina's (ook verplaatst of dubbel): er valt niets weg, dus ook geen melding.
+    expect(await report([plan[3]!, plan[2]!, plan[1]!, plan[0]!, plan[0]!])).toBe(0);
+    // Meer bestanden (Samenvoegen): alleen bij een bestand waarvan pagina's wegvallen.
+    const other = initialPages(2, 2, 10);
+    const both = new Map([
+      [1, bytes],
+      [2, await makeSharedResourcesPdf(2)],
+    ]);
+    expect(await report([plan[0]!, ...other], both)).toBe(1);
+    expect(await report([...plan, ...other], both)).toBe(0);
+  });
+
   it('vangnet: een omweg naar de gedeelde lijst waar het uitdunnen niet komt, telt als twijfel', async () => {
     const plan = initialPages(4, 1);
     const report = async (options: Parameters<typeof makeSharedResourcesPdf>[1]) => {

@@ -41,7 +41,8 @@ import { Thumbnail } from './Thumbnail';
 type SaveState =
   | { status: 'idle' }
   | { status: 'saving' }
-  | { status: 'saved'; fileName: string }
+  /** `untrimmed`: hoeveel pagina's niet uitgedund konden worden (dan een waarschuwing). */
+  | { status: 'saved'; fileName: string; untrimmed: number }
   | { status: 'error'; code: SaveErrorCode };
 
 /**
@@ -201,8 +202,10 @@ export function PageEditor() {
       const files = new Map(
         (doc.status === 'ready' ? doc.sources : []).map((source) => [source.id, source.file]),
       );
+      let untrimmed = 0;
       const bytes = await buildPdf(await readSources(files, current.pages), current.pages, {
         annotations,
+        onReport: (report) => (untrimmed = report.untrimmed),
         // Bij meer bestanden komen de pagina's in een nieuw document: de bladwijzers gaan dan mee.
         ...(bookmarks.keep
           ? { outlines: await outlinesOf(activeSources) }
@@ -213,7 +216,7 @@ export function PageEditor() {
       downloadPdf(bytes, fileName);
       // Bij uitpakken is het document zelf niet veranderd: "niet gedownload" blijft wat het was.
       if (current.kind === 'save') markSaved();
-      setSave({ status: 'saved', fileName });
+      setSave({ status: 'saved', fileName, untrimmed });
     } catch (error) {
       setSave({ status: 'error', code: error instanceof PdfSaveError ? error.code : 'failed' });
     }
@@ -375,6 +378,13 @@ export function PageEditor() {
           {save.status === 'saved' && (
             <p class="page-editor__saved" role="status">
               {format(t.pages.saved, { name: save.fileName })}
+              {save.untrimmed > 0 && ' '}
+              {save.untrimmed > 0 && (
+                <span class="page-editor__warning">
+                  <span aria-hidden="true">⚠</span>{' '}
+                  {plural(save.untrimmed, t.pages.untrimmedOne, t.pages.untrimmedOther)}
+                </span>
+              )}
             </p>
           )}
           {save.status === 'error' && (

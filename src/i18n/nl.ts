@@ -67,6 +67,10 @@ export const nl = {
     save: 'PDF downloaden',
     saving: 'Bezig met opslaan…',
     saved: 'Opgeslagen als {name}.',
+    untrimmedOne:
+      '1 pagina kon niet worden uitgedund; het bestand kan gegevens van weggelaten pagina’s bevatten.',
+    untrimmedOther:
+      '{n} pagina’s konden niet worden uitgedund; het bestand kan gegevens van weggelaten pagina’s bevatten.',
     unsaved: 'Gewijzigd, nog niet gedownload',
     editedSuffix: 'bewerkt',
     errors: {
