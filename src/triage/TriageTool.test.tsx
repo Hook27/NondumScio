@@ -6,6 +6,7 @@ import { messages } from '../i18n';
 import { LanguageProvider } from '../i18n/LanguageContext';
 import { format } from '../i18n/format';
 import { PdfLoadError } from '../pdf/loader';
+import { unsavedSources } from '../lib/unsavedWarning';
 import { downloadFile } from '../pdf/save';
 import { TriageTool } from './TriageTool';
 import { ADVANCE_MS, getTriageState, resetTriageState } from './store';
@@ -364,6 +365,25 @@ describe('TriageTool', () => {
     // Een bestand in de lijst kiezen gaat terug naar Beoordelen.
     fireEvent.click(within(list()).getByRole('button', { name: /^b\.pdf/ }));
     expect(getTriageState().view).toBe('review');
+  });
+
+  it('waarschuwt bij sluiten vanaf het eerste besluit tot de lijst gedownload is', async () => {
+    setup();
+    choose(pdf('a.pdf'), pdf('b.pdf'));
+    await settle();
+    expect(unsavedSources()).not.toContain('triage');
+    await key('k');
+    expect(unsavedSources()).toContain('triage');
+    fireEvent.click(screen.getByRole('button', { name: tr.views.overview }));
+    fireEvent.click(screen.getByRole('button', { name: tr.overview.csv }));
+    expect(unsavedSources()).not.toContain('triage');
+    // Een nieuw besluit na het downloaden: weer waarschuwen.
+    fireEvent.click(
+      screen.getByRole('button', { name: format(tr.overview.setRemove, { name: 'b.pdf' }) }),
+    );
+    expect(unsavedSources()).toContain('triage');
+    fireEvent.click(screen.getByRole('button', { name: tr.overview.txt }));
+    expect(unsavedSources()).not.toContain('triage');
   });
 
   it('het overzicht zonder PDF’s: uitleg, en niets te downloaden', () => {

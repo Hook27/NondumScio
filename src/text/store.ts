@@ -3,6 +3,7 @@ import type { PageText } from '../compare/layout';
 import type { DocInfo } from '../compare/profile';
 import { readPdf } from '../compare/readPdf';
 import { closeVisual } from '../compare/visual';
+import { setUnsavedWork } from '../lib/unsavedWarning';
 import { ZipTooLargeError, zipWriter, type ZipWriter } from '../lib/zip';
 import type { LoadErrorCode } from '../pdf/detect';
 import { PdfLoadError } from '../pdf/loader';
@@ -132,6 +133,11 @@ export type TextState = {
    * downloaden nemen die mee; opnieuw extraheren zet hem terug, zoals in de extractor.
    */
   edited: string | null;
+  /**
+   * De aangepaste tekst zoals die het laatst is gedownload of gekopieerd. Wijkt `edited` daarvan
+   * af, dan waarschuwt het sluiten van het tabblad (zie `lib/unsavedWarning.ts`).
+   */
+  keptText: string | null;
   /** Sinds het extraheren zijn de instellingen of de vakken veranderd. */
   stale: boolean;
   /** Welke blokken links open staan; blijft staan bij Wissen. */
@@ -169,6 +175,7 @@ const INITIAL: TextState = {
   zoom: 100,
   result: null,
   edited: null,
+  keptText: null,
   stale: false,
   // Zoals in de extractor: de documentkop en metadata dicht, de rest open (bewaren is nieuw).
   blocks: { zones: true, clean: true, meta: false, pages: true, batch: false, save: false },
@@ -190,6 +197,11 @@ export function getTextState(): TextState {
 
 function setState(change: Partial<TextState>) {
   state = { ...state, ...change };
+  const { edited, result, keptText } = state;
+  setUnsavedWork(
+    'text',
+    edited !== null && result !== null && edited !== result.text && edited !== keptText,
+  );
   for (const listener of listeners) listener();
 }
 
@@ -495,6 +507,11 @@ export function extract(texts?: OutputTexts): void {
     view: 'result',
     stale: false,
   });
+}
+
+/** De (aangepaste) tekst is gedownload of gekopieerd: daarmee is hij bewaard. */
+export function markTextKept(text: string): void {
+  setState({ keptText: text });
 }
 
 /** De tekst in het resultaat aanpassen (alleen in het scherm; niet onthouden). */

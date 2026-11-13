@@ -53,6 +53,7 @@ import {
   type TriageMode,
   type TriageState,
   type TriageView,
+  markTriageSaved,
 } from './store';
 import {
   byFolder,
@@ -945,6 +946,7 @@ function Overview() {
       name,
       extension === 'txt' ? 'text/plain' : 'text/csv',
     );
+    markTriageSaved();
     setStatus(format(o.downloaded, { name }));
   };
   const item = (entry: TriageFile) => (

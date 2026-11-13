@@ -4,6 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { messages } from '../i18n';
 import { LanguageProvider } from '../i18n/LanguageContext';
 import { format } from '../i18n/format';
+import { unsavedSources } from '../lib/unsavedWarning';
 import { downloadFile } from '../pdf/save';
 import { TriageTool } from './TriageTool';
 import { TRASH_FOLDER, rememberRoot, rememberedRoot, type FolderHandle } from './folders';
@@ -435,12 +436,16 @@ describe('Archief / Triage: Uitvoeren (op een nagemaakte map)', () => {
   it('vraagt eerst, voert dan uit, toont de uitkomst per PDF en legt de besluiten vast; Opnieuw inlezen', async () => {
     const t = runTree();
     await decideAll(t);
+    // Besluiten die nog niet zijn uitgevoerd: sluiten waarschuwt.
+    expect(unsavedSources()).toContain('triage');
     expect(screen.getByText(format(r.warnOne, { folder: TRASH_FOLDER }))).toBeTruthy();
     fireEvent.click(button(r.button));
     expect(within(dialog()).getByRole('heading').textContent).toBe(r.title);
     expect(dialog().textContent).toContain(`${r.moveOne} · ${r.trashOne}. ${r.rest}`);
     fireEvent.click(inDialog(r.confirm));
     await settle();
+    // Uitgevoerd: niets meer te verliezen.
+    expect(unsavedSources()).not.toContain('triage');
     expect(t).toEqual({
       Archief: {
         'brief.pdf': 'B',

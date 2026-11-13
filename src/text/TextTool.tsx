@@ -61,6 +61,7 @@ import {
   type TextBlock,
   type TextDoc,
   type TextView,
+  markTextKept,
 } from './store';
 import { META_FIELDS } from './header';
 import { JOINS, type Join } from './pages';
@@ -1344,9 +1345,10 @@ function Output() {
             class="button button--secondary"
             disabled={text === ''}
             onClick={() =>
-              void copyText(text).then((ok) =>
-                setStatus({ result, text: ok ? p.copied : p.copyFailed }),
-              )
+              void copyText(text).then((ok) => {
+                if (ok) markTextKept(text);
+                setStatus({ result, text: ok ? p.copied : p.copyFailed });
+              })
             }
           >
             {p.copy}
@@ -1358,6 +1360,7 @@ function Output() {
             onClick={() => {
               const file = exportName(slot.doc.file.name);
               downloadFile(new TextEncoder().encode(text), file, 'text/plain;charset=utf-8');
+              markTextKept(text);
               setStatus({ result, text: format(p.downloaded, { name: file }) });
             }}
           >

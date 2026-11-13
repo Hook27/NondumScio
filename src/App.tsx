@@ -9,6 +9,7 @@ import { TooltipLayer } from './components/TooltipLayer';
 import { DocumentProvider } from './document/DocumentContext';
 import { LanguageProvider, useI18n } from './i18n/LanguageContext';
 import type { Messages } from './i18n/nl';
+import { guardFileDrops } from './lib/dropGuard';
 import type { Route } from './router';
 import { ThemeProvider } from './ThemeContext';
 import { useRoute } from './useRoute';
@@ -83,6 +84,8 @@ function AppContent() {
 }
 
 export function App() {
+  // Een bestand naast een sleepvak loslaten opent het niet in het tabblad (dan is het werk weg).
+  useEffect(() => guardFileDrops(window), []);
   return (
     <ThemeProvider>
       <LanguageProvider>
