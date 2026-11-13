@@ -1,10 +1,19 @@
 import * as lib from 'pdf-lib';
 import { PDFArray, PDFDict, PDFDocument, PDFName, PDFNumber, PDFString } from 'pdf-lib';
 import { describe, expect, it } from 'vitest';
-import { initialPages } from '../pages/plan';
+import { initialPages, type PageItem } from '../pages/plan';
 import { strayObjects } from './links';
-import { buildPdf } from './save';
-import { SECRET, annotate, leaks, link, makeSource, pageIndexOf } from './testLinks';
+import { buildParts, buildPdf } from './save';
+import {
+  SECRET,
+  annotate,
+  annotationsOn,
+  leaks,
+  link,
+  makeSource,
+  makeStructureSource,
+  pageIndexOf,
+} from './testLinks';
 
 /**
  * Een getagde PDF (met een structuur voor schermlezers): per pagina een element, met alternatieve
@@ -90,5 +99,71 @@ describe('tags (structuur voor schermlezers) van weggehaalde pagina’s', () => 
     const doc = await PDFDocument.load(bytes, { updateMetadata: false });
     expect(elements(doc).map((element) => element.type)).toEqual(['/P', '/Figure', '/Link', '/P']);
     expect(parentKeys(doc)).toEqual([0, 1, 2, 3]);
+  });
+});
+
+describe('structuurbestemming en structuurelement (PDF 2.0) naar een weggehaalde pagina', () => {
+  const [p1, , p3] = initialPages(3);
+  const other: PageItem = { key: 10, doc: 1, source: 0, rotation: 0 };
+
+  /** De actie van de koppeling op pagina 1 van het resultaat. */
+  async function linkAction(bytes: Uint8Array) {
+    const { items } = await annotationsOn(bytes, 0);
+    expect(items).toHaveLength(1);
+    return items[0]!.lookup(PDFName.of('A'), PDFDict);
+  }
+
+  it('controle: zonder structuurbestemming staat het geheim nergens', async () => {
+    const source = await makeStructureSource();
+    const [part] = await buildParts(new Map([[0, source]]), [[p1!], [p3!]]);
+    expect(await leaks(part!)).toBe(false);
+    expect(await leaks(await buildPdf(new Map([[0, source]]), [p1!, p3!]))).toBe(false);
+  });
+
+  it('één bestand, splitsen en samenvoegen: de koppeling blijft, zonder structuurbestemming', async () => {
+    const source = await makeStructureSource({ sd: true });
+    const [part] = await buildParts(new Map([[0, source]]), [[p1!], [p3!]]);
+    const single = await buildPdf(new Map([[0, source]]), [p1!, p3!]);
+    const merged = await buildPdf(
+      new Map([
+        [0, source],
+        [1, await makeSource(() => {}, ['Ander bestand'])],
+      ]),
+      [p1!, other],
+    );
+    for (const bytes of [part!, single, merged]) {
+      expect(await leaks(bytes)).toBe(false);
+      const doc = await PDFDocument.load(bytes, { updateMetadata: false });
+      expect(strayObjects(lib, doc)).toBe(0);
+      // De gewone bestemming blijft: de koppeling werkt nog en wijst naar pagina 1.
+      const action = await linkAction(bytes);
+      expect(action.has(PDFName.of('SD'))).toBe(false);
+      expect(pageIndexOf(doc, action.lookup(PDFName.of('D'), PDFArray).get(0))).toBe(0);
+    }
+  });
+
+  it('één bestand: een behouden bladwijzer houdt via een structuurelement geen tekst vast', async () => {
+    const bytes = await buildPdf(new Map([[0, await makeStructureSource({ se: true })]]), [
+      p1!,
+      p3!,
+    ]);
+    expect(await leaks(bytes)).toBe(false);
+    const doc = await PDFDocument.load(bytes, { updateMetadata: false });
+    const outlines = doc.catalog.lookup(PDFName.of('Outlines'), PDFDict);
+    const item = outlines.lookup(PDFName.of('First'), PDFDict);
+    expect(item.has(PDFName.of('SE'))).toBe(false);
+    expect(pageIndexOf(doc, item.lookup(PDFName.of('Dest'), PDFArray).get(0))).toBe(0);
+  });
+
+  it('één bestand: de startactie houdt via een structuurbestemming geen tekst vast', async () => {
+    const bytes = await buildPdf(new Map([[0, await makeStructureSource({ open: true })]]), [
+      p1!,
+      p3!,
+    ]);
+    expect(await leaks(bytes)).toBe(false);
+    const doc = await PDFDocument.load(bytes, { updateMetadata: false });
+    const action = doc.catalog.lookup(PDFName.of('OpenAction'), PDFDict);
+    expect(action.has(PDFName.of('SD'))).toBe(false);
+    expect(pageIndexOf(doc, action.lookup(PDFName.of('D'), PDFArray).get(0))).toBe(0);
   });
 });

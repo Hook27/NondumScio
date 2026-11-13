@@ -207,12 +207,30 @@ export function detachPageRefs(
       }
     }
   }
-  walk(lib, doc, startsOf(lib, doc, whole), (value) => {
+  const starts = startsOf(lib, doc, whole);
+  for (const start of starts) dropStructureRefs(lib, doc, start);
+  walk(lib, doc, starts, (value) => {
+    dropStructureRefs(lib, doc, value);
     if (!(value instanceof PDFRef)) return undefined;
     const at = index.get(value.tag);
     if (at !== undefined) return doc.context.obj({ [MARK]: at, [MARK_DOC]: source });
     return isPage(lib, doc, value) ? PDFNull : undefined;
   });
+}
+
+/**
+ * Haalt de verwijzing naar de structuur (de tags voor schermlezers) weg uit een ga-naar-actie
+ * (`/SD`, structuurbestemming, PDF 2.0) en uit een bladwijzer (`/SE`). Via zo'n verwijzing komt
+ * anders de hele structuurboom mee, met de alternatieve tekst van andere (ook weggehaalde)
+ * pagina's. De gewone bestemming blijft, dus de koppeling of bladwijzer werkt nog.
+ */
+function dropStructureRefs(lib: PdfLib, doc: PDFDocument, value: PDFObject) {
+  const { PDFDict, PDFName, PDFRef } = lib;
+  const object = value instanceof PDFRef ? doc.context.lookup(value) : value;
+  if (!(object instanceof PDFDict)) return;
+  // Een actie heeft /S (haar soort), een bladwijzer /Title.
+  if (object.has(PDFName.of('S'))) object.delete(PDFName.of('SD'));
+  if (object.has(PDFName.of('Title'))) object.delete(PDFName.of('SE'));
 }
 
 /**
