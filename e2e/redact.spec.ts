@@ -284,6 +284,32 @@ test.describe('redigeren: de vakken gelden bij elke taak', () => {
     expect((await textOf(result))[1]!.trim()).toBe('');
   });
 
+  test('van Bewerken (Markeren gekozen) naar Redigeren: het gereedschap gaat niet mee', async ({
+    page,
+  }) => {
+    await openPage(page, '/#/edit', { lang: 'nl' });
+    await page.locator('#pdf-file').setInputFiles({
+      name: 'rapport.pdf',
+      mimeType: 'application/pdf',
+      buffer: await makeSecretPdf(),
+    });
+    await expect(pages(page).first()).toHaveAttribute('data-rendered', 'true', { timeout: 15_000 });
+    await page.getByRole('button', { name: nl.edit.highlight }).click();
+    await page.getByRole('navigation').getByRole('link', { name: nl.tasks.redact.title }).click();
+    await expect(pages(page).first()).toHaveAttribute('data-rendered', 'true', { timeout: 15_000 });
+    // Redigeren begint bij Selecteren: slepen zet geen (gele) markering.
+    await expect(page.getByRole('button', { name: nl.redact.select })).toHaveAttribute(
+      'aria-pressed',
+      'true',
+    );
+    await drag(page, [40, 160], [560, 330], 1);
+    await expect(boxes(page)).toHaveCount(0);
+    // Met Redactievak wel een vak, en dat wordt echt weggelakt.
+    await boxOverSecret(page);
+    const result = await download(page);
+    expect(await leaks(result, SECRET)).toBe(false);
+  });
+
   test('Samenvoegen en Splitsen: ook daar geen restanten', async ({ page }) => {
     await openRedact(page);
     await boxOverSecret(page);
