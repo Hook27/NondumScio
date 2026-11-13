@@ -22,6 +22,7 @@ import {
   type RasterSession,
 } from './redact';
 import { buildPdf } from './save';
+import { leaks, makeStructureSource } from './testLinks';
 import { makePng } from './testPng';
 import { imagesIn, makeSharedResourcesPdf } from './testShared';
 
@@ -641,5 +642,26 @@ describe('assertNoHiddenImages: het vangnet', () => {
     await expect(
       assertNoHiddenImages(bytes, await fingerprintsOf([new Uint8Array(16).fill(8)])),
     ).resolves.toBeUndefined();
+  });
+});
+
+describe('redactPdf: structuurbestemming (PDF 2.0)', () => {
+  it('een koppeling op een andere pagina neemt via een structuurbestemming de tekst van de pagina met vak niet mee', async () => {
+    const pages = initialPages(3);
+    for (const sd of [false, true]) {
+      const source = await makeStructureSource({ sd });
+      const result = await redactPdf(
+        source,
+        pages,
+        [box(pages[1]!.key)],
+        DEFAULT_REDACTION,
+        undefined,
+        {
+          openRaster: fakeRaster().openRaster,
+          verify: noVerify,
+        },
+      );
+      expect(await leaks(result.bytes)).toBe(false);
+    }
   });
 });

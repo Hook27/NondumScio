@@ -3,8 +3,10 @@ import {
   PDFDict,
   PDFDocument,
   PDFName,
+  PDFNumber,
   PDFRawStream,
   PDFRef,
+  PDFString,
   StandardFonts,
   decodePDFRawStream,
   type PDFPage,
@@ -69,6 +71,74 @@ export function annotate(doc: PDFDocument, page: PDFPage, ...items: Record<strin
 }
 
 export const link = (target: PDFPage) => ({ Subtype: 'Link', Dest: [target.ref, 'Fit'] });
+
+/**
+ * Een getagde PDF van drie pagina's waarin het geheim alleen in de alternatieve tekst van een
+ * figuur op pagina 2 staat (niet op de pagina zelf). Pagina 1 heeft een koppeling naar zichzelf;
+ * met `sd` wijst die koppeling ook naar de figuur als structuurbestemming (PDF 2.0, `/SD`). Met
+ * `se` is er een bladwijzer naar pagina 1 die ook naar de figuur als structuurelement wijst (`/SE`).
+ * Met `open` opent het bestand op pagina 1 met een startactie die ook een structuurbestemming heeft.
+ */
+export function makeStructureSource({ sd = false, se = false, open = false } = {}) {
+  return makeSource(
+    (doc, [a, b, c]) => {
+      const { context } = doc;
+      const element = (fields: Record<string, unknown>) =>
+        context.register(context.obj({ Type: 'StructElem', ...fields } as never));
+      const p1 = element({ S: 'P', Pg: a!.ref, K: 0 });
+      const figure = element({
+        S: 'Figure',
+        Pg: b!.ref,
+        Alt: PDFString.of(`Foto ${SECRET}`),
+        K: 0,
+      });
+      const p3 = element({ S: 'P', Pg: c!.ref, K: 0 });
+      const document = element({ S: 'Document', K: [p1, figure, p3] });
+      const root = context.register(
+        context.obj({
+          Type: 'StructTreeRoot',
+          K: document,
+          ParentTree: context.obj({ Nums: [0, [p1], 1, [figure], 2, [p3]] }),
+          ParentTreeNextKey: 3,
+        }),
+      );
+      for (const ref of [p1, figure, p3]) {
+        context.lookup(ref, PDFDict).set(PDFName.of('P'), document);
+      }
+      context.lookup(document, PDFDict).set(PDFName.of('P'), root);
+      [a, b, c].forEach((page, i) => page!.node.set(PDFName.of('StructParents'), PDFNumber.of(i)));
+      doc.catalog.set(PDFName.of('StructTreeRoot'), root);
+      doc.catalog.set(PDFName.of('MarkInfo'), context.obj({ Marked: true }));
+      annotate(doc, a!, {
+        Subtype: 'Link',
+        A: { S: 'GoTo', D: [a!.ref, 'Fit'], ...(sd ? { SD: [figure, 'Fit'] } : {}) },
+      });
+      if (open) {
+        doc.catalog.set(
+          PDFName.of('OpenAction'),
+          context.obj({ S: 'GoTo', D: [a!.ref, 'Fit'], SD: [figure, 'Fit'] }),
+        );
+      }
+      if (se) {
+        const outlines = context.nextRef();
+        const item = context.register(
+          context.obj({
+            Title: PDFString.of('Inhoud'),
+            Parent: outlines,
+            Dest: [a!.ref, 'Fit'],
+            SE: figure,
+          }),
+        );
+        context.assign(
+          outlines,
+          context.obj({ Type: 'Outlines', First: item, Last: item, Count: 1 }),
+        );
+        doc.catalog.set(PDFName.of('Outlines'), outlines);
+      }
+    },
+    ['Inhoud', 'Pagina twee', 'Bijlage'],
+  );
+}
 
 /** De aantekeningen van een pagina in het resultaat. */
 export async function annotationsOn(bytes: Uint8Array, pageIndex: number) {
