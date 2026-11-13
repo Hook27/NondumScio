@@ -869,11 +869,11 @@ function PageView({ entry }: { entry: TriageFile }) {
       </Bar>
       <div class="plaintext-preview" ref={wrap}>
         {info && 'error' in info ? (
-          <p class="compare-visual__msg" role="alert">
+          <p class="compare-visual__msg compare-visual__msg--error" role="alert">
             {t.compare.errors[info.error]}
           </p>
         ) : drawn && 'error' in drawn ? (
-          <p class="compare-visual__msg">{v.error}</p>
+          <p class="compare-visual__msg compare-visual__msg--error">{v.error}</p>
         ) : (
           <div
             class="plaintext-preview__page"

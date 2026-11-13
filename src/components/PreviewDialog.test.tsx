@@ -23,11 +23,17 @@ function fakePdf() {
   return { pdf, rendered };
 }
 
-vi.mock('../pdf/loader', async (importOriginal) => ({
-  ...(await importOriginal<typeof import('../pdf/loader')>()),
-  loadPdf: vi.fn(),
-  closePdf: vi.fn(),
-}));
+vi.mock('../pdf/loader', async (importOriginal) => {
+  const original = await importOriginal<typeof import('../pdf/loader')>();
+  const loadPdf = vi.fn();
+  return {
+    ...original,
+    loadPdf,
+    // Het echte inlezen van het bestand, en dan de nep-lezer hierboven.
+    openPdfFile: async (file: File) => loadPdf(await original.readPdfBytes(file)),
+    closePdf: vi.fn(),
+  };
+});
 
 const p = messages.nl.preview;
 const file = new File(['%PDF-1.7'], 'scan_001.pdf', { type: 'application/pdf' });

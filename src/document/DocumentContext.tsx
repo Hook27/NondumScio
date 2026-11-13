@@ -29,7 +29,7 @@ import {
   type PageMemory,
 } from '../pages/plan';
 import { looksLikePdf, type LoadErrorCode } from '../pdf/detect';
-import { PdfLoadError, closePdf, loadPdf, type LoadedPdf } from '../pdf/loader';
+import { PdfLoadError, closePdf, loadPdf, readPdfBytes, type LoadedPdf } from '../pdf/loader';
 
 /** Een geopend bestand. Het blijft geladen tot je alles sluit (ook voor ongedaan maken). */
 export type Source = {
@@ -195,7 +195,7 @@ export function DocumentProvider({
   const loadFiles = useCallback(
     async (files: File[]) => {
       const openFile = async (file: File) => {
-        const bytes = new Uint8Array(await file.arrayBuffer());
+        const bytes = await readPdfBytes(file);
         if (!looksLikePdf(bytes)) throw new PdfLoadError('not-pdf');
         return load(bytes);
       };

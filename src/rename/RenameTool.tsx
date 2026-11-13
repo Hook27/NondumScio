@@ -5,7 +5,8 @@ import { PaneHead } from '../components/WorkspaceParts';
 import { SaveDialog } from '../components/SaveDialog';
 import { useI18n } from '../i18n/LanguageContext';
 import { format, plural } from '../i18n/format';
-import { zipWriter } from '../lib/zip';
+import { FileReadError, readFileBytes } from '../lib/readFile';
+import { ZipTooLargeError, zipWriter } from '../lib/zip';
 import { downloadFile } from '../pdf/save';
 import { learn, recognize, suggestions, type DbKind, type RenameDb } from './database';
 import { DatabaseView } from './DatabaseView';
@@ -222,6 +223,8 @@ function RenameList() {
   };
   const db = useRenameDb();
   const [asking, setAsking] = useState<'save' | 'clear' | null>(null);
+  // Waarom het downloaden niet lukte (alleen na de laatste poging).
+  const [problem, setProblem] = useState<string | null>(null);
   // De brief die nu in het voorbeeldvenster staat.
   const [viewing, setViewing] = useState<number | null>(null);
 
@@ -302,23 +305,34 @@ function RenameList() {
   /** Downloadt de hernoemde kopieën: één bestand los, meer in een ZIP. */
   const download = async (zipName?: string) => {
     setAsking(null);
+    setProblem(null);
     const chosen = docs.flatMap((doc, i) => (doc.include ? [{ doc, name: names[i]! }] : []));
     if (chosen.length === 0) return;
     const unique = uniqueNames(chosen.map((entry) => entry.name));
-    if (chosen.length === 1) {
-      downloadFile(
-        new Uint8Array(await chosen[0]!.doc.file.arrayBuffer()),
-        unique[0]!,
-        'application/pdf',
-      );
-      setRenameState(() => ({ saved: format(r.savedOne, { name: unique[0]! }) }));
-    } else {
-      const zip = await zipWriter();
-      for (const [i, entry] of chosen.entries()) {
-        zip.add(unique[i]!, new Uint8Array(await entry.doc.file.arrayBuffer()));
+    // Een bron kan intussen verplaatst of hernoemd zijn, of de ZIP te groot: dan een melding en geen
+    // download, en ook niets als bewaard onthouden.
+    try {
+      if (chosen.length === 1) {
+        downloadFile(await readFileBytes(chosen[0]!.doc.file), unique[0]!, 'application/pdf');
+        setRenameState(() => ({ saved: format(r.savedOne, { name: unique[0]! }) }));
+      } else {
+        const zip = await zipWriter();
+        for (const [i, entry] of chosen.entries()) {
+          zip.add(unique[i]!, await readFileBytes(entry.doc.file));
+        }
+        downloadFile(zip.finish(), zipName!, 'application/zip');
+        setRenameState(() => ({ saved: format(r.saved, { n: chosen.length, name: zipName! }) }));
       }
-      downloadFile(zip.finish(), zipName!, 'application/zip');
-      setRenameState(() => ({ saved: format(r.saved, { n: chosen.length, name: zipName! }) }));
+    } catch (error) {
+      setRenameState(() => ({ saved: null }));
+      setProblem(
+        error instanceof FileReadError
+          ? format(r.downloadUnreadable, { name: error.fileName })
+          : error instanceof ZipTooLargeError
+            ? t.pages.errors.tooLarge
+            : r.downloadFailed,
+      );
+      return;
     }
     rememberAll(chosen.map((entry) => entry.doc));
     setRenameState(() => ({ changed: false }));
@@ -429,6 +443,11 @@ function RenameList() {
         {saved && (
           <p class="page-editor__saved" role="status">
             {saved}
+          </p>
+        )}
+        {problem && (
+          <p class="page-editor__error" role="alert">
+            {problem}
           </p>
         )}
         <p class="annotate__hint">{r.rules}</p>

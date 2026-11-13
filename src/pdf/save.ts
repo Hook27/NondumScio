@@ -3,11 +3,14 @@ import { annotationsOf, hasRedactions, type Annotation } from '../annotations/mo
 import { remapOutline, type BookmarkNode, type OutlineEntry } from '../outline/outline';
 import { docOrder, type PageItem } from '../pages/plan';
 import { drawAnnotations, type FontCache } from './annotate';
+import { readFileBytes } from '../lib/readFile';
 import { pruneUnreachable } from './prune';
 import type { RedactionReport } from './redact';
 import { DEFAULT_REDACTION, type RedactionOptions } from './redactOptions';
 
-export type SaveErrorCode = 'encrypted' | 'failed' | 'redaction' | 'cancelled' | 'tooLarge';
+/** `unreadable`: een bronbestand kon niet meer van de schijf worden gelezen (verplaatst, hernoemd…). */
+export type SaveErrorCode =
+  'encrypted' | 'failed' | 'redaction' | 'cancelled' | 'tooLarge' | 'unreadable';
 
 export class PdfSaveError extends Error {
   constructor(readonly code: SaveErrorCode) {
@@ -440,7 +443,11 @@ function setBookmarks(
   catalog.set(PDFName.of('PageMode'), PDFName.of('UseOutlines'));
 }
 
-/** Leest de bytes van de bestanden die in het plan voorkomen. */
+/**
+ * Leest de bytes van de bestanden die in het plan voorkomen (met één herkansing, zie
+ * `lib/readFile.ts`). Lukt dat niet, dan `PdfSaveError('unreadable')`: het bestand is intussen
+ * bijvoorbeeld verplaatst of hernoemd.
+ */
 export async function readSources(
   files: ReadonlyMap<number, File>,
   pages: readonly PageItem[],
@@ -448,7 +455,12 @@ export async function readSources(
   const result = new Map<number, Uint8Array>();
   for (const id of new Set(pages.map((page) => page.doc))) {
     const file = files.get(id);
-    if (file) result.set(id, new Uint8Array(await file.arrayBuffer()));
+    if (!file) continue;
+    try {
+      result.set(id, await readFileBytes(file));
+    } catch {
+      throw new PdfSaveError('unreadable');
+    }
   }
   return result;
 }

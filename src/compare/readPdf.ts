@@ -1,5 +1,5 @@
 import { renderPageImage } from '../pdf/images';
-import { closePdf, loadPdf } from '../pdf/loader';
+import { closePdf, openPdfFile } from '../pdf/loader';
 import { piecesFrom, type PageText, type RawTextItem } from './layout';
 import type { DocInfo } from './profile';
 
@@ -17,7 +17,7 @@ export async function readPdf(
   onProgress?: (done: number, total: number) => void,
   { thumb: withThumb = true }: { thumb?: boolean } = {},
 ): Promise<{ pageCount: number; pages: PageText[]; info: DocInfo; thumb: Uint8Array | null }> {
-  const { pdf, pageCount } = await loadPdf(new Uint8Array(await file.arrayBuffer()));
+  const { pdf, pageCount } = await openPdfFile(file);
   try {
     const pages: PageText[] = [];
     for (let no = 1; no <= pageCount; no += 1) {

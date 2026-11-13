@@ -1,5 +1,5 @@
 import { renderPageImage } from '../pdf/images';
-import { closePdf, loadPdf } from '../pdf/loader';
+import { closePdf, openPdfFile } from '../pdf/loader';
 import { linesFromWords } from './ocrLines';
 import { linesFrom, type TextItem } from './recognize';
 
@@ -14,7 +14,7 @@ const OCR_DPI = 300;
  * regels. De PDF wordt daarna weer gesloten; het bestand zelf bewaart de tool voor het downloaden.
  */
 export async function readLines(file: File): Promise<{ pageCount: number; lines: string[] }> {
-  const { pdf, pageCount } = await loadPdf(new Uint8Array(await file.arrayBuffer()));
+  const { pdf, pageCount } = await openPdfFile(file);
   try {
     const lines: string[] = [];
     for (let number = 1; number <= Math.min(pageCount, PAGES_TO_READ); number += 1) {
@@ -45,7 +45,7 @@ export async function openScanReader(onStatus?: (progress: number) => void): Pro
   const engine = await (await import('../pdf/ocr')).openOcr(onStatus);
   return {
     read: async (file) => {
-      const { pdf } = await loadPdf(new Uint8Array(await file.arrayBuffer()));
+      const { pdf } = await openPdfFile(file);
       try {
         const { bytes } = await renderPageImage(pdf, 1, 0, {
           dpi: OCR_DPI,
@@ -63,7 +63,7 @@ export async function openScanReader(onStatus?: (progress: number) => void): Pro
 
 /** Het aantal pagina's van een PDF (voor een losse PDF bij het samenvoegen). */
 export async function countPages(file: File): Promise<number> {
-  const { pdf, pageCount } = await loadPdf(new Uint8Array(await file.arrayBuffer()));
+  const { pdf, pageCount } = await openPdfFile(file);
   closePdf(pdf);
   return pageCount;
 }

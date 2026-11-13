@@ -1,4 +1,5 @@
 import type { PDFDocumentProxy } from 'pdfjs-dist';
+import { readFileBytes } from '../lib/readFile';
 import { classifyLoadError, looksLikePdf, type LoadErrorCode } from './detect';
 
 /** Een geopende PDF. */
@@ -56,11 +57,34 @@ export function pdfjsAssetOptions(baseUrl: string) {
   };
 }
 
+/**
+ * Leest een gekozen PDF-bestand in (met één herkansing, zie `lib/readFile.ts`). Lukt dat niet, dan
+ * een `PdfLoadError` met `unreadable`: het ligt dan aan het lezen van de schijf, niet aan de PDF.
+ */
+export async function readPdfBytes(file: File): Promise<Uint8Array> {
+  try {
+    return await readFileBytes(file);
+  } catch {
+    throw new PdfLoadError('unreadable');
+  }
+}
+
+/** Leest een gekozen PDF-bestand in en opent het (zie `readPdfBytes` en `loadPdf`). */
+export async function openPdfFile(file: File): Promise<LoadedPdf> {
+  return loadPdf(await readPdfBytes(file));
+}
+
 /** Opent een PDF uit bytes. Alles gebeurt in de browser; er gaat niets over het netwerk. */
 export async function loadPdf(bytes: Uint8Array): Promise<LoadedPdf> {
   if (!looksLikePdf(bytes)) throw new PdfLoadError('not-pdf');
 
-  const lib = await pdfjs();
+  let lib: Awaited<ReturnType<typeof pdfjs>>;
+  try {
+    lib = await pdfjs();
+  } catch {
+    // Het ligt dan niet aan de PDF maar aan de app (bijvoorbeeld een nieuwe versie): herladen helpt.
+    throw new PdfLoadError('app');
+  }
   try {
     // pdf.js neemt de bytes over (en maakt ze daarna onbruikbaar). Dat is goed: voor latere
     // bewerkingen bewaren we het bestand zelf, niet deze bytes. Zo staat de PDF maar één keer

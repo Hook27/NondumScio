@@ -4,8 +4,9 @@ import { DEFAULT_TEXT_OPTIONS, extractText, zoneItems, type Zone } from '../text
 import { readPdf } from './readPdf';
 
 // De echte pdf.js (de uitvoering voor Node), zodat ook de omrekening van pdf.js zelf getest wordt.
-vi.mock('../pdf/loader', () => ({
-  loadPdf: async (bytes: Uint8Array) => {
+vi.mock('../pdf/loader', async (importOriginal) => {
+  const original = await importOriginal<typeof import('../pdf/loader')>();
+  const loadPdf = async (bytes: Uint8Array) => {
     const pdfjs = await import('pdfjs-dist/legacy/build/pdf.mjs');
     pdfjs.GlobalWorkerOptions.workerSrc = new URL(
       '../../node_modules/pdfjs-dist/legacy/build/pdf.worker.mjs',
@@ -13,10 +14,16 @@ vi.mock('../pdf/loader', () => ({
     ).href;
     const pdf = await pdfjs.getDocument({ data: bytes, verbosity: 0 }).promise;
     return { pdf, pageCount: pdf.numPages };
-  },
-  closePdf: (pdf: { loadingTask: { destroy: () => Promise<void> } }) =>
-    void pdf.loadingTask.destroy(),
-}));
+  };
+  return {
+    ...original,
+    loadPdf,
+    // Het echte inlezen van het bestand (met herkansing), en dan pdf.js voor Node.
+    openPdfFile: async (file: File) => loadPdf(await original.readPdfBytes(file)),
+    closePdf: (pdf: { loadingTask: { destroy: () => Promise<void> } }) =>
+      void pdf.loadingTask.destroy(),
+  };
+});
 
 const LINES = ['Eerste regel', 'Tweede regel', 'Derde regel'];
 const W = 600;

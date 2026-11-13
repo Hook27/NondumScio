@@ -37,6 +37,9 @@ export const en: Messages = {
       notPdf: '{name} is not a PDF. Choose a file that ends in .pdf.',
       password: '{name} is protected with a password. This is not supported yet.',
       damaged: '{name} could not be opened. The file may be damaged.',
+      unreadable:
+        '{name} could not be read from disk. Was it moved, renamed or still syncing? Please try again.',
+      app: '{name} could not be opened: part of the app failed to load. There may be a new version; reload the page.',
     },
   },
   pages: {
@@ -77,6 +80,8 @@ export const en: Messages = {
       cancelled: 'Stopped. Nothing was downloaded.',
       tooLarge:
         'The ZIP would be larger than 4 GB or hold more than 65,535 files, which a ZIP cannot handle. Nothing was downloaded; do it in smaller batches, for example fewer pages at a time.',
+      unreadable:
+        'A file could no longer be read from disk. Was it moved or renamed? Nothing was downloaded.',
     },
   },
   merge: {
@@ -494,6 +499,9 @@ export const en: Messages = {
     saveTitle: 'Save renamed copies',
     zipName: 'pdfs-renamed',
     savedOne: 'Downloaded as {name}.',
+    downloadUnreadable:
+      '{name} could not be read from disk. Was it moved or renamed? Nothing was downloaded.',
+    downloadFailed: 'Download failed. Nothing was downloaded.',
     saved: '{n} files downloaded in {name}.',
     view: 'View',
     viewLabel: 'View {name}',
@@ -601,6 +609,9 @@ export const en: Messages = {
       'not-pdf': 'This is not a PDF.',
       password: 'This PDF is protected with a password. This is not supported yet.',
       damaged: 'This PDF could not be read.',
+      unreadable:
+        'This file could not be read from disk. Was it moved, renamed or still syncing? Please try again.',
+      app: 'Part of the app failed to load. There may be a new version; reload the page.',
     },
     tooMany: 'You chose more than two PDFs: only the first two are compared.',
     swap: 'Swap A and B',
@@ -912,6 +923,8 @@ export const en: Messages = {
         'not-pdf': 'not a PDF',
         password: 'protected with a password',
         damaged: 'damaged or unreadable',
+        unreadable: 'could not be read from disk',
+        app: 'app not loaded (reload the page)',
       },
       noText: 'No text layer (possibly a scan): {list}.',
       nothing: 'Nothing was downloaded: none of the PDFs had text.',
@@ -1164,6 +1177,7 @@ export const en: Messages = {
     desktopOnly:
       'This tool is only available on a computer. Open the site on a wider screen to use it.',
     back: '← All advanced tools',
+    loadFailed: 'This tool could not be loaded. There may be a new version; reload the page.',
     soon: 'Coming soon.',
     tools: {
       rename: {

@@ -40,6 +40,9 @@ export const nl = {
       notPdf: '{name} is geen PDF. Kies een bestand dat eindigt op .pdf.',
       password: '{name} is beveiligd met een wachtwoord. Dat wordt nog niet ondersteund.',
       damaged: '{name} kon niet worden geopend. Het bestand is mogelijk beschadigd.',
+      unreadable:
+        '{name} kon niet van de schijf worden gelezen. Is het verplaatst, hernoemd of nog bezig met synchroniseren? Probeer het opnieuw.',
+      app: '{name} kon niet worden geopend: een onderdeel van de app kon niet worden geladen. Misschien is er een nieuwe versie; herlaad de pagina.',
     },
   },
   pages: {
@@ -81,6 +84,8 @@ export const nl = {
       cancelled: 'Gestopt. Er is niets gedownload.',
       tooLarge:
         'De ZIP zou groter worden dan 4 GB of meer dan 65.535 bestanden bevatten; dat kan een ZIP niet aan. Er is niets gedownload. Doe het in kleinere stukken, bijvoorbeeld met minder pagina’s tegelijk.',
+      unreadable:
+        'Een bestand kon niet meer van de schijf worden gelezen. Is het verplaatst of hernoemd? Er is niets gedownload.',
     },
   },
   merge: {
@@ -505,6 +510,9 @@ export const nl = {
     saveTitle: 'Hernoemde kopieën opslaan',
     zipName: 'pdfs-hernoemd',
     savedOne: 'Gedownload als {name}.',
+    downloadUnreadable:
+      '{name} kon niet van de schijf worden gelezen. Is het verplaatst of hernoemd? Er is niets gedownload.',
+    downloadFailed: 'Downloaden is mislukt. Er is niets gedownload.',
     saved: '{n} bestanden gedownload in {name}.',
     view: 'Bekijken',
     viewLabel: '{name} bekijken',
@@ -612,6 +620,9 @@ export const nl = {
       'not-pdf': 'Dit is geen PDF.',
       password: 'Deze PDF is beveiligd met een wachtwoord. Dat wordt nog niet ondersteund.',
       damaged: 'Deze PDF kon niet worden gelezen.',
+      unreadable:
+        'Dit bestand kon niet van de schijf worden gelezen. Is het verplaatst, hernoemd of nog bezig met synchroniseren? Probeer het opnieuw.',
+      app: 'Een onderdeel van de app kon niet worden geladen. Misschien is er een nieuwe versie; herlaad de pagina.',
     },
     tooMany: 'Je koos meer dan twee PDF’s: alleen de eerste twee worden vergeleken.',
     swap: 'A en B omwisselen',
@@ -923,6 +934,8 @@ export const nl = {
         'not-pdf': 'geen PDF',
         password: 'beveiligd met een wachtwoord',
         damaged: 'beschadigd of niet te lezen',
+        unreadable: 'niet van de schijf te lezen',
+        app: 'app niet geladen (herlaad de pagina)',
       },
       noText: 'Geen tekstlaag (mogelijk een scan): {list}.',
       nothing: 'Er is niets gedownload: geen van de PDF’s had tekst.',
@@ -1180,6 +1193,8 @@ export const nl = {
     desktopOnly:
       'Dit onderdeel is alleen beschikbaar op een computer. Open de site op een breder scherm om het te gebruiken.',
     back: '← Alle geavanceerde onderdelen',
+    loadFailed:
+      'Dit onderdeel kon niet worden geladen. Misschien is er een nieuwe versie; herlaad de pagina.',
     soon: 'Binnenkort beschikbaar.',
     tools: {
       rename: {

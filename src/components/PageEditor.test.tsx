@@ -4,6 +4,7 @@ import type { PDFDocumentProxy } from 'pdfjs-dist';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { DocumentProvider } from '../document/DocumentContext';
 import { messages } from '../i18n';
+import { makeFlaky } from '../lib/testFiles';
 import { format } from '../i18n/format';
 import { LanguageProvider } from '../i18n/LanguageContext';
 import type { LoadedPdf } from '../pdf/loader';
@@ -29,7 +30,10 @@ function fakePdf(pageCount: number): LoadedPdf {
   return { pdf: pdf as unknown as PDFDocumentProxy, pageCount };
 }
 
-async function openEditor(pageCount = 3) {
+const report = () =>
+  new File(['%PDF-1.7\n' + 'x'.repeat(100)], 'rapport.pdf', { type: 'application/pdf' });
+
+async function openEditor(pageCount = 3, file = report()) {
   render(
     <LanguageProvider initial="nl">
       <DocumentProvider load={async () => fakePdf(pageCount)} unload={() => {}}>
@@ -37,9 +41,6 @@ async function openEditor(pageCount = 3) {
       </DocumentProvider>
     </LanguageProvider>,
   );
-  const file = new File(['%PDF-1.7\n' + 'x'.repeat(100)], 'rapport.pdf', {
-    type: 'application/pdf',
-  });
   fireEvent.change(document.querySelector('input[type="file"]')!, { target: { files: [file] } });
   await screen.findByRole('listbox');
 }
@@ -199,6 +200,17 @@ describe('PageEditor', () => {
     expect(vi.mocked(downloadPdf).mock.calls[0]![1]).toBe('rapport (bewerkt).pdf');
     expect(screen.getByRole('status').textContent).toBe('Opgeslagen als rapport (bewerkt).pdf.');
     expect(status()).not.toContain(nl.pages.unsaved);
+  });
+
+  it('meldt het als het bestand intussen niet meer te lezen is (verplaatst, hernoemd)', async () => {
+    const file = report();
+    await openEditor(2, file);
+    // Na het openen is het bestand weg: elke poging om het te lezen mislukt.
+    makeFlaky(file, Infinity);
+    fireEvent.click(button(nl.pages.save));
+    confirmSave();
+    expect((await screen.findByRole('alert')).textContent).toBe(nl.pages.errors.unreadable);
+    expect(downloadPdf).not.toHaveBeenCalled();
   });
 
   it('meldt het als een beveiligde PDF niet kan worden opgeslagen', async () => {
