@@ -20,11 +20,14 @@ env:
 jobs:
   preview:
     # Alleen voor PR's uit deze repo; een fork krijgt geen schrijfrechten. Dependabot ook
-    # niet (GitHub geeft zijn PR's alleen leesrechten): die PR's bekijk je via de checks.
+    # niet: die PR's bekijk je via de checks. Bewust op de maker van de PR en niet op
+    # `github.actor`: dat is wie de run start, en wie een Dependabot-PR bijwerkt of de run
+    # opnieuw start, zou anders de code van die PR met schrijfrechten laten bouwen
+    # (zie scripts/preview-condition.test.ts).
     if: >-
       github.event_name == 'pull_request' &&
       github.event.pull_request.head.repo.full_name == github.repository &&
-      github.actor != 'dependabot[bot]'
+      github.event.pull_request.user.login != 'dependabot[bot]'
     runs-on: ubuntu-latest
     # Per PR één wachtrij: een nieuwere push op dezelfde PR vervangt een wachtende oudere.
     concurrency:
