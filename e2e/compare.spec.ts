@@ -3,19 +3,13 @@ import { readFileSync } from 'node:fs';
 import { expect, test, type Locator, type Page } from '@playwright/test';
 import { PDFDocument, StandardFonts, degrees, rgb } from 'pdf-lib';
 import { format } from '../src/i18n/format';
-import { messages, openPage, type Theme } from './helpers';
+import { messages, openPage, SLOW, type Theme } from './helpers';
 
 /**
  * PDF's vergelijken (Geavanceerd, alleen op de computer): een origineel (A) en een nieuwe versie (B)
  * openen en de tekstverschillen zien. De PDF's worden hier gemaakt en in de browser door pdf.js
  * gelezen, zoals bij een echte PDF.
  */
-
-/**
- * Openen en tekenen met pdf.js kan onder belasting (alle tests tegelijk) even duren: de eerste
- * controle daarna wacht langer, zoals in de andere specs (OPEN_TIMEOUT).
- */
-const SLOW = { timeout: 15_000 };
 
 const nl = messages.nl;
 const c = nl.compare;

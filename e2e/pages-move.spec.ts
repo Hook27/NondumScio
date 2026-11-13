@@ -2,7 +2,7 @@ import { readFileSync } from 'node:fs';
 import { expect, test, type Page } from '@playwright/test';
 import { PDFDocument } from 'pdf-lib';
 import { makeSizedPdf } from './fixtures';
-import { downloadVia, messages, openPage } from './helpers';
+import { downloadVia, messages, openPdf } from './helpers';
 
 const nl = messages.nl;
 const options = (page: Page) => page.getByRole('option');
@@ -14,12 +14,12 @@ const order = (page: Page) =>
   options(page).evaluateAll((els) => els.map((el) => Number(el.getAttribute('data-source'))));
 
 async function openPages(page: Page, widths = [300, 400, 500, 600]) {
-  await openPage(page, '/#/pages', { lang: 'nl' });
-  await page.locator('input[type="file"]').setInputFiles({
-    name: 'vier.pdf',
-    mimeType: 'application/pdf',
-    buffer: await makeSizedPdf(widths),
-  });
+  await openPdf(
+    page,
+    '/#/pages',
+    { name: 'vier.pdf', mimeType: 'application/pdf', buffer: await makeSizedPdf(widths) },
+    { lang: 'nl' },
+  );
   await expect(options(page)).toHaveCount(widths.length);
   // Wacht tot alle miniaturen getekend zijn: daarvoor veranderen ze nog van formaat,
   // en zou een sleepbeweging op de verkeerde plek eindigen.

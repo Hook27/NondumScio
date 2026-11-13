@@ -3,16 +3,13 @@ import { readFileSync } from 'node:fs';
 import { expect, test, type Locator, type Page } from '@playwright/test';
 import { PDFDocument, StandardFonts } from 'pdf-lib';
 import { format } from '../src/i18n/format';
-import { messages, openPage, type Theme } from './helpers';
+import { messages, openPage, SLOW, type Theme } from './helpers';
 
 /**
  * Archief / Triage (Geavanceerd, alleen op de computer): PDF's één voor één bekijken, per PDF
  * bewaren of verwijderen, en de lijst downloaden. De PDF's worden hier gemaakt en in de browser door
  * pdf.js gelezen, zoals bij een echte PDF.
  */
-
-/** Openen met pdf.js kan onder belasting even duren: de eerste controle wacht langer. */
-const SLOW = { timeout: 15_000 };
 
 const nl = messages.nl;
 const tr = nl.triage;
@@ -174,6 +171,8 @@ test.describe('Archief / Triage', () => {
       'aria-pressed',
       'false',
     );
+    // Bewust een vaste wachttijd (langer dan de 200 ms waarna Triage verder gaat): er mag níets
+    // gebeuren, en daar is geen teken voor om op te wachten.
     await page.waitForTimeout(400);
     await expect(active(page)).toContainText('brief.pdf');
   });

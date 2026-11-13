@@ -4,16 +4,13 @@ import { expect, test, type Locator, type Page } from '@playwright/test';
 import { unzipSync } from 'fflate';
 import { PDFDocument, StandardFonts, degrees, rgb } from 'pdf-lib';
 import { format } from '../src/i18n/format';
-import { messages, openPage, type Theme } from './helpers';
+import { messages, openPage, SLOW, type Theme } from './helpers';
 
 /**
  * PDF → Platte tekst (Geavanceerd, alleen op de computer): een PDF openen, leesvakken tekenen en de
  * tekst eruit halen.
  * De PDF's worden hier gemaakt en in de browser door pdf.js gelezen, zoals bij een echte PDF.
  */
-
-/** Openen met pdf.js kan onder belasting even duren: de eerste controle wacht langer. */
-const SLOW = { timeout: 15_000 };
 
 const nl = messages.nl;
 const p = nl.plainText;

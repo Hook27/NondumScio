@@ -69,6 +69,7 @@ test.describe('bestandsnaam bij downloaden', () => {
       await page.keyboard.press('Escape');
       await expect(page.getByRole('dialog')).toHaveCount(0);
     }
+    // Bewust een vaste wachttijd: er mag níets gebeuren, en daar is geen teken voor om op te wachten.
     await page.waitForTimeout(500);
     expect(downloads).toBe(0);
   });

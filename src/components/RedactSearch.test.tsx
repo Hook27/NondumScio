@@ -9,6 +9,9 @@ import type { LoadedPdf } from '../pdf/loader';
 import type { PageText } from '../search/pageText';
 import { ocrWordsToPageText, textItemsToPageText } from '../search/textLayer';
 import { Workspace } from './Workspace';
+import { giveAnnotatePagesWidth } from './testLayout';
+
+giveAnnotatePagesWidth();
 
 /** Wat de nepbron per pagina (vanaf 0) aan tekst en aan herkende tekst geeft. */
 const fake = vi.hoisted(() => ({

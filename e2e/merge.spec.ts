@@ -3,7 +3,7 @@ import { readFileSync } from 'node:fs';
 import { expect, test, type Page } from '@playwright/test';
 import { PDFDocument } from 'pdf-lib';
 import { makeSizedPdf } from './fixtures';
-import { downloadVia, messages, openPage } from './helpers';
+import { downloadVia, messages, openPage, SLOW } from './helpers';
 
 const nl = messages.nl;
 
@@ -31,13 +31,10 @@ async function files() {
 const list = (page: Page) => page.getByRole('list', { name: nl.merge.files });
 const names = (page: Page) => list(page).locator('.merge-list__name').allTextContents();
 
-/** Het openen van meerdere PDF's (met het opstarten van pdf.js) kan onder belasting even duren. */
-const OPEN_TIMEOUT = { timeout: 15_000 };
-
 async function openMerge(page: Page, theme: 'light' | 'dark' = 'light') {
   await openPage(page, '/#/merge', { lang: 'nl', theme });
   await page.locator('#pdf-file').setInputFiles(await files());
-  await expect(list(page).getByRole('listitem')).toHaveCount(3, OPEN_TIMEOUT);
+  await expect(list(page).getByRole('listitem')).toHaveCount(3, SLOW);
 }
 
 /**
@@ -296,9 +293,9 @@ test.describe('samenvoegen', () => {
     await openPage(page, '/#/merge', { lang: 'nl' });
     const [first, second] = await files();
     await page.locator('#pdf-file').setInputFiles(first!);
-    await expect(list(page).getByRole('listitem')).toHaveCount(1, OPEN_TIMEOUT);
+    await expect(list(page).getByRole('listitem')).toHaveCount(1, SLOW);
     await page.locator('#merge-add').setInputFiles(second!);
-    await expect(list(page).getByRole('listitem')).toHaveCount(2, OPEN_TIMEOUT);
+    await expect(list(page).getByRole('listitem')).toHaveCount(2, SLOW);
 
     const result = await readDownload(page, nl.merge.download);
     expect(result.widths).toEqual([300, 310, 500]);
@@ -313,7 +310,7 @@ test.describe('samenvoegen', () => {
         first!,
         { name: 'foto.jpg', mimeType: 'image/jpeg', buffer: Buffer.from([0xff, 0xd8, 0xff, 0xe0]) },
       ]);
-    await expect(list(page).getByRole('listitem')).toHaveCount(1, OPEN_TIMEOUT);
+    await expect(list(page).getByRole('listitem')).toHaveCount(1, SLOW);
     await expect(page.getByRole('alert')).toContainText('foto.jpg is geen PDF');
   });
 
@@ -325,9 +322,9 @@ test.describe('samenvoegen', () => {
     await openPage(page, '/#/pages', { lang: 'nl' });
     const [first, second] = await files();
     await page.locator('#pdf-file').setInputFiles(first!);
-    await expect(page.getByRole('option')).toHaveCount(2, OPEN_TIMEOUT);
+    await expect(page.getByRole('option')).toHaveCount(2, SLOW);
     await page.locator('#add-pdf').setInputFiles(second!);
-    await expect(page.getByRole('option')).toHaveCount(3, OPEN_TIMEOUT);
+    await expect(page.getByRole('option')).toHaveCount(3, SLOW);
     await expect(page.getByRole('option').nth(2)).toHaveAttribute(
       'aria-label',
       'Pagina 3, uit bijlage.pdf',
