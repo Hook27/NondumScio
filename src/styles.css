@@ -28,6 +28,8 @@
   --removed: #fbe9e9;
   --removed-mark: #f3b4b4;
   --removed-line: #c62828;
+  /* Waarschuwingen en foutmeldingen: donkerrood (in het donkere thema lichter, anders onleesbaar). */
+  --warning-text: #a61b1b;
   --added: #e4f4e8;
   --added-mark: #a9dcb6;
   --added-line: #2e7d32;
@@ -54,6 +56,8 @@
     --removed: #3a1a1c;
     --removed-mark: #6e2a2d;
     --removed-line: #f87171;
+    --warning-text: #f87171;
+    --warning-text: #f87171;
     --added: #142e1d;
     --added-mark: #1f5c34;
     --added-line: #4ade80;
@@ -77,6 +81,7 @@
   --removed: #3a1a1c;
   --removed-mark: #6e2a2d;
   --removed-line: #f87171;
+  --warning-text: #f87171;
   --added: #142e1d;
   --added-mark: #1f5c34;
   --added-line: #4ade80;
@@ -498,6 +503,7 @@ h1 {
 }
 
 .dropzone__error {
+  color: var(--warning-text);
   font-weight: 600;
 }
 
@@ -663,6 +669,7 @@ h1 {
 }
 
 .page-editor__error {
+  color: var(--warning-text);
   font-weight: 600;
 }
 
@@ -670,7 +677,7 @@ h1 {
 .page-editor__warning {
   display: block;
   margin-top: 0.25rem;
-  color: var(--removed-line);
+  color: var(--warning-text);
   font-weight: 600;
 }
 
@@ -1059,7 +1066,7 @@ h1 {
 }
 
 .compare-slot__meta.dropzone__error {
-  color: var(--text);
+  color: var(--warning-text);
 }
 
 .compare-slot .compare-slot__thumb {
@@ -1311,6 +1318,11 @@ h1 {
   text-align: center;
 }
 
+.compare-visual__msg--error {
+  color: var(--warning-text);
+  font-weight: 600;
+}
+
 /* De instellingen bij het vergelijken: ze werken meteen. */
 .compare-settings {
   margin: 0 0 0.75rem;
@@ -1393,6 +1405,12 @@ h1 {
   background: var(--changed);
   border: 1px solid var(--changed-line);
   border-radius: var(--radius);
+}
+
+.compare__warning {
+  color: var(--warning-text);
+  background: var(--removed);
+  border-color: var(--removed-line);
 }
 
 .compare__placeholder {
@@ -2346,7 +2364,7 @@ h1 {
 
 .triage-folder-dialog__error {
   margin: 0 0 0.5rem;
-  color: var(--removed-line);
+  color: var(--warning-text);
   font-weight: 600;
 }
 
@@ -2770,6 +2788,7 @@ h1 {
   order: 1;
   flex-basis: 100%;
   margin: 0;
+  color: var(--warning-text);
   font-size: 0.9rem;
   font-weight: 600;
 }
@@ -2889,6 +2908,7 @@ h1 {
 
 .file-errors {
   margin: 0 0 1rem;
+  color: var(--warning-text);
   font-weight: 600;
 }
 
@@ -3124,7 +3144,7 @@ h1 {
 }
 
 .bookmark-table__size.is-large {
-  color: var(--removed-line);
+  color: var(--warning-text);
   font-weight: 600;
 }
 

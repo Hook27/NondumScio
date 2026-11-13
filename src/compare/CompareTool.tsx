@@ -547,7 +547,9 @@ function VisualCanvas({ a, b }: { a: CompareDoc; b: CompareDoc }) {
             })}
           </p>
         )}
-        {drawn?.kind === 'error' && <p class="compare-visual__msg">{v.error}</p>}
+        {drawn?.kind === 'error' && (
+          <p class="compare-visual__msg compare-visual__msg--error">{v.error}</p>
+        )}
         {drawn?.kind === 'diff' && (
           <CanvasBox
             canvas={drawn.canvas}

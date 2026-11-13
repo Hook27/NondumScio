@@ -1126,7 +1126,7 @@ function PageView({ doc }: { doc: TextDoc }) {
       </Bar>
       <div class="plaintext-preview" ref={wrap}>
         {drawn && 'error' in drawn ? (
-          <p class="compare-visual__msg">{v.error}</p>
+          <p class="compare-visual__msg compare-visual__msg--error">{v.error}</p>
         ) : (
           <div
             class="plaintext-preview__page"
