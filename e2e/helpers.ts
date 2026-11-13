@@ -26,6 +26,12 @@ export function url(path: string): string {
   return `.${path}`;
 }
 
+/**
+ * De ruimere wachttijd voor de eerste controle na het openen van een PDF (en na het tekenen): onder
+ * volle belasting duurt dat soms langer dan de standaard 5 s. Eén waarde voor alle specs.
+ */
+export const SLOW = { timeout: 15_000 };
+
 /** Hoe vaak `openPage` per pagina is aangeroepen (zie daar). */
 const openCalls = new WeakMap<Page, number>();
 
@@ -56,6 +62,21 @@ export async function openPage(page: Page, path = '/', prefs: Preferences = {}):
   const fresh = page.url() === 'about:blank';
   await page.goto(url(path));
   if (!fresh) await page.reload();
+}
+
+/**
+ * Opent een taak (zoals `/#/pages`) met taal en thema, kiest een PDF en wacht ruim tot hij open
+ * is: de naam van het bestand staat dan als kop boven het werkvak.
+ */
+export async function openPdf(
+  page: Page,
+  path: string,
+  file: { name: string; mimeType: string; buffer: Buffer },
+  prefs: Preferences = {},
+): Promise<void> {
+  await openPage(page, path, prefs);
+  await page.locator('input[type="file"]').first().setInputFiles(file);
+  await expect(page.getByRole('heading', { level: 2, name: file.name })).toBeVisible(SLOW);
 }
 
 /**

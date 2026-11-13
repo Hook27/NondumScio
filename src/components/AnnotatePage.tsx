@@ -127,6 +127,8 @@ export const AnnotatePage = memo(function AnnotatePage({
   const { t } = useI18n();
   const [info, setInfo] = useState<PageInfo | null>(null);
   const [active, setActive] = useState(false);
+  // Of de pagina met de huidige maat en draaiing echt getekend is (voor `data-rendered`).
+  const [rendered, setRendered] = useState(false);
   const frame = useRef<HTMLDivElement>(null);
   const canvas = useRef<HTMLCanvasElement>(null);
   const overlay = useRef<SVGSVGElement>(null);
@@ -169,6 +171,7 @@ export const AnnotatePage = memo(function AnnotatePage({
   useEffect(() => {
     const target = canvas.current;
     if (!target) return;
+    setRendered(false);
     if (!active || !info || fitWidth <= 0) {
       // Weg met de beeldpunten: een lege pagina houdt zijn plek, maar kost geen geheugen.
       target.width = 0;
@@ -198,6 +201,7 @@ export const AnnotatePage = memo(function AnnotatePage({
         target.width = next.width;
         target.height = next.height;
         target.getContext('2d')?.drawImage(next, 0, 0);
+        setRendered(true);
       } catch {
         // Afgebroken (bijvoorbeeld bij zoomen of sluiten): niets aan de hand.
       } finally {
@@ -427,7 +431,7 @@ export const AnnotatePage = memo(function AnnotatePage({
       aria-label={format(t.document.page, { n: position })}
       aria-describedby="annotate-help"
       data-position={position}
-      data-rendered={active && info ? 'true' : 'false'}
+      data-rendered={rendered ? 'true' : 'false'}
       tabIndex={0}
       style={{ width: `${width}px`, height: `${height}px` }}
       onKeyDown={onPageKey}

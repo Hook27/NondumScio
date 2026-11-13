@@ -1,11 +1,10 @@
 import { readFileSync } from 'node:fs';
 import { expect, test, type Page } from '@playwright/test';
-import { downloadVia, messages, openPage } from './helpers';
+import { downloadVia, messages, openPage, SLOW } from './helpers';
 import { REPORT_OUTLINE, makeOutlinePdf, readOutlineOf, type ReadItem } from './outline-fixtures';
 
 const nl = messages.nl;
 /** Openen en tekenen kan op een drukke machine even duren (zoals in merge.spec.ts). */
-const OPEN_TIMEOUT = { timeout: 15_000 };
 
 /** Rapport (6 pagina's, geneste bladwijzers en een link) en notulen (3 pagina's, platte bladwijzers). */
 async function openBoth(page: Page, task: 'merge' | 'pages' = 'merge') {
@@ -31,7 +30,7 @@ async function openBoth(page: Page, task: 'merge' | 'pages' = 'merge') {
   ]);
   await expect(page.getByRole('list', { name: nl.merge.files }).getByRole('listitem')).toHaveCount(
     2,
-    OPEN_TIMEOUT,
+    SLOW,
   );
 }
 
@@ -107,7 +106,7 @@ test.describe('samenvoegen: bestaande bladwijzers behouden', () => {
       mimeType: 'application/pdf',
       buffer: await makeOutlinePdf(REPORT_OUTLINE, 6, 'Rapport'),
     });
-    await expect(page.getByLabel(nl.merge.keepBookmarks)).toBeChecked(OPEN_TIMEOUT);
+    await expect(page.getByLabel(nl.merge.keepBookmarks)).toBeChecked(SLOW);
     // Aan: het bestand houdt zijn eigen bladwijzers (ook de link naar de website).
     const kept = await downloadOutline(page, nl.merge.download);
     expect(kept.map((item) => item.title)).toEqual([

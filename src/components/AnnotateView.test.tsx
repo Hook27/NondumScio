@@ -9,6 +9,9 @@ import { LanguageProvider } from '../i18n/LanguageContext';
 import type { LoadedPdf } from '../pdf/loader';
 import { buildPdf, downloadPdf } from '../pdf/save';
 import { Workspace } from './Workspace';
+import { giveAnnotatePagesWidth } from './testLayout';
+
+giveAnnotatePagesWidth();
 
 vi.mock('../pdf/save', async (importOriginal) => ({
   ...(await importOriginal<typeof import('../pdf/save')>()),
@@ -30,12 +33,16 @@ function fakeLoad(bytes: Uint8Array): Promise<LoadedPdf> {
         height: (sideways ? 595 : 842) * scale,
       };
     },
-    render: () => ({ promise: Promise.resolve(), cancel: () => {} }),
+    // Met `drawing.hold` blijft het tekenen hangen tot de test het loslaat.
+    render: () => ({ promise: drawing.hold ?? Promise.resolve(), cancel: () => {} }),
     cleanup: () => {},
   };
   const pdf = { numPages: pageCount, getPage: async () => page } as unknown as PDFDocumentProxy;
   return Promise.resolve({ pdf, pageCount });
 }
+
+/** Het tekenen van de nep-PDF: zonder `hold` meteen klaar. */
+const drawing: { hold: Promise<void> | null } = { hold: null };
 
 async function setup(pages = 3, mode: 'edit' | 'redact' = 'edit') {
   const tree = (current: 'edit' | 'redact') => (
@@ -504,5 +511,39 @@ describe('Bewerken en Redigeren: elk een eigen scherm', () => {
     await switchTo('redact');
     expect(shapes()).toHaveLength(1);
     expect(pressed(nl.redact.select)).toBe('true');
+  });
+});
+
+describe('"getekend" betekent echt getekend', () => {
+  afterEach(() => {
+    drawing.hold = null;
+  });
+
+  it('data-rendered wordt pas true als de pagina klaar is met tekenen', async () => {
+    let release: () => void = () => {};
+    drawing.hold = new Promise((resolve) => (release = resolve));
+    render(
+      <LanguageProvider initial="nl">
+        <DocumentProvider load={fakeLoad} unload={() => {}}>
+          <Workspace mode="edit" />
+        </DocumentProvider>
+      </LanguageProvider>,
+    );
+    fireEvent.change(document.querySelector('input[type="file"]')!, {
+      target: { files: [new File(['%PDF-1.7 1\n'], 'rapport.pdf')] },
+    });
+    await screen.findByRole('list', { name: nl.edit.pages });
+    const page = () => document.querySelector('.annotate-page')!;
+    // De pagina mag tekenen (in beeld, maat bekend), maar het tekenen is nog bezig.
+    await new Promise((resolve) => setTimeout(resolve, 250));
+    expect(page().getAttribute('data-rendered')).toBe('false');
+    release();
+    await waitFor(() => expect(page().getAttribute('data-rendered')).toBe('true'));
+    // Opnieuw tekenen (inzoomen): zolang dat bezig is, weer "niet getekend".
+    drawing.hold = new Promise((resolve) => (release = resolve));
+    fireEvent.click(screen.getByRole('button', { name: nl.edit.zoomIn }));
+    await waitFor(() => expect(page().getAttribute('data-rendered')).toBe('false'));
+    release();
+    await waitFor(() => expect(page().getAttribute('data-rendered')).toBe('true'));
   });
 });

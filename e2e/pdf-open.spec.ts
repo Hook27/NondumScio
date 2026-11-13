@@ -1,7 +1,7 @@
 import AxeBuilder from '@axe-core/playwright';
 import { expect, test, type Page } from '@playwright/test';
 import { makeScanPdf, pdfFile } from './fixtures';
-import { messages, openPage } from './helpers';
+import { messages, openPage, SLOW } from './helpers';
 
 const nl = messages.nl;
 
@@ -9,9 +9,8 @@ const fileInput = (page: Page) => page.locator('input[type="file"]');
 const thumbnails = (page: Page) => page.locator('.thumb');
 /**
  * Openen en tekenen mag wat langer duren dan de standaard 5 s: bij een volledige testrun draaien
- * veel tests tegelijk en is de machine druk (zoals bij andere specs, zie OPEN_TIMEOUT in merge.spec.ts).
+ * veel tests tegelijk en is de machine druk (zoals bij andere specs, zie SLOW in merge.spec.ts).
  */
-const OPEN_TIMEOUT = { timeout: 15_000 };
 
 /** Hoeveel pixels van een getekende miniatuur niet (bijna) wit zijn. */
 function inkedPixels(page: Page, index: number) {
@@ -37,9 +36,9 @@ test.describe('PDF openen', () => {
 
     await expect(page.getByRole('heading', { level: 2, name: 'rapport.pdf' })).toBeVisible();
     await expect(page.locator('.document__meta')).toContainText('3 pagina’s');
-    await expect(thumbnails(page)).toHaveCount(3, OPEN_TIMEOUT);
+    await expect(thumbnails(page)).toHaveCount(3, SLOW);
     for (let i = 0; i < 3; i += 1) {
-      await expect(thumbnails(page).nth(i)).toHaveAttribute('data-rendered', 'true', OPEN_TIMEOUT);
+      await expect(thumbnails(page).nth(i)).toHaveAttribute('data-rendered', 'true', SLOW);
       expect(await inkedPixels(page, i)).toBeGreaterThan(500);
     }
     await expect(page.getByRole('option', { name: /Pagina 2/ })).toBeVisible();
@@ -58,7 +57,7 @@ test.describe('PDF openen', () => {
       mimeType: 'application/pdf',
       buffer: await makeScanPdf(),
     });
-    await expect(thumbnails(page).first()).toHaveAttribute('data-rendered', 'true', OPEN_TIMEOUT);
+    await expect(thumbnails(page).first()).toHaveAttribute('data-rendered', 'true', SLOW);
 
     // De zwarte balken van de scan moeten in de miniatuur staan.
     const donker = await page
@@ -90,7 +89,7 @@ test.describe('PDF openen', () => {
   test('een liggende pagina krijgt een lagere miniatuur', async ({ page }) => {
     await openPage(page, '/#/pages', { lang: 'nl' });
     await fileInput(page).setInputFiles(await pdfFile('gemengd.pdf', 2, [2]));
-    await expect(thumbnails(page).nth(1)).toHaveAttribute('data-rendered', 'true', OPEN_TIMEOUT);
+    await expect(thumbnails(page).nth(1)).toHaveAttribute('data-rendered', 'true', SLOW);
 
     const staand = await page.locator('.thumb canvas').nth(0).boundingBox();
     const liggend = await page.locator('.thumb canvas').nth(1).boundingBox();
@@ -100,14 +99,14 @@ test.describe('PDF openen', () => {
   test('tekent bij een groot document alleen wat in beeld komt', async ({ page }) => {
     await openPage(page, '/#/pages', { lang: 'nl' });
     await fileInput(page).setInputFiles(await pdfFile('dik.pdf', 120));
-    await expect(thumbnails(page)).toHaveCount(120, OPEN_TIMEOUT);
-    await expect(thumbnails(page).first()).toHaveAttribute('data-rendered', 'true', OPEN_TIMEOUT);
+    await expect(thumbnails(page)).toHaveCount(120, SLOW);
+    await expect(thumbnails(page).first()).toHaveAttribute('data-rendered', 'true', SLOW);
 
     const getekend = await page.locator('.thumb[data-rendered="true"]').count();
     expect(getekend).toBeLessThan(120);
 
     await thumbnails(page).last().scrollIntoViewIfNeeded();
-    await expect(thumbnails(page).last()).toHaveAttribute('data-rendered', 'true', OPEN_TIMEOUT);
+    await expect(thumbnails(page).last()).toHaveAttribute('data-rendered', 'true', SLOW);
   });
 
   test('gebruikt één gedeelde kijker, ook bij honderden pagina’s', async ({ page }) => {
@@ -124,8 +123,8 @@ test.describe('PDF openen', () => {
     });
     await openPage(page, '/#/pages', { lang: 'nl' });
     await fileInput(page).setInputFiles(await pdfFile('dik.pdf', 300));
-    await expect(thumbnails(page)).toHaveCount(300, OPEN_TIMEOUT);
-    await expect(thumbnails(page).first()).toHaveAttribute('data-rendered', 'true', OPEN_TIMEOUT);
+    await expect(thumbnails(page)).toHaveCount(300, SLOW);
+    await expect(thumbnails(page).first()).toHaveAttribute('data-rendered', 'true', SLOW);
     expect(await page.evaluate(() => (window as unknown as { kijkers: number }).kijkers)).toBe(1);
   });
 
@@ -180,7 +179,7 @@ test.describe('PDF openen', () => {
     });
     await openPage(page, '/#/pages', { lang: 'nl' });
     await fileInput(page).setInputFiles(await pdfFile('privé.pdf', 2));
-    await expect(thumbnails(page).nth(1)).toHaveAttribute('data-rendered', 'true', OPEN_TIMEOUT);
+    await expect(thumbnails(page).nth(1)).toHaveAttribute('data-rendered', 'true', SLOW);
     expect(elders).toEqual([]);
   });
 
@@ -195,7 +194,7 @@ test.describe('PDF openen', () => {
     test(`is toegankelijk met een geopend document (${theme})`, async ({ page }) => {
       await openPage(page, '/#/pages', { lang: 'nl', theme });
       await fileInput(page).setInputFiles(await pdfFile('toegankelijk.pdf', 2));
-      await expect(thumbnails(page).nth(1)).toHaveAttribute('data-rendered', 'true', OPEN_TIMEOUT);
+      await expect(thumbnails(page).nth(1)).toHaveAttribute('data-rendered', 'true', SLOW);
 
       const result = await new AxeBuilder({ page })
         .withTags(['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa'])

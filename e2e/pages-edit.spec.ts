@@ -4,7 +4,7 @@ import { expect, test, type Page } from '@playwright/test';
 import { PDFDocument } from 'pdf-lib';
 import { makeSharedResourcesPdf } from '../src/pdf/testShared';
 import { makeSizedPdf } from './fixtures';
-import { downloadVia, messages, openPage } from './helpers';
+import { downloadVia, messages, openPdf } from './helpers';
 
 const nl = messages.nl;
 const options = (page: Page) => page.getByRole('option');
@@ -12,12 +12,12 @@ const toolbarButton = (page: Page, name: string) =>
   page.getByRole('toolbar', { name: nl.pages.toolbar }).getByRole('button', { name });
 
 async function openThreePages(page: Page, path = '/#/pages') {
-  await openPage(page, path, { lang: 'nl' });
-  await page.locator('input[type="file"]').setInputFiles({
-    name: 'drie.pdf',
-    mimeType: 'application/pdf',
-    buffer: await makeSizedPdf([300, 400, 500]),
-  });
+  await openPdf(
+    page,
+    path,
+    { name: 'drie.pdf', mimeType: 'application/pdf', buffer: await makeSizedPdf([300, 400, 500]) },
+    { lang: 'nl' },
+  );
   await expect(options(page)).toHaveCount(3);
 }
 
@@ -63,12 +63,16 @@ test.describe('pagina’s bewerken', () => {
 
   test('waarschuwt na uitpakken als een pagina niet uitgedund kon worden', async ({ page }) => {
     // Een scan met één gedeelde lijst hulpbronnen; pagina 1 is niet te lezen (twijfel).
-    await openPage(page, '/#/pages', { lang: 'nl' });
-    await page.locator('input[type="file"]').setInputFiles({
-      name: 'scan.pdf',
-      mimeType: 'application/pdf',
-      buffer: Buffer.from(await makeSharedResourcesPdf(4, { unreadable: true })),
-    });
+    await openPdf(
+      page,
+      '/#/pages',
+      {
+        name: 'scan.pdf',
+        mimeType: 'application/pdf',
+        buffer: Buffer.from(await makeSharedResourcesPdf(4, { unreadable: true })),
+      },
+      { lang: 'nl' },
+    );
     await expect(options(page)).toHaveCount(4);
     const saved = page.getByRole('status').filter({ hasText: 'Opgeslagen als' });
 
@@ -140,12 +144,16 @@ test.describe('pagina’s bewerken', () => {
 
   for (const theme of ['light', 'dark'] as const) {
     test(`is toegankelijk tijdens het bewerken (${theme})`, async ({ page }) => {
-      await openPage(page, '/#/pages', { lang: 'nl', theme });
-      await page.locator('input[type="file"]').setInputFiles({
-        name: 'drie.pdf',
-        mimeType: 'application/pdf',
-        buffer: await makeSizedPdf([300, 400, 500]),
-      });
+      await openPdf(
+        page,
+        '/#/pages',
+        {
+          name: 'drie.pdf',
+          mimeType: 'application/pdf',
+          buffer: await makeSizedPdf([300, 400, 500]),
+        },
+        { lang: 'nl', theme },
+      );
       await options(page).nth(1).click();
       await toolbarButton(page, nl.pages.rotateRight).click();
       await expect(page.locator('.page-option .thumb').nth(2)).toHaveAttribute(
