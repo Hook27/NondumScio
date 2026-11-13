@@ -3,7 +3,9 @@ import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-li
 import { unzipSync } from 'fflate';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { messages } from '../i18n';
+import { format } from '../i18n/format';
 import { LanguageProvider } from '../i18n/LanguageContext';
+import { makeFlaky } from '../lib/testFiles';
 import { PdfSaveError, buildPdf, downloadFile, downloadPdf } from '../pdf/save';
 import { DB_STORAGE_KEY, type RenameDb } from './database';
 import { openScanReader } from './readText';
@@ -233,6 +235,28 @@ describe('Slim hernoemen', () => {
     const [bytes, name, type] = vi.mocked(downloadFile).mock.calls[0]!;
     expect([name, type]).toEqual(['260312 gemeente utrecht aan.pdf', 'application/pdf']);
     expect(new TextDecoder().decode(bytes as Uint8Array)).toBe('%PDF-1.7 gemeente.pdf');
+  });
+
+  it('downloaden: een bestand dat intussen weg is, geeft een melding met zijn naam en geen download', async () => {
+    setup();
+    const files = ['gemeente.pdf', 'bank1.pdf'].map(pdf);
+    fireEvent.change(document.querySelector('#rename-files')!, { target: { files } });
+    await screen.findByRole('table');
+    await waitFor(() =>
+      expect(document.querySelector<HTMLInputElement>('#rename-add')!.disabled).toBe(false),
+    );
+    // Na het openen verplaatst of hernoemd: het lezen lukt niet meer.
+    makeFlaky(files[1]!, Infinity);
+    fireEvent.click(screen.getByRole('button', { name: r.download }));
+    const dialog = screen.getByRole('dialog');
+    fireEvent.click(within(dialog).getByRole('button', { name: messages.nl.saveDialog.download }));
+    expect((await screen.findByRole('alert')).textContent).toBe(
+      format(r.downloadUnreadable, { name: 'bank1.pdf' }),
+    );
+    expect(downloadFile).not.toHaveBeenCalled();
+    // Niets gedownload, dus ook niets als bewaard onthouden: wissen vraagt nog steeds.
+    fireEvent.click(screen.getByRole('button', { name: r.clear }));
+    expect(screen.getByRole('dialog', { name: r.clearTitle })).toBeTruthy();
   });
 
   it('meer bestanden: een ZIP met de hernoemde kopieën, zonder wat uitgevinkt is', async () => {

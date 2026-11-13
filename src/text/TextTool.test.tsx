@@ -109,6 +109,7 @@ const DOCS: Record<string, PageText[] | Error> = {
   'tweede.pdf': [page(1, [['De tweede PDF.']])],
   'geheim.pdf': new PdfLoadError('password'),
   'kapot.pdf': new Error('kapot'),
+  'weg.pdf': new PdfLoadError('unreadable'),
 };
 
 /** De gegevens (metadata) per bestand, zoals pdf.js ze geeft; de rest heeft er geen. */
@@ -304,6 +305,12 @@ describe('PDF → Platte tekst: beginnen', () => {
     choose('kapot.pdf');
     await waitFor(() => expect(screen.getByRole('alert').textContent).toBe(c.errors.damaged));
     expect(button(p.extract).disabled).toBe(true);
+  });
+
+  it('een bestand dat niet van de schijf te lezen is, heet niet "beschadigd"', async () => {
+    setup();
+    choose('weg.pdf');
+    await waitFor(() => expect(screen.getByRole('alert').textContent).toBe(c.errors.unreadable));
   });
 
   it('meer dan één PDF tegelijk: alleen de eerste, met een melding', async () => {

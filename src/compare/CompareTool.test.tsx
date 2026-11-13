@@ -96,6 +96,7 @@ const DOCS: Record<string, PageText[] | Error> = {
   'kolommen.pdf': [twoColumns()],
   'geheim.pdf': new PdfLoadError('password'),
   'kapot.pdf': new Error('kapot'),
+  'weg.pdf': new PdfLoadError('unreadable'),
 };
 
 /** De gegevens uit het document (metadata), per bestand; anders leeg. */
@@ -318,6 +319,12 @@ describe('PDF’s vergelijken', () => {
     choose('b', 'kapot.pdf');
     expect((await within(slot('b')).findByRole('alert')).textContent).toBe(c.errors.damaged);
     expect(screen.getByText(c.placeholder)).toBeTruthy();
+  });
+
+  it('een bestand dat niet van de schijf te lezen is, heet niet "beschadigd"', async () => {
+    setup();
+    choose('a', 'weg.pdf');
+    expect((await within(slot('a')).findByRole('alert')).textContent).toBe(c.errors.unreadable);
   });
 
   it('een later gekozen PDF wint van een die nog gelezen wordt', async () => {

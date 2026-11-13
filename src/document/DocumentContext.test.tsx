@@ -5,6 +5,7 @@ import { afterEach, describe, expect, it } from 'vitest';
 import { hasRedactions, type BoxAnnotation } from '../annotations/model';
 import { HISTORY_LIMIT } from '../pages/plan';
 import type { LoadedPdf } from '../pdf/loader';
+import { flakyFile } from '../lib/testFiles';
 import { DocumentProvider, useDocument } from './DocumentContext';
 
 type DocApi = ReturnType<typeof useDocument>;
@@ -94,5 +95,37 @@ describe('pagina uit en weer aan: vakken en draaiing blijven', () => {
     }
     act(() => get().setSourcePages(id, new Set([0, 1, 2])));
     expectRestored(get, key);
+  });
+});
+
+describe('een bestand dat de browser even niet kan lezen', () => {
+  /** Opent `file` en geeft de documentstand terug. */
+  async function openFile(file: File) {
+    const api: { current: DocApi | null } = { current: null };
+    function Probe() {
+      api.current = useDocument();
+      return null;
+    }
+    render(
+      <DocumentProvider load={async () => fakePdf(2)} unload={() => {}}>
+        <Probe />
+      </DocumentProvider>,
+    );
+    await act(async () => {
+      await api.current!.open(file);
+    });
+    return () => api.current!;
+  }
+
+  it('lukt het bij de tweede poging, dan opent het gewoon', async () => {
+    const get = await openFile(flakyFile('rapport.pdf', 1).file);
+    await waitFor(() => expect(get().pages).toHaveLength(2));
+  });
+
+  it('lukt het niet, dan heet het "niet van de schijf te lezen", niet "beschadigd"', async () => {
+    const get = await openFile(flakyFile('rapport.pdf', Infinity).file);
+    await waitFor(() =>
+      expect(get().doc).toEqual({ status: 'error', name: 'rapport.pdf', code: 'unreadable' }),
+    );
   });
 });

@@ -125,10 +125,13 @@ describe('Workspace', () => {
 
   it('toont dat het bestand geopend wordt', async () => {
     let finish: (value: LoadedPdf) => void = () => {};
-    const { choose } = setup({ load: vi.fn(() => new Promise<LoadedPdf>((r) => (finish = r))) });
+    const load = vi.fn(() => new Promise<LoadedPdf>((r) => (finish = r)));
+    const { choose } = setup({ load });
     choose(pdfFile('groot.pdf'));
 
     expect((await screen.findByRole('status')).textContent).toBe('groot.pdf wordt geopend…');
+    // Pas afronden als het openen echt begonnen is (eerst wordt het bestand ingelezen).
+    await waitFor(() => expect(load).toHaveBeenCalled());
     finish(fakePdf(2));
     expect(await screen.findByRole('heading', { level: 2, name: 'groot.pdf' })).toBeTruthy();
   });

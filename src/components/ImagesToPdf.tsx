@@ -21,6 +21,7 @@ import { Icon, IconButton } from './Icon';
 import { SaveDialog } from './SaveDialog';
 import { useDragReorder } from './useDragReorder';
 import { PaneHead, useInfo } from './WorkspaceParts';
+import { readFileBytes } from '../lib/readFile';
 
 /** Een gekozen afbeelding, met een adres om hem als miniatuur te tonen. */
 export type ImageItem = {
@@ -83,7 +84,7 @@ export function useImagesToPdf() {
       const added: ImageItem[] = [];
       const refused: string[] = [];
       for (const file of files) {
-        const type = detectImageType(new Uint8Array(await file.slice(0, 8).arrayBuffer()));
+        const type = detectImageType(await readFileBytes(file.slice(0, 8)));
         if (!type) {
           refused.push(file.name);
           continue;
@@ -248,7 +249,7 @@ export function ImagesToPdf({ state, head }: { state: ImagesState; head: Compone
     try {
       const inputs = [];
       for (const item of items) {
-        inputs.push({ bytes: new Uint8Array(await item.file.arrayBuffer()), type: item.type });
+        inputs.push({ bytes: await readFileBytes(item.file), type: item.type });
       }
       downloadPdf(await imagesToPdf(inputs, { pageSize, margin }), fileName);
       setSave({ status: 'saved', fileName });

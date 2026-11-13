@@ -1,5 +1,5 @@
 import type { PDFDocumentProxy } from 'pdfjs-dist';
-import { closePdf, loadPdf } from '../pdf/loader';
+import { closePdf, openPdfFile } from '../pdf/loader';
 
 /**
  * Het beeld van twee pagina's vergelijken: tekenen met pdf.js en de pixels naast elkaar leggen
@@ -91,7 +91,7 @@ const open = new Map<File, Promise<PDFDocumentProxy>>();
 function pdfFor(file: File): Promise<PDFDocumentProxy> {
   let pdf = open.get(file);
   if (!pdf) {
-    pdf = file.arrayBuffer().then(async (buffer) => (await loadPdf(new Uint8Array(buffer))).pdf);
+    pdf = openPdfFile(file).then((loaded) => loaded.pdf);
     open.set(file, pdf);
     // Mislukt het, dan de volgende keer opnieuw proberen.
     pdf.catch(() => open.delete(file));
@@ -110,7 +110,7 @@ export function closeVisual(file: File): void {
 /**
  * Het aantal pagina's van een PDF en de maat (in punten) van pagina `pageNumber`; null als die
  * pagina niet bestaat. Gebruikt dezelfde geopende PDF als het tekenen. Kan de PDF niet open, dan
- * een `PdfLoadError` (zie `loadPdf`).
+ * een `PdfLoadError` (zie `openPdfFile`).
  */
 export async function pageSize(
   file: File,

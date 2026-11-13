@@ -16,7 +16,12 @@ export function looksLikePdf(bytes: Uint8Array): boolean {
   return false;
 }
 
-export type LoadErrorCode = 'not-pdf' | 'password' | 'damaged';
+/**
+ * Waarom een PDF niet geopend kon worden: geen PDF, een wachtwoord, beschadigd, niet van de schijf
+ * te lezen (`unreadable`, zie `lib/readFile.ts`), of een onderdeel van de app zelf kon niet worden
+ * geladen (`app`, bijvoorbeeld na een nieuwe versie: herladen helpt).
+ */
+export type LoadErrorCode = 'not-pdf' | 'password' | 'damaged' | 'unreadable' | 'app';
 
 /** Vertaalt een fout van de PDF-lezer naar een van onze vaste soorten. */
 export function classifyLoadError(error: unknown): LoadErrorCode {

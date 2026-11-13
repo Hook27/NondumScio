@@ -2,7 +2,7 @@ import type { PDFDocumentProxy, RenderTask } from 'pdfjs-dist';
 import { useEffect, useRef, useState } from 'preact/hooks';
 import { useI18n } from '../i18n/LanguageContext';
 import { format } from '../i18n/format';
-import { closePdf, loadPdf } from '../pdf/loader';
+import { closePdf, openPdfFile } from '../pdf/loader';
 
 /** Hoe breed een pagina hooguit getekend wordt (in beeldpunten op het scherm). */
 const MAX_WIDTH = 900;
@@ -75,7 +75,7 @@ export function PreviewDialog({
     let cancelled = false;
     void (async () => {
       try {
-        const result = await loadPdf(new Uint8Array(await file.arrayBuffer()));
+        const result = await openPdfFile(file);
         loaded = result.pdf;
         if (cancelled) closePdf(result.pdf);
         else setOpened(result.pdf);

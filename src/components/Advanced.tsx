@@ -72,15 +72,32 @@ const tools: Record<AdvancedId, () => Promise<FunctionComponent>> = {
 };
 
 function Tool({ id }: { id: AdvancedId }) {
+  const { t } = useI18n();
   const [Component, setComponent] = useState<FunctionComponent | null>(null);
+  // Kon het onderdeel niet geladen worden (bijvoorbeeld na een nieuwe versie), dan een melding in
+  // plaats van een leeg vak.
+  const [failed, setFailed] = useState(false);
   useEffect(() => {
     let cancelled = false;
-    void tools[id]().then((loaded) => {
-      if (!cancelled) setComponent(() => loaded);
-    });
+    setFailed(false);
+    tools[id]().then(
+      (loaded) => {
+        if (!cancelled) setComponent(() => loaded);
+      },
+      () => {
+        if (!cancelled) setFailed(true);
+      },
+    );
     return () => {
       cancelled = true;
     };
   }, [id]);
+  if (failed) {
+    return (
+      <p class="page-editor__error" role="alert">
+        {t.advanced.loadFailed}
+      </p>
+    );
+  }
   return Component ? <Component /> : null;
 }

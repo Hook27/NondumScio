@@ -123,6 +123,8 @@ export function useErrorText() {
         'not-pdf': t.document.errors.notPdf,
         password: t.document.errors.password,
         damaged: t.document.errors.damaged,
+        unreadable: t.document.errors.unreadable,
+        app: t.document.errors.app,
       }[error.code],
       { name: error.name },
     );
