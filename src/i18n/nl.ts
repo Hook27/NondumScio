@@ -1175,6 +1175,7 @@ export const nl = {
       columnName: 'Bestandsnaam',
       columnDecision: 'Besluit',
       columnFolder: 'Map',
+      csvSeparator: ';',
       move: 'VERPLAATSEN NAAR {folder}',
       decisions: {
         keep: 'bewaren',

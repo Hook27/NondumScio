@@ -336,7 +336,7 @@ describe('Archief / Triage: Map opruimen', () => {
     const [csv, name] = vi.mocked(downloadFile).mock.calls[0]!;
     expect(name).toBe('triage_2026-11-07_2105.csv');
     expect(new TextDecoder().decode(csv as Uint8Array)).toBe(
-      '"Bestandsnaam","Besluit","Map"\n"brief.pdf","verplaatsen","Foto/Bloemen"\n"factuur.pdf","niet beoordeeld",""\n"2024/c.pdf","niet beoordeeld",""',
+      '"Bestandsnaam";"Besluit";"Map"\r\n"brief.pdf";"verplaatsen";"Foto/Bloemen"\r\n"factuur.pdf";"niet beoordeeld";""\r\n"2024/c.pdf";"niet beoordeeld";""',
     );
     vi.useRealTimers();
   });
