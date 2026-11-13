@@ -65,6 +65,11 @@ export type BuildOptions = {
      */
     wholeDocument?: boolean;
   };
+  /**
+   * Krijgt na het maken te horen hoeveel pagina's niet uitgedund konden worden (zie `PartReport`):
+   * dan kan het bestand gegevens van weggelaten pagina's bevatten.
+   */
+  onReport?: (report: PartReport) => void;
 };
 
 export type RedactionRun = NonNullable<BuildOptions['redaction']>;
@@ -128,20 +133,24 @@ export async function buildPdf(
   pages: readonly PageItem[],
   options: BuildOptions = {},
 ): Promise<Uint8Array> {
-  const bytes = await buildPlain(sources, pages, options);
-  return applyRedactions(
+  const report: PartReport = { untrimmed: 0 };
+  const bytes = await buildPlain(sources, pages, options, report);
+  const result = await applyRedactions(
     bytes,
     pages,
     options.annotations ?? [],
     options.redaction,
     options.redaction?.wholeDocument ?? false,
   );
+  options.onReport?.(report);
+  return result;
 }
 
 async function buildPlain(
   sources: SourceBytes,
   pages: readonly PageItem[],
   { bookmarks, outlines, dropBookmarks = false, annotations = [] }: BuildOptions,
+  report: PartReport,
 ): Promise<Uint8Array> {
   if (pages.length === 0) throw new PdfSaveError('failed');
   const lib = await import('pdf-lib');
@@ -164,7 +173,7 @@ async function buildPlain(
       // of overvolle lijst met hulpbronnen: elke pagina wordt uitgedund (zie `resources.ts`).
       const kept = [...new Set(pages.map((item) => item.source))];
       const resources = kept.length < sourcePages.length ? await import('./resources') : null;
-      resources?.trimPageResources(lib, doc, kept);
+      report.untrimmed += resources?.trimPageResources(lib, doc, kept).length ?? 0;
       // Alle pagina's uit de paginaboom halen en in de nieuwe volgorde terugzetten.
       for (let i = sourcePages.length - 1; i >= 0; i -= 1) doc.removePage(i);
       const fonts: FontCache = {};
@@ -185,7 +194,7 @@ async function buildPlain(
       return await doc.save();
     }
 
-    const out = await assemble(lib, docs, pages, annotations);
+    const out = await assemble(lib, docs, pages, annotations, report);
     if (bookmarks) setBookmarks(lib, out, outlineEntries(bookmarks, pages, outlines), true);
     else if (outlines) setBookmarks(lib, out, keptOutlines(pages, outlines), false);
     return await out.save();
@@ -244,11 +253,12 @@ export async function buildParts(
   return result;
 }
 
-/** Wat er bij het maken van een deel gebeurde. */
+/** Wat er bij het maken van een bestand of deel gebeurde. */
 export type PartReport = {
   /**
    * Hoeveel pagina's hun lijst met hulpbronnen hielden, omdat uitdunnen niet veilig kon (zie
-   * `trimPageResources`): dan kan het deel gegevens van andere pagina's bevatten.
+   * `trimPageResources`): dan kan het bestand of deel gegevens van andere pagina's bevatten. Alleen
+   * pagina's uit een bestand waarvan niet alle pagina's meegaan, tellen mee.
    */
   untrimmed: number;
 };
@@ -322,7 +332,8 @@ async function assemble(
     if (indices.length === 0) continue;
     // Anders neemt elke pagina met een gedeelde (of overvolle) lijst hulpbronnen alle afbeeldingen mee.
     const doubtful = trimPageResources(lib, doc, indices);
-    if (report) report.untrimmed += doubtful.length;
+    // Gaan alle pagina's van het bestand mee, dan kan er niets van een weggelaten pagina in zitten.
+    if (report && indices.length < doc.getPageCount()) report.untrimmed += doubtful.length;
     const copied = await out.copyPages(doc, indices);
     indices.forEach((index, i) => copies.set(`${id}:${index}`, copied[i]!));
   }

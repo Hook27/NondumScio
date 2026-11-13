@@ -63,6 +63,10 @@ export const en: Messages = {
     save: 'Download PDF',
     saving: 'Saving…',
     saved: 'Saved as {name}.',
+    untrimmedOne:
+      '1 page could not be slimmed down; the file may contain data from pages left out.',
+    untrimmedOther:
+      '{n} pages could not be slimmed down; the file may contain data from pages left out.',
     unsaved: 'Changed, not downloaded yet',
     editedSuffix: 'edited',
     errors: {

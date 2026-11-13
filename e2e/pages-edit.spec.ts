@@ -2,6 +2,7 @@ import AxeBuilder from '@axe-core/playwright';
 import { readFileSync } from 'node:fs';
 import { expect, test, type Page } from '@playwright/test';
 import { PDFDocument } from 'pdf-lib';
+import { makeSharedResourcesPdf } from '../src/pdf/testShared';
 import { makeSizedPdf } from './fixtures';
 import { downloadVia, messages, openPage } from './helpers';
 
@@ -58,6 +59,28 @@ test.describe('pagina’s bewerken', () => {
     expect(result.rotations).toEqual([90, 0]);
     expect(result.title).toBe('Pagina-test');
     await expect(page.getByRole('status').filter({ hasText: 'Opgeslagen als' })).toBeVisible();
+  });
+
+  test('waarschuwt na uitpakken als een pagina niet uitgedund kon worden', async ({ page }) => {
+    // Een scan met één gedeelde lijst hulpbronnen; pagina 1 is niet te lezen (twijfel).
+    await openPage(page, '/#/pages', { lang: 'nl' });
+    await page.locator('input[type="file"]').setInputFiles({
+      name: 'scan.pdf',
+      mimeType: 'application/pdf',
+      buffer: Buffer.from(await makeSharedResourcesPdf(4, { unreadable: true })),
+    });
+    await expect(options(page)).toHaveCount(4);
+    const saved = page.getByRole('status').filter({ hasText: 'Opgeslagen als' });
+
+    await options(page).nth(0).click();
+    await downloadVia(page, toolbarButton(page, nl.pages.extract));
+    await expect(saved).toContainText(nl.pages.untrimmedOne);
+    await expect(saved).toContainText('⚠');
+
+    // Pagina 3 kon wel uitgedund worden: geen waarschuwing.
+    await options(page).nth(2).click();
+    await downloadVia(page, toolbarButton(page, nl.pages.extract));
+    await expect(saved).toHaveText("Opgeslagen als scan (pagina's 3).pdf.");
   });
 
   test('ongedaan maken en opnieuw, ook met Ctrl+Z en Ctrl+Y', async ({ page }) => {
