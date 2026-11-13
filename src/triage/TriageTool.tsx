@@ -53,6 +53,7 @@ import {
   type TriageMode,
   type TriageState,
   type TriageView,
+  markShown,
   markTriageSaved,
 } from './store';
 import {
@@ -147,6 +148,10 @@ function useKeys() {
       const action = /^[1-9]$/.test(key) ? () => moveToNumber(Number(key)) : actions[key];
       if (!action) return;
       event.preventDefault();
+      // Beslissen alleen over een PDF die in beeld is, en niet met een ingedrukt gehouden toets
+      // (dan zou een hele reeks ongezien beslist worden). Bladeren mag wel herhalen.
+      const decides = key === 'k' || key === 'x' || key === 'm' || /^[1-9]$/.test(key);
+      if (decides && (event.repeat || now.shown !== current.id)) return;
       action();
     };
     // Het doel onthouden: het opruimen kan lopen als de testomgeving `document` al weg heeft.
@@ -164,7 +169,9 @@ function ModeChoice() {
   const { t } = useI18n();
   const tr = t.triage;
   const m = tr.modes;
-  const { mode, files } = useTriageState();
+  const { mode, files, run } = useTriageState();
+  // Tijdens Uitvoeren niet wisselen: het verplaatsen loopt door en het verslag moet er komen.
+  const running = run.status === 'running';
   const [asking, setAsking] = useState<TriageMode | null>(null);
   const folders = canPickFolders();
   const pick = (next: TriageMode) => {
@@ -181,7 +188,7 @@ function ModeChoice() {
             type="button"
             class="segmented__button"
             aria-pressed={mode === option}
-            disabled={option === 'folder' && !folders}
+            disabled={running || (option === 'folder' && !folders)}
             onClick={() => pick(option)}
           >
             {m[option]}
@@ -678,7 +685,7 @@ type Drawn = { canvas: HTMLCanvasElement } | { error: true };
 function PageView({ entry }: { entry: TriageFile }) {
   const { t, language } = useI18n();
   const v = t.plainText.preview;
-  const { fit, zoom } = useTriageState();
+  const { fit, zoom, shown } = useTriageState();
   const { file, page } = entry;
   const wrap = useRef<HTMLDivElement>(null);
   const [space, setSpace] = useState({ w: 0, h: 0 });
@@ -718,6 +725,7 @@ function PageView({ entry }: { entry: TriageFile }) {
         if (cancelled || !next) return;
         setInfo(next);
         if ('count' in next) setPageCount(entry.id, next.count);
+        else markShown(entry.id);
       });
     return () => {
       cancelled = true;
@@ -738,12 +746,14 @@ function PageView({ entry }: { entry: TriageFile }) {
       .then((canvas): Drawn => (canvas ? { canvas } : { error: true }))
       .catch((): Drawn => ({ error: true }))
       .then((next) => {
-        if (!cancelled) setDrawn(next);
+        if (cancelled) return;
+        setDrawn(next);
+        markShown(entry.id);
       });
     return () => {
       cancelled = true;
     };
-  }, [file, page, widths.dev, size !== null]);
+  }, [file, page, widths.dev, size !== null, entry.id]);
 
   // Het scrollwiel bladert door aan de boven- of onderrand van het vak, zoals bij Platte tekst.
   useEffect(() => {
@@ -868,7 +878,8 @@ function PageView({ entry }: { entry: TriageFile }) {
           {meta}
         </p>
       </Bar>
-      <div class="plaintext-preview" ref={wrap}>
+      {/* Of de pagina van deze PDF in beeld is: pas dan werken de besluittoetsen. */}
+      <div class="plaintext-preview" ref={wrap} data-shown={shown === entry.id}>
         {info && 'error' in info ? (
           <p class="compare-visual__msg compare-visual__msg--error" role="alert">
             {t.compare.errors[info.error]}

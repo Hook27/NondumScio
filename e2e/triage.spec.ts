@@ -46,6 +46,14 @@ async function addThree(page: Page) {
 const fd = tr.folderDialog;
 const list = (page: Page) => page.getByRole('list', { name: tr.files });
 const active = (page: Page) => list(page).locator('[aria-current="true"]');
+/**
+ * Een besluittoets (K, X, M, 1–9): pas als de pagina van de PDF van nu in beeld is, zoals voor
+ * iemand die kijkt (daarvoor doet de app niets met de toets).
+ */
+async function decideKey(page: Page, key: string) {
+  await expect(page.locator('.plaintext-preview[data-shown="true"]')).toBeAttached(SLOW);
+  await page.keyboard.press(key);
+}
 const canvas = (page: Page, n: number, lang: 'nl' | 'en' = 'nl') =>
   page.getByRole('img', { name: format(messages[lang].plainText.preview.canvas, { n }) });
 const pageNumber = (page: Page) =>
@@ -98,9 +106,9 @@ test.describe('Archief / Triage', () => {
     await expect(pageNumber(page)).toHaveText('2 / 2');
 
     // K bewaart en gaat vanzelf naar de volgende; X verwijdert.
-    await page.keyboard.press('k');
+    await decideKey(page, 'k');
     await expect(active(page)).toContainText('factuur.pdf');
-    await page.keyboard.press('x');
+    await decideKey(page, 'x');
     await expect(active(page)).toContainText('offerte.pdf');
     await expect(canvas(page, 1)).toBeVisible(SLOW);
     await expect(page.locator('.triage-progress__text')).toContainText(
@@ -185,7 +193,7 @@ test.describe('Archief / Triage', () => {
 
     await page.keyboard.press('ArrowRight');
     await expect(page.getByRole('alert')).toHaveText(nl.compare.errors.damaged, SLOW);
-    await page.keyboard.press('x');
+    await decideKey(page, 'x');
     await expect(
       list(page).getByRole('button', { name: `kapot.pdf, ${tr.states.remove}` }),
     ).toBeVisible();
@@ -198,7 +206,7 @@ test.describe('Archief / Triage', () => {
     await addThree(page);
     await expect(canvas(page, 1)).toBeVisible(SLOW);
     // M: een nieuwe map; Enter verplaatst en gaat door naar de volgende.
-    await page.keyboard.press('m');
+    await decideKey(page, 'm');
     const dialog = page.getByRole('dialog');
     await expect(dialog.getByRole('heading')).toHaveText(fd.title);
     await expect(dialog.getByLabel(fd.label)).toBeFocused();
@@ -212,10 +220,10 @@ test.describe('Archief / Triage', () => {
       }),
     ).toBeVisible();
     // 1: de eerste map op naam.
-    await page.keyboard.press('1');
+    await decideKey(page, '1');
     await expect(active(page)).toContainText('offerte.pdf');
     // Een tweede map, met Escape eerst afgebroken.
-    await page.keyboard.press('m');
+    await decideKey(page, 'm');
     await page.keyboard.press('Escape');
     await expect(dialog).toHaveCount(0);
     await page.getByRole('button', { name: tr.newFolder }).click();
@@ -257,7 +265,7 @@ test.describe('Archief / Triage', () => {
     const dialog = page.getByRole('dialog');
     await expect(dialog).toBeVisible();
     // In het venster doen de toetsen niets.
-    await page.keyboard.press('k');
+    await decideKey(page, 'k');
     await dialog.getByRole('button', { name: tr.clearConfirm }).click();
     await expect(page.getByText(tr.placeholder)).toBeVisible();
     await expect(list(page)).toHaveCount(0);
@@ -270,9 +278,9 @@ test.describe('Archief / Triage', () => {
       await open(page, 'nl', theme);
       await addThree(page);
       await expect(canvas(page, 1)).toBeVisible(SLOW);
-      await page.keyboard.press('k');
+      await decideKey(page, 'k');
       await expect(active(page)).toContainText('factuur.pdf');
-      await page.keyboard.press('m');
+      await decideKey(page, 'm');
       await page.keyboard.type('Facturen');
       await page.keyboard.press('Enter');
       await expect(active(page)).toContainText('offerte.pdf');
@@ -285,7 +293,7 @@ test.describe('Archief / Triage', () => {
         ).toEqual([]);
       };
       await check();
-      await page.keyboard.press('m');
+      await decideKey(page, 'm');
       await expect(page.getByRole('dialog')).toBeVisible();
       await page.getByRole('dialog').getByRole('button', { name: fd.confirm }).click();
       await expect(page.getByRole('alert')).toHaveText(fd.empty);
@@ -439,12 +447,12 @@ for (const size of [
           () => document.documentElement.scrollHeight <= document.documentElement.clientHeight,
         );
       // Een map erbij (de balk onderaan wordt dan hoger), dan om en om bewaren en verplaatsen.
-      await page.keyboard.press('m');
+      await decideKey(page, 'm');
       await page.keyboard.type('Map');
       await page.keyboard.press('Enter');
       for (let i = 1; i < names.length - 1; i++) {
         await shown(names[i]!);
-        await page.keyboard.press(i % 2 ? 'k' : '1');
+        await decideKey(page, i % 2 ? 'k' : '1');
       }
       await shown(names.at(-1)!);
       if (roomy) expect(await pane.evaluate((element) => element.scrollTop)).toBeGreaterThan(0);
@@ -564,7 +572,7 @@ test.describe('Archief / Triage: Map opruimen', () => {
     await expect(list(page).getByRole('button').nth(2)).toHaveAttribute('data-tip', '2024/c.pdf');
 
     // M (met de focus nog op het vinkje): een nieuwe map in Archief.
-    await page.keyboard.press('m');
+    await decideKey(page, 'm');
     await expect(dialog.getByRole('heading')).toHaveText(b.titleTarget);
     await dialog.getByLabel(b.newLabel).fill('Facturen');
     await dialog.getByRole('button', { name: b.create }).click();
@@ -582,7 +590,7 @@ test.describe('Archief / Triage: Map opruimen', () => {
     const move = page.getByRole('group', { name: tr.moveTo });
     await expect(move.getByRole('button', { name: '.../Archief/Facturen' })).toBeVisible();
     await expect(move.getByRole('button', { name: '.../Foto/Bloemen' })).toBeVisible();
-    await page.keyboard.press('k');
+    await decideKey(page, 'k');
 
     await page.getByRole('button', { name: tr.views.overview }).click();
     await expect(page.getByRole('button', { name: tr.run.button })).toBeEnabled();
@@ -630,20 +638,20 @@ test.describe('Archief / Triage: Map opruimen', () => {
     await expect(canvas(page, 1)).toBeVisible(SLOW);
     // brief → nieuwe map Facturen; factuur → Foto/Bloemen (daar staat al een factuur.pdf);
     // 2024/c bewaren; 2024/oud naar de prullenbak.
-    await page.keyboard.press('m');
+    await decideKey(page, 'm');
     await dialog.getByLabel(b.newLabel).fill('Facturen');
     await dialog.getByRole('button', { name: b.create }).click();
     await dialog.getByRole('button', { name: b.confirm }).click();
     await expect(active(page)).toContainText('factuur.pdf');
-    await page.keyboard.press('m');
+    await decideKey(page, 'm');
     await dialog.getByRole('button', { name: b.up }).click();
     await dialog.getByRole('button', { name: 'Foto' }).click();
     await dialog.getByRole('button', { name: 'Bloemen' }).click();
     await dialog.getByRole('button', { name: b.confirm }).click();
     await expect(active(page)).toContainText('c.pdf');
-    await page.keyboard.press('k');
+    await decideKey(page, 'k');
     await expect(active(page)).toContainText('oud.pdf');
-    await page.keyboard.press('x');
+    await decideKey(page, 'x');
 
     await page.getByRole('button', { name: tr.views.overview }).click();
     await expect(page.getByText(format(tr.run.warnOne, { folder: TRASH }))).toBeVisible();
@@ -714,7 +722,7 @@ test.describe('Archief / Triage: Map opruimen', () => {
     await page.getByRole('dialog').getByRole('button', { name: 'Archief' }).click();
     await page.getByRole('dialog').getByRole('button', { name: b.confirm }).click();
     await expect(canvas(page, 1)).toBeVisible(SLOW);
-    await page.keyboard.press('x');
+    await decideKey(page, 'x');
     await page.getByRole('button', { name: tr.modes.list }).click();
     const dialog = page.getByRole('dialog');
     await expect(dialog.getByRole('heading')).toHaveText(tr.switchMode.title);
@@ -744,7 +752,7 @@ test.describe('Archief / Triage: Map opruimen', () => {
         ).toEqual([]);
       };
       await check();
-      await page.keyboard.press('m');
+      await decideKey(page, 'm');
       await page.getByRole('dialog').getByLabel(b.newLabel).fill('a/b');
       await page.getByRole('dialog').getByRole('button', { name: b.create }).click();
       await expect(page.getByRole('alert')).toHaveText(b.badName);
