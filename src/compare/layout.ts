@@ -73,8 +73,15 @@ export function quantile(values: readonly number[], q: number): number {
   return lo === hi ? sorted[lo]! : sorted[lo]! + (sorted[hi]! - sorted[lo]!) * (pos - lo);
 }
 
-/** De tekststukjes van een pagina uit pdf.js, met het aantal tekens. */
-export function piecesFrom(items: readonly RawTextItem[]): { items: Piece[]; chars: number } {
+/**
+ * De tekststukjes van een pagina uit pdf.js, met het aantal tekens. `toPage` rekent de plek van een
+ * stukje (in de punten van de PDF zelf) om naar de pagina zoals je die ziet, met de draaiing en de
+ * uitsnede (in punten vanaf linksonder); zonder `toPage` blijft de plek zoals hij is.
+ */
+export function piecesFrom(
+  items: readonly RawTextItem[],
+  toPage?: (x: number, y: number) => [number, number],
+): { items: Piece[]; chars: number } {
   const pieces: Piece[] = [];
   let chars = 0;
   for (const item of items) {
@@ -82,7 +89,8 @@ export function piecesFrom(items: readonly RawTextItem[]): { items: Piece[]; cha
     const tr = item.transform ?? [1, 0, 0, 1, 0, 0];
     const fh = Math.hypot(tr[1]!, tr[3]!) || item.height || 10;
     const w = item.width || item.str.length * fh * 0.5;
-    pieces.push({ str: item.str, x: tr[4]!, y: tr[5]!, fh, w });
+    const [x, y] = toPage ? toPage(tr[4]!, tr[5]!) : [tr[4]!, tr[5]!];
+    pieces.push({ str: item.str, x, y, fh, w });
     chars += item.str.length;
   }
   return { items: pieces, chars };

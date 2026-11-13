@@ -2,7 +2,7 @@ import AxeBuilder from '@axe-core/playwright';
 import { readFileSync } from 'node:fs';
 import { expect, test, type Locator, type Page } from '@playwright/test';
 import { unzipSync } from 'fflate';
-import { PDFDocument, StandardFonts, rgb } from 'pdf-lib';
+import { PDFDocument, StandardFonts, degrees, rgb } from 'pdf-lib';
 import { format } from '../src/i18n/format';
 import { messages, openPage, type Theme } from './helpers';
 
@@ -110,21 +110,24 @@ const column = (side: string, no: number) =>
 
 /**
  * Een artikel in twee kolommen, zoals een tijdschrift: bovenaan een titel over de volle breedte,
- * dan links en rechts acht regels van 10 pt, en onderaan een paginanummer.
+ * dan links en rechts acht regels van 10 pt, en onderaan een paginanummer. Met `lying` is elke
+ * pagina liggend opgeslagen met "draai 90°" (zoals een scan): op het scherm precies hetzelfde.
  */
-async function article(name: string, pages = 2) {
+async function article(name: string, pages = 2, { lying = false } = {}) {
   const doc = await PDFDocument.create();
   const font = await doc.embedFont(StandardFonts.Helvetica);
   for (let no = 1; no <= pages; no++) {
-    const page = doc.addPage([595, 842]);
-    page.drawText('Proefartikel over leesvakken', { x: 60, y: 780, size: 16, font });
-    column('Linker', no).forEach((line, i) =>
-      page.drawText(line, { x: 60, y: 700 - i * 12, size: 10, font }),
-    );
-    column('Rechter', no).forEach((line, i) =>
-      page.drawText(line, { x: 315, y: 700 - i * 12, size: 10, font }),
-    );
-    page.drawText(`Pagina ${no}`, { x: 280, y: 40, size: 9, font });
+    const page = lying ? doc.addPage([842, 595]) : doc.addPage([595, 842]);
+    if (lying) page.setRotation(degrees(90));
+    // Een regel op een plek zoals je hem ziet (punten vanaf linksonder van de staande pagina).
+    const put = (text: string, x: number, y: number, size: number) =>
+      lying
+        ? page.drawText(text, { x: 842 - y, y: x, size, font, rotate: degrees(90) })
+        : page.drawText(text, { x, y, size, font });
+    put('Proefartikel over leesvakken', 60, 780, 16);
+    column('Linker', no).forEach((line, i) => put(line, 60, 700 - i * 12, 10));
+    column('Rechter', no).forEach((line, i) => put(line, 315, 700 - i * 12, 10));
+    put(`Pagina ${no}`, 280, 40, 9);
   }
   return { name, mimeType: 'application/pdf', buffer: Buffer.from(await doc.save()) };
 }
@@ -170,10 +173,10 @@ const ink = (page: Page) =>
     return n;
   });
 
-const openArticle = async (page: Page, pages = 2) => {
+const openArticle = async (page: Page, pages = 2, options?: { lying?: boolean }) => {
   await openPage(page, '/#/advanced/text', { lang: 'nl' });
   await withoutPageMarks(page);
-  await page.locator('#plaintext-file').setInputFiles(await article('artikel.pdf', pages));
+  await page.locator('#plaintext-file').setInputFiles(await article('artikel.pdf', pages, options));
   await expect(page.locator('canvas.plaintext-preview__canvas')).toBeVisible(SLOW);
 };
 
@@ -248,6 +251,27 @@ test.describe('PDF → Platte tekst', () => {
     await extract(page);
     await expect(output(page)).toHaveValue(
       `${column('Rechter', 1).join(' ')}\n\n${column('Rechter', 2).join(' ')}`,
+    );
+  });
+
+  test('een liggend opgeslagen pagina (draai 90°): vakken en tekst kloppen net zo', async ({
+    page,
+  }) => {
+    await openArticle(page, 1, { lying: true });
+    // Zonder vakken: de kolommen na elkaar, elke regel op zijn plek.
+    await extract(page);
+    await expect(output(page)).toHaveValue(
+      new RegExp(`${column('Linker', 1).join(' ')}\\s+${column('Rechter', 1).join(' ')}`),
+    );
+    // Met vakken: alleen wat in de vakken staat, in tekenvolgorde.
+    await page.getByRole('button', { name: p.views.preview }).click();
+    const zones = page.getByRole('group', { name: p.zones.title });
+    await zones.getByRole('checkbox', { name: p.zones.use }).check();
+    await draw(page, RIGHT_BOX);
+    await draw(page, LEFT_BOX);
+    await extract(page);
+    await expect(output(page)).toHaveValue(
+      `${column('Rechter', 1).join(' ')}\n\n${column('Linker', 1).join(' ')}`,
     );
   });
 
