@@ -11,6 +11,7 @@ import { messages } from '../i18n';
 import { LanguageProvider } from '../i18n/LanguageContext';
 import { format } from '../i18n/format';
 import { PdfLoadError } from '../pdf/loader';
+import { unsavedSources } from '../lib/unsavedWarning';
 import { downloadFile } from '../pdf/save';
 import { TextTool } from './TextTool';
 import { DEFAULT_TEXT_OPTIONS } from './extract';
@@ -697,6 +698,30 @@ describe('PDF → Platte tekst: resultaat', () => {
     fireEvent.input(output()!, { target: { value: 'weer anders' } });
     choose('tweede.pdf');
     await waitFor(() => expect(getTextState().edited).toBeNull());
+  });
+
+  it('waarschuwt bij sluiten zolang een aangepaste tekst niet gedownload of gekopieerd is', async () => {
+    await open('brief.pdf');
+    fireEvent.click(button(p.extract));
+    // Alleen extraheren is geen werk dat weg kan: dat doe je zo opnieuw.
+    expect(unsavedSources()).not.toContain('text');
+    fireEvent.input(output()!, { target: { value: 'Mijn eigen tekst.' } });
+    expect(unsavedSources()).toContain('text');
+    fireEvent.click(button(p.download));
+    expect(unsavedSources()).not.toContain('text');
+    fireEvent.input(output()!, { target: { value: 'Nog eens anders.' } });
+    expect(unsavedSources()).toContain('text');
+    // Kopiëren telt ook, maar alleen als het lukte.
+    vi.mocked(copyText).mockResolvedValueOnce(false);
+    fireEvent.click(button(p.copy));
+    await waitFor(() => expect(screen.getByText(p.copyFailed)).toBeTruthy());
+    expect(unsavedSources()).toContain('text');
+    fireEvent.click(button(p.copy));
+    await waitFor(() => expect(unsavedSources()).not.toContain('text'));
+    // Weer precies de tekst uit de PDF, of opnieuw extraheren: niets te verliezen.
+    fireEvent.input(output()!, { target: { value: 'Derde versie.' } });
+    fireEvent.click(button(p.extract));
+    expect(unsavedSources()).not.toContain('text');
   });
 
   it('downloadt de tekst als <naam>_extract.txt', async () => {

@@ -6,6 +6,7 @@ import { hasRedactions, type BoxAnnotation } from '../annotations/model';
 import { HISTORY_LIMIT } from '../pages/plan';
 import type { LoadedPdf } from '../pdf/loader';
 import { flakyFile } from '../lib/testFiles';
+import { unsavedSources } from '../lib/unsavedWarning';
 import { DocumentProvider, useDocument } from './DocumentContext';
 
 type DocApi = ReturnType<typeof useDocument>;
@@ -127,5 +128,19 @@ describe('een bestand dat de browser even niet kan lezen', () => {
     await waitFor(() =>
       expect(get().doc).toEqual({ status: 'error', name: 'rapport.pdf', code: 'unreadable' }),
     );
+  });
+});
+
+describe('waarschuwen bij het sluiten van het tabblad', () => {
+  it('zolang er wijzigingen zijn die nog niet gedownload zijn', async () => {
+    const { get } = await openThree();
+    expect(unsavedSources()).not.toContain('document');
+    act(() => get().edit(get().pages.slice(1)));
+    expect(unsavedSources()).toContain('document');
+    act(() => get().markSaved());
+    expect(unsavedSources()).not.toContain('document');
+    act(() => get().edit(get().pages.slice(1)));
+    act(() => get().close());
+    expect(unsavedSources()).not.toContain('document');
   });
 });

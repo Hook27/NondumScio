@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'preact/hooks';
 import { closeVisual } from '../compare/visual';
+import { setUnsavedWork } from '../lib/unsavedWarning';
 import { canMove, planActions, runActions, type Outcome } from './execute';
 import {
   folderAt,
@@ -99,6 +100,11 @@ export type TriageState = {
   /** De laatst gekozen doelmap: het mapvenster begint daarboven, zoals in DocumentTriage. */
   lastMove: string[] | null;
   run: RunState;
+  /**
+   * Er zijn besluiten genomen sinds de lijst is gedownload of Uitvoeren klaar is: dan waarschuwt
+   * het sluiten van het tabblad (zie `lib/unsavedWarning.ts`).
+   */
+  unsaved: boolean;
 };
 
 const INITIAL: TriageState = {
@@ -123,6 +129,7 @@ const INITIAL: TriageState = {
   newFolders: [],
   lastMove: null,
   run: { status: 'idle' },
+  unsaved: false,
 };
 
 /** Na een besluit zo lang wachten voor het volgende bestand verschijnt: dan zie je het besluit nog even. */
@@ -143,6 +150,7 @@ export function getTriageState(): TriageState {
 
 function setState(change: Partial<TriageState>) {
   state = { ...state, ...change };
+  setUnsavedWork('triage', state.unsaved && state.files.some((entry) => entry.decision !== null));
   for (const listener of listeners) listener();
 }
 
@@ -205,7 +213,7 @@ export function decide(choice: Choice): void {
   stopAdvance();
   const decision = toggle(current.decision, choice);
   const files = state.files.map((entry, i) => (i === state.cur ? { ...entry, decision } : entry));
-  setState({ files });
+  setState({ files, unsaved: true });
   if (decision === null) return;
   const next = nextAfter(files, state.cur);
   if (next === null) return;
@@ -227,6 +235,7 @@ export function setDecision(id: number, decision: Decision): void {
   stopAdvance();
   setState({
     files: state.files.map((entry) => (entry.id === id ? { ...entry, decision } : entry)),
+    unsaved: true,
   });
 }
 
@@ -281,6 +290,7 @@ function applyMove(target: Exclude<FolderTarget, { kind: 'source' }>, name: stri
       files: state.files.map((entry) =>
         entry.decision === null ? { ...entry, decision: move } : entry,
       ),
+      unsaved: true,
     });
   }
 }
@@ -329,7 +339,7 @@ export async function run(): Promise<void> {
       },
     });
   });
-  setState({ run: { status: 'done', outcomes: { ...outcomes } } });
+  setState({ run: { status: 'done', outcomes: { ...outcomes } }, unsaved: false });
 }
 
 /**
@@ -509,8 +519,14 @@ export function clearTriage(): void {
     newFolders: [],
     lastMove: null,
     run: { status: 'idle' },
+    unsaved: false,
   });
   lastScan++;
+}
+
+/** De lijst is gedownload (.txt of .csv): de besluiten zijn bewaard. */
+export function markTriageSaved(): void {
+  setState({ unsaved: false });
 }
 
 /** Terug naar het begin (voor de tests). */

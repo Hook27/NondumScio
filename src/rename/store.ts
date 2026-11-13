@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'preact/hooks';
+import { setUnsavedWork } from '../lib/unsavedWarning';
 import { loadDb, saveDb, type RenameDb } from './database';
 import type { DateCandidate } from './recognize';
 
@@ -174,21 +175,6 @@ export function useRenameDb(): RenameDb {
  * Sluit iemand het tabblad of herlaadt hij met resultaten die nog niet gedownload zijn, dan
  * waarschuwt de browser (zoals bij de gewone taken): die stand gaat dan wel verloren.
  */
-const warn = (event: BeforeUnloadEvent) => {
-  event.preventDefault();
-  // Voor oudere browsers, die alleen naar returnValue kijken.
-  event.returnValue = '';
-};
-let warning: Window | null = null;
-
 function syncWarning() {
-  const needed = state.changed && state.docs.length > 0;
-  if (needed && !warning && typeof window !== 'undefined') {
-    // Het doel onthouden: opruimen kan na het einde van een test vallen, als `window` al weg is.
-    warning = window;
-    warning.addEventListener('beforeunload', warn);
-  } else if (!needed && warning) {
-    warning.removeEventListener('beforeunload', warn);
-    warning = null;
-  }
+  setUnsavedWork('rename', state.changed && state.docs.length > 0);
 }

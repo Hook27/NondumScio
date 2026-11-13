@@ -28,6 +28,7 @@ import {
   type PageItem,
   type PageMemory,
 } from '../pages/plan';
+import { setUnsavedWork } from '../lib/unsavedWarning';
 import { looksLikePdf, type LoadErrorCode } from '../pdf/detect';
 import { PdfLoadError, closePdf, loadPdf, readPdfBytes, type LoadedPdf } from '../pdf/loader';
 
@@ -411,16 +412,8 @@ export function DocumentProvider({
   // Bewust direct bij het tekenen (layout-effect): zo staat de waarschuwing aan op het
   // moment dat "Gewijzigd" in beeld komt, ook als iemand meteen daarna het tabblad sluit.
   useLayoutEffect(() => {
-    if (!unsaved) return;
-    const warn = (event: BeforeUnloadEvent) => {
-      event.preventDefault();
-      // Voor oudere browsers, die alleen naar returnValue kijken.
-      event.returnValue = '';
-    };
-    // Het doel onthouden: opruimen kan na het einde van een test vallen, als `window` al weg is.
-    const win = window;
-    win.addEventListener('beforeunload', warn);
-    return () => win.removeEventListener('beforeunload', warn);
+    setUnsavedWork('document', unsaved);
+    return () => setUnsavedWork('document', false);
   }, [unsaved]);
 
   // Ruim alles op als de app verdwijnt.
