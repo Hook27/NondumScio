@@ -100,6 +100,24 @@ function readGap(value: unknown, fallback: number): number {
 }
 
 /**
+ * Is dit een instellingenbestand (van deze tool of van de extractor, ook het oude formaat met
+ * alleen `d` en `p`)? Er moet minstens één bekend onderdeel in staan, van het goede soort. Zo telt
+ * ander JSON, zoals de database van Slim hernoemen, niet als instellingen: `fromSettings` zou
+ * daarmee alle vakken en keuzes per overgang wissen.
+ */
+export function isSettingsFile(raw: unknown): boolean {
+  if (!isObject(raw)) return false;
+  return (
+    isObject(raw.zones) ||
+    Array.isArray(raw.d) ||
+    isObject(raw.p) ||
+    isObject(raw.options) ||
+    isObject(raw.joinOverride) ||
+    isObject(raw.meta)
+  );
+}
+
+/**
  * Instellingen uit een bestand of de opslag toepassen op `base`. Zoals in de extractor: de vakken
  * worden altijd vervangen (ook door niets), opties alleen als ze er staan, en ook het oude formaat
  * van de extractor ({ d, p } met alleen de vakken) wordt gelezen. Geeft null bij iets wat geen

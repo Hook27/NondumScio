@@ -25,6 +25,7 @@ import {
   removeBatchFile,
   resetTextState,
   runBatch,
+  setJoin,
   setOptions,
   undoZones,
 } from './store';
@@ -1247,6 +1248,50 @@ describe('PDF → Platte tekst: instellingen bewaren', () => {
     await loadSettings(json('lijst.json', [1, 2, 3]));
     expect(screen.getByText(format(p.save.importFailed, { name: 'lijst.json' }))).toBeTruthy();
     expect(getTextState().zones).toBe(before);
+  });
+
+  it('ander JSON (zoals de database van Slim hernoemen): niets verandert, met een melding', async () => {
+    await open('artikel.pdf');
+    fireEvent.click(check(p.zones.use));
+    await settle();
+    draw(...RIGHT_BOX);
+    setJoin(2, 'join');
+    const before = getTextState();
+    const remembered = localStorage.getItem(`${SETTINGS_PREFIX}artikel.pdf`);
+    await loadSettings(json('pdf-hernoemer-database.json', { afzenders: [], onderwerpen: [] }));
+    expect(screen.getByRole('alert').textContent).toBe(
+      format(p.save.importFailed, { name: 'pdf-hernoemer-database.json' }),
+    );
+    expect(getTextState().zones).toBe(before.zones);
+    expect(getTextState().joins).toBe(before.joins);
+    expect(getTextState().undo).toBe(before.undo);
+    expect(localStorage.getItem(`${SETTINGS_PREFIX}artikel.pdf`)).toBe(remembered);
+    // Een goed bestand daarna: de melding is geen waarschuwing meer.
+    await loadSettings(json('goed.json', { options: { dehyphen: false } }));
+    expect(screen.queryByRole('alert')).toBeNull();
+    expect(screen.getByText(format(p.save.imported, { name: 'goed.json' }))).toBeTruthy();
+  });
+
+  it('Ongedaan na laden haalt ook de keuzes per overgang terug; bij vakken blijven ze staan', async () => {
+    await open('artikel.pdf');
+    fireEvent.click(check(p.zones.use));
+    await settle();
+    draw(...RIGHT_BOX);
+    setJoin(2, 'join');
+    await loadSettings(
+      json('ander.json', { zones: { d: [] }, joinOverride: { 3: 'break' }, options: {} }),
+    );
+    expect(getTextState().joins).toEqual({ 3: 'break' });
+    expect(getTextState().zones).toEqual([]);
+    fireEvent.click(button(p.zones.undo));
+    expect(getTextState().joins).toEqual({ 2: 'join' });
+    expect(getTextState().zones).toHaveLength(1);
+    // Een vak tekenen en weer ongedaan maken: de keuze per overgang van daarna blijft.
+    draw(...LEFT_BOX);
+    setJoin(3, 'break');
+    fireEvent.click(button(p.zones.undo));
+    expect(getTextState().zones).toHaveLength(1);
+    expect(getTextState().joins).toEqual({ 2: 'join', 3: 'break' });
   });
 
   it('opslaan en laden kan pas met een PDF', () => {

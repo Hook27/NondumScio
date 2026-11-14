@@ -30,6 +30,7 @@ import {
 } from './extract';
 import {
   fromSettings,
+  isSettingsFile,
   loadStored,
   saveStored,
   settingsFileName,
@@ -98,8 +99,16 @@ export type BatchStatus =
 /** Hoeveel stappen terug "Ongedaan" kan, zoals in de extractor. */
 export const UNDO_LIMIT = 60;
 
-/** De vakken van een moment: de standaardvakken en de eigen sets, voor Ongedaan. */
-export type ZoneSnapshot = { zones: Zone[]; pages: Record<number, Zone[]> };
+/**
+ * De vakken van een moment: de standaardvakken en de eigen sets, voor Ongedaan. Alleen bij het laden
+ * van instellingen ook de keuzes per overgang (die vervangt een bestand ook); bij een vak niet, zodat
+ * Ongedaan dan een keuze van daarna laat staan.
+ */
+export type ZoneSnapshot = {
+  zones: Zone[];
+  pages: Record<number, Zone[]>;
+  joins?: Record<number, Join>;
+};
 
 export type TextState = {
   slot: TextSlot;
@@ -452,8 +461,12 @@ export function undoZones(): void {
   change({ ...previous, undo: state.undo.slice(0, -1) });
 }
 
-/** Instellingen uit een bestand toepassen (en onthouden). Geeft false als het geen instellingen zijn. */
+/**
+ * Instellingen uit een bestand toepassen (en onthouden); de vakken en keuzes per overgang van
+ * daarvoor kunnen terug met Ongedaan. Geeft false (en verandert niets) als het geen instellingen zijn.
+ */
 export function importSettings(raw: unknown): boolean {
+  if (!isSettingsFile(raw)) return false;
   const next = fromSettings(raw, settingsOf(state));
   if (!next) return false;
   // Ook in een bestand van de extractor ("4 juni 2018"): de datum van de PDF wordt ISO.
@@ -464,7 +477,9 @@ export function importSettings(raw: unknown): boolean {
     };
   change({
     ...next,
-    undo: [...state.undo, { zones: state.zones, pages: state.pages }].slice(-UNDO_LIMIT),
+    undo: [...state.undo, { zones: state.zones, pages: state.pages, joins: state.joins }].slice(
+      -UNDO_LIMIT,
+    ),
   });
   return true;
 }

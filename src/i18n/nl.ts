@@ -966,7 +966,8 @@ export const nl = {
       exported: 'Opgeslagen als {name}.',
       import: 'Instellingen laden',
       imported: 'Instellingen geladen uit {name}.',
-      importFailed: '{name} kon niet worden gelezen als instellingenbestand.',
+      importFailed:
+        '{name} kon niet worden gelezen als instellingenbestand. Er is niets veranderd.',
       defaults: 'Standaardinstellingen',
       defaultsTitle: 'Standaardinstellingen terugzetten?',
       defaultsText:

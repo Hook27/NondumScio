@@ -955,7 +955,7 @@ export const en: Messages = {
       exported: 'Saved as {name}.',
       import: 'Load settings',
       imported: 'Settings loaded from {name}.',
-      importFailed: '{name} could not be read as a settings file.',
+      importFailed: '{name} could not be read as a settings file. Nothing was changed.',
       defaults: 'Default settings',
       defaultsTitle: 'Restore the default settings?',
       defaultsText:
