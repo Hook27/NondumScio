@@ -1,6 +1,6 @@
 import { expect, test, type Page } from '@playwright/test';
 import { makeSizedPdf } from './fixtures';
-import { messages, openPage } from './helpers';
+import { messages, openPage, SLOW } from './helpers';
 
 /**
  * Niets kwijt zonder waarschuwing: bij het sluiten van het tabblad met werk dat nog niet gedownload
@@ -83,10 +83,13 @@ test.describe('niets kwijt zonder waarschuwing', () => {
     page,
   }) => {
     await openPage(page, '/#/advanced/compare', { lang: 'nl' });
+    // Vergelijken wordt pas geladen als je het opent: eerst wachten tot het sleepvak er is (op een
+    // drukke machine duurt dat even, en dan vond de test het vak nog niet).
+    await expect(page.locator('.dropzone').first()).toBeVisible(SLOW);
     // Naast het sleepvak (de kop van de pagina): de app houdt het tegen.
     expect(await dropPdf(page, 'h1')).toEqual({ over: true, drop: true });
     // In het sleepvak van A: daar wordt het bestand gewoon opgevangen.
     expect(await dropPdf(page, '.dropzone')).toEqual({ over: true, drop: true });
-    await expect(page.getByText('los.pdf').first()).toBeVisible({ timeout: 15_000 });
+    await expect(page.getByText('los.pdf').first()).toBeVisible(SLOW);
   });
 });
