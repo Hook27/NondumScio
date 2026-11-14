@@ -599,6 +599,9 @@ export const en: Messages = {
     bothHint: 'Choose or drag two PDFs at once, and the first becomes A and the second B.',
     readingStart: 'Reading…',
     reading: 'Reading… page {n} of {total}',
+    replacing: 'Reading {name}…',
+    replacingPage: 'Reading {name}… page {n} of {total}',
+    replaceFailed: '{name} was not opened. {reason} {old} stays open.',
     pagesOne: '1 page',
     pages: '{n} pages',
     charsOne: '1 character',
@@ -800,6 +803,18 @@ export const en: Messages = {
     tooMany:
       'You chose more than one PDF: only the first one is read. For several PDFs at once: see Batch.',
     clear: 'Clear',
+    discard: {
+      title: 'Discard the edited text?',
+      replace:
+        'You edited the text in the result and have not downloaded or copied it yet. With another PDF, that edit is gone.',
+      clear:
+        'You edited the text in the result and have not downloaded or copied it yet. Clearing removes that edit.',
+      extract:
+        'You edited the text in the result and have not downloaded or copied it yet. Extracting again puts the text back as it comes out of the PDF.',
+      confirmReplace: 'Open another PDF',
+      confirmClear: 'Clear',
+      confirmExtract: 'Extract again',
+    },
     views: { label: 'View', preview: 'Preview', result: 'Result' },
     zones: {
       title: 'Reading zones',

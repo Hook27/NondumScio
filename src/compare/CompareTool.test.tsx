@@ -356,6 +356,45 @@ describe('PDF’s vergelijken', () => {
     expect(within(slot('a')).getByText('kopie.pdf')).toBeTruthy();
   });
 
+  it('een andere PDF die niet opent: de vorige blijft staan, de vergelijking ook, met een melding', async () => {
+    setup();
+    choose('a', 'oud.pdf', 'nieuw.pdf');
+    await screen.findByRole('table');
+    choose('b', 'geheim.pdf');
+    expect((await within(slot('b')).findByRole('alert')).textContent).toBe(
+      format(c.replaceFailed, { name: 'geheim.pdf', reason: c.errors.password, old: 'nieuw.pdf' }),
+    );
+    expect(within(slot('b')).getByText('nieuw.pdf')).toBeTruthy();
+    expect(within(slot('b')).getByText(/^1 pagina · /)).toBeTruthy();
+    expect(screen.getByRole('table')).toBeTruthy();
+    expect(screen.getByText('1 gewijzigd')).toBeTruthy();
+    expect(closeVisual).not.toHaveBeenCalled();
+    expect(within(slot('a')).queryByRole('alert')).toBeNull();
+    // Daarna een PDF die wel opent: de melding is weg, en er wordt opnieuw vergeleken.
+    choose('b', 'kopie.pdf');
+    await screen.findByText(c.noDiff);
+    expect(within(slot('b')).queryByRole('alert')).toBeNull();
+    expect(closeVisual).toHaveBeenCalled();
+  });
+
+  it('tijdens het lezen van een andere PDF blijft de vergelijking staan; omwisselen kan dan niet', async () => {
+    setup();
+    choose('a', 'oud.pdf', 'nieuw.pdf');
+    await screen.findByRole('table');
+    let release!: () => void;
+    gates['kopie.pdf'] = new Promise((resolve) => (release = resolve));
+    choose('b', 'kopie.pdf');
+    await within(slot('b')).findByText(
+      format(c.replacingPage, { name: 'kopie.pdf', n: 0, total: 1 }),
+    );
+    expect(within(slot('b')).getByText('nieuw.pdf')).toBeTruthy();
+    expect(screen.getByRole('table')).toBeTruthy();
+    expect(screen.getByRole<HTMLButtonElement>('button', { name: c.swap }).disabled).toBe(true);
+    release();
+    await screen.findByText(c.noDiff);
+    expect(within(slot('b')).getByText('kopie.pdf')).toBeTruthy();
+  });
+
   it('waarschuwt als de documenten te groot waren voor een volledige vergelijking', async () => {
     const real = vi.mocked(compareTexts).getMockImplementation()!;
     vi.mocked(compareTexts).mockImplementationOnce((...args) => ({

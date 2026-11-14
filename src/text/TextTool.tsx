@@ -6,6 +6,7 @@ import { ZOOM_STEPS, renderPage, stepZoom, targetWidths } from '../compare/visua
 import { ConfirmDialog } from '../components/ConfirmDialog';
 import { Dropzone } from '../components/Dropzone';
 import { IconButton } from '../components/Icon';
+import { IncomingNote } from '../components/IncomingNote';
 import { useDragReorder } from '../components/useDragReorder';
 import { useI18n } from '../i18n/LanguageContext';
 import { format, plural } from '../i18n/format';
@@ -54,6 +55,7 @@ import {
   setView,
   setZones,
   setZoom,
+  textAtRisk,
   undoZones,
   useTextState,
   type BatchStatus,
@@ -158,48 +160,61 @@ function SlotView() {
   const p = t.plainText;
   const c = t.compare;
   const { slot, restored } = useTextState();
+  const [guard, dialog] = useDiscardGuard();
   return (
-    <Dropzone
-      title={p.slot.title}
-      dropTitle={c.dropHere}
-      hint={
-        slot.status === 'empty'
-          ? p.slot.hint
-          : slot.status === 'ready'
-            ? slot.doc.file.name
-            : slot.name
-      }
-      inputId="plaintext-file"
-      accept="application/pdf,.pdf"
-      chooseLabel={slot.status === 'empty' ? p.slot.choose : p.slot.replace}
-      onFiles={(files) => void openFiles(files)}
-      extraClass="plaintext-slot"
-    >
-      <button
-        type="button"
-        class="button button--secondary plaintext-slot__clear"
-        disabled={slot.status === 'empty'}
-        onClick={clearText}
+    <>
+      <Dropzone
+        title={p.slot.title}
+        dropTitle={c.dropHere}
+        hint={
+          slot.status === 'empty'
+            ? p.slot.hint
+            : slot.status === 'ready'
+              ? slot.doc.file.name
+              : slot.name
+        }
+        inputId="plaintext-file"
+        accept="application/pdf,.pdf"
+        chooseLabel={slot.status === 'empty' ? p.slot.choose : p.slot.replace}
+        onFiles={(files) => guard('replace', () => void openFiles(files))}
+        extraClass="plaintext-slot"
       >
-        {p.clear}
-      </button>
-      {slot.status === 'reading' && (
-        <p class="plaintext-slot__meta" role="status">
-          {slot.total > 0 ? format(c.reading, { n: slot.done, total: slot.total }) : c.readingStart}
-        </p>
-      )}
-      {slot.status === 'error' && (
-        <p class="plaintext-slot__meta dropzone__error" role="alert">
-          {c.errors[slot.code]}
-        </p>
-      )}
-      {slot.status === 'ready' && (
-        <p class="plaintext-slot__meta">
-          {docMeta(slot.doc, t, language)}
-          {restored && ` · ${p.restored}`}
-        </p>
-      )}
-    </Dropzone>
+        <button
+          type="button"
+          class="button button--secondary plaintext-slot__clear"
+          disabled={slot.status === 'empty'}
+          onClick={() => guard('clear', clearText)}
+        >
+          {p.clear}
+        </button>
+        {slot.status === 'reading' && (
+          <p class="plaintext-slot__meta" role="status">
+            {slot.total > 0
+              ? format(c.reading, { n: slot.done, total: slot.total })
+              : c.readingStart}
+          </p>
+        )}
+        {slot.status === 'error' && (
+          <p class="plaintext-slot__meta dropzone__error" role="alert">
+            {c.errors[slot.code]}
+          </p>
+        )}
+        {slot.status === 'ready' && (
+          <p class="plaintext-slot__meta">
+            {docMeta(slot.doc, t, language)}
+            {restored && ` · ${p.restored}`}
+          </p>
+        )}
+        {slot.status === 'ready' && slot.incoming && (
+          <IncomingNote
+            incoming={slot.incoming}
+            old={slot.doc.file.name}
+            class="plaintext-slot__meta"
+          />
+        )}
+      </Dropzone>
+      {dialog}
+    </>
   );
 }
 
@@ -873,6 +888,7 @@ function ExtractBar() {
   const { t, language } = useI18n();
   const p = t.plainText;
   const { slot, result } = useTextState();
+  const [guard, dialog] = useDiscardGuard();
   return (
     <div class="plaintext__extract">
       <button
@@ -880,10 +896,12 @@ function ExtractBar() {
         class="button"
         disabled={slot.status !== 'ready'}
         onClick={() =>
-          extract({
-            concordance: p.concordance,
-            head: { fields: p.header.fields, conventions: p.conventions },
-          })
+          guard('extract', () =>
+            extract({
+              concordance: p.concordance,
+              head: { fields: p.header.fields, conventions: p.conventions },
+            }),
+          )
         }
       >
         {p.extract}
@@ -893,8 +911,46 @@ function ExtractBar() {
           {format(p.done, { summary: summary(result, slot.doc, t, language) })}
         </p>
       )}
+      {dialog}
     </div>
   );
+}
+
+/** Wat een aangepaste tekst die nog niet bewaard is, weg zou halen. */
+type Discard = 'replace' | 'clear' | 'extract';
+
+const CONFIRM = {
+  replace: 'confirmReplace',
+  clear: 'confirmClear',
+  extract: 'confirmExtract',
+} as const satisfies Record<Discard, string>;
+
+/**
+ * Eerst vragen als er een aangepaste tekst is die nog niet gedownload of gekopieerd is (zie
+ * `textAtRisk`); anders meteen doorgaan. Geeft de bewaker en het venster om te tonen.
+ */
+function useDiscardGuard() {
+  const p = useI18n().t.plainText;
+  const d = p.discard;
+  const [asking, setAsking] = useState<{ kind: Discard; go: () => void } | null>(null);
+  const guard = (kind: Discard, go: () => void) => {
+    if (textAtRisk()) setAsking({ kind, go });
+    else go();
+  };
+  const dialog = asking && (
+    <ConfirmDialog
+      title={d.title}
+      text={d[asking.kind]}
+      cancel={p.save.cancel}
+      confirm={d[CONFIRM[asking.kind]]}
+      onCancel={() => setAsking(null)}
+      onConfirm={() => {
+        setAsking(null);
+        asking.go();
+      }}
+    />
+  );
+  return [guard, dialog] as const;
 }
 
 /** "89.784 tekens · 16 van 16 pagina's gelezen". */

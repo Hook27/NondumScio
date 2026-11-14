@@ -2,6 +2,7 @@ import { useEffect, useState } from 'preact/hooks';
 import type { PageText } from '../compare/layout';
 import type { DocInfo } from '../compare/profile';
 import { readPdf } from '../compare/readPdf';
+import type { Incoming } from '../compare/store';
 import { closeVisual } from '../compare/visual';
 import { setUnsavedWork } from '../lib/unsavedWarning';
 import { ZipTooLargeError, zipWriter, type ZipWriter } from '../lib/zip';
@@ -56,7 +57,11 @@ export type TextSlot =
   | { status: 'empty' }
   | { status: 'reading'; name: string; done: number; total: number }
   | { status: 'error'; name: string; code: LoadErrorCode }
-  | { status: 'ready'; doc: TextDoc };
+  /**
+   * `incoming`: een andere PDF die nog gelezen wordt, of die niet gelezen kon worden. Deze PDF, de
+   * vakken en de tekst blijven staan tot de nieuwe gelezen is, en bij een fout helemaal.
+   */
+  | { status: 'ready'; doc: TextDoc; incoming?: Incoming };
 
 /** Wat er rechts staat: de pagina (om vakken te tekenen) of de tekst. */
 export type TextView = 'preview' | 'result';
@@ -195,13 +200,16 @@ export function getTextState(): TextState {
   return state;
 }
 
+/**
+ * Is er een aangepaste tekst die nog niet gedownload of gekopieerd is? Die is weg bij een andere
+ * PDF, Wissen, opnieuw extraheren of het sluiten van het tabblad; daarom eerst een vraag.
+ */
+export const textAtRisk = ({ edited, result, keptText }: TextState = state): boolean =>
+  edited !== null && result !== null && edited !== result.text && edited !== keptText;
+
 function setState(change: Partial<TextState>) {
   state = { ...state, ...change };
-  const { edited, result, keptText } = state;
-  setUnsavedWork(
-    'text',
-    edited !== null && result !== null && edited !== result.text && edited !== keptText,
-  );
+  setUnsavedWork('text', textAtRisk(state));
   for (const listener of listeners) listener();
 }
 
@@ -274,16 +282,25 @@ let lastRead = 0;
 async function load(file: File) {
   const token = ++lastRead;
   const current = () => lastRead === token;
-  const put = (slot: TextSlot) => {
+  const put = (slot: TextSlot, extra?: Partial<TextState>) => {
     if (!current()) return;
     release(state.slot);
-    setSlot(slot);
+    setSlot(slot, extra);
   };
-  put({ status: 'reading', name: file.name, done: 0, total: 0 });
+  /**
+   * Hoe het lezen gaat, of dat het mislukte. Staat er al een PDF, dan blijft die staan, met de
+   * vakken en de tekst, en komt dit eronder; anders staat het in het vak zelf.
+   */
+  const pending = (incoming: Incoming) => {
+    if (!current()) return;
+    if (state.slot.status === 'ready') setState({ slot: { ...state.slot, incoming } });
+    else put(incoming);
+  };
+  pending({ status: 'reading', name: file.name, done: 0, total: 0 });
   try {
-    const { pageCount, pages, info, thumb } = await readPdf(file, (done, total) => {
-      if (current()) setState({ slot: { status: 'reading', name: file.name, done, total } });
-    });
+    const { pageCount, pages, info, thumb } = await readPdf(file, (done, total) =>
+      pending({ status: 'reading', name: file.name, done, total }),
+    );
     const url = thumb
       ? URL.createObjectURL(new Blob([thumb as BlobPart], { type: 'image/png' }))
       : null;
@@ -293,21 +310,25 @@ async function load(file: File) {
     }
     // De gegevens uit de PDF in de velden; eerder onthouden instellingen voor deze PDF (met de
     // velden zoals ze toen waren) gaan voor, zoals in de extractor. Een onthouden datum in de vorm
-    // van eerder ("4 juni 2018") wordt ISO.
+    // van eerder ("4 juni 2018") wordt ISO. De onbekende opties van de vorige PDF gaan niet mee
+    // (vakken en overgangen vervangt `fromSettings` altijd); de instellingen van nu wel.
     const meta = metaFromInfo(info);
-    const stored = fromSettings(loadStored(file.name), { ...settingsOf(state), meta });
+    const stored = fromSettings(loadStored(file.name), {
+      ...settingsOf(state),
+      extra: NO_EXTRA,
+      meta,
+    });
     if (stored)
       stored.meta = { ...stored.meta, date: upgradeDate(stored.meta.date, info.CreationDate) };
-    setState({
-      slot: {
+    put(
+      {
         status: 'ready',
         doc: { file, pageCount, pages, thumb: url, printed: printedPages(pages), info },
       },
-      meta,
-      ...(stored ? { ...stored, restored: true } : {}),
-    });
+      { meta, ...(stored ? { ...stored, restored: true } : {}) },
+    );
   } catch (error) {
-    put({
+    pending({
       status: 'error',
       name: file.name,
       code: error instanceof PdfLoadError ? error.code : 'damaged',

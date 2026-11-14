@@ -610,6 +610,9 @@ export const nl = {
     bothHint: 'Kies of sleep je twee PDF’s tegelijk, dan wordt de eerste A en de tweede B.',
     readingStart: 'Bezig met lezen…',
     reading: 'Bezig met lezen… pagina {n} van {total}',
+    replacing: '{name} wordt gelezen…',
+    replacingPage: '{name} wordt gelezen… pagina {n} van {total}',
+    replaceFailed: '{name} is niet geopend. {reason} {old} blijft staan.',
     pagesOne: '1 pagina',
     pages: '{n} pagina’s',
     charsOne: '1 teken',
@@ -813,6 +816,18 @@ export const nl = {
     tooMany:
       'Je koos meer dan één PDF: alleen de eerste wordt gelezen. Voor meerdere PDF’s tegelijk: zie Batch.',
     clear: 'Wissen',
+    discard: {
+      title: 'Aangepaste tekst weggooien?',
+      replace:
+        'Je hebt de tekst in het resultaat aangepast en nog niet gedownload of gekopieerd. Met een andere PDF is die aanpassing weg.',
+      clear:
+        'Je hebt de tekst in het resultaat aangepast en nog niet gedownload of gekopieerd. Met Wissen is die aanpassing weg.',
+      extract:
+        'Je hebt de tekst in het resultaat aangepast en nog niet gedownload of gekopieerd. Opnieuw extraheren zet de tekst terug zoals hij uit de PDF komt.',
+      confirmReplace: 'Andere PDF openen',
+      confirmClear: 'Wissen',
+      confirmExtract: 'Opnieuw extraheren',
+    },
     views: { label: 'Weergave', preview: 'Voorbeeld', result: 'Resultaat' },
     zones: {
       title: 'Leesvakken',

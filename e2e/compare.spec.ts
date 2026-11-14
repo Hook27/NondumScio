@@ -3,7 +3,7 @@ import { readFileSync } from 'node:fs';
 import { expect, test, type Locator, type Page } from '@playwright/test';
 import { PDFDocument, StandardFonts, degrees, rgb } from 'pdf-lib';
 import { format } from '../src/i18n/format';
-import { messages, openPage, SLOW, type Theme } from './helpers';
+import { BROKEN_PDF, messages, openPage, SLOW, warningColor, type Theme } from './helpers';
 
 /**
  * PDF's vergelijken (Geavanceerd, alleen op de computer): een origineel (A) en een nieuwe versie (B)
@@ -250,6 +250,33 @@ test.describe('PDF’s vergelijken', () => {
       .locator('#compare-file-b')
       .setInputFiles(await file('liggend.pdf', OLD, { lying: true }));
     await expect(page.getByText(c.noDiff)).toBeVisible(SLOW);
+  });
+
+  test('een andere PDF die niet opent: de vorige en de vergelijking blijven staan', async ({
+    page,
+  }) => {
+    await openPage(page, '/#/advanced/compare', { lang: 'nl' });
+    await page
+      .locator('#compare-file-a')
+      .setInputFiles([await file('huur-oud.pdf', OLD), await file('huur-nieuw.pdf', NEW)]);
+    const table = page.getByRole('table');
+    await expect(table).toBeVisible(SLOW);
+    const rows = await table.locator('tr').count();
+    await page.locator('#compare-file-b').setInputFiles(BROKEN_PDF);
+    const alert = slot(page, 'b').getByRole('alert');
+    await expect(alert).toHaveText(
+      format(c.replaceFailed, {
+        name: 'kapot.pdf',
+        reason: c.errors.damaged,
+        old: 'huur-nieuw.pdf',
+      }),
+      SLOW,
+    );
+    expect(await alert.evaluate((el) => getComputedStyle(el).color)).toBe(await warningColor(page));
+    await expect(slot(page, 'b').getByText('huur-nieuw.pdf', { exact: true })).toBeVisible();
+    await expect(table).toBeVisible();
+    await expect(table.locator('tr')).toHaveCount(rows);
+    await expect(page.getByRole('button', { name: c.swap })).toBeEnabled();
   });
 });
 

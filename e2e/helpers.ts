@@ -94,3 +94,21 @@ export async function downloadVia(page: Page, button: Locator, fileName?: string
   ]);
   return download;
 }
+
+/** Een bestand dat met `%PDF` begint maar geen echte PDF is: pdf.js kan het niet openen. */
+export const BROKEN_PDF = {
+  name: 'kapot.pdf',
+  mimeType: 'application/pdf',
+  buffer: Buffer.from('%PDF-1.7\nhier staat geen echte pdf in\n%%EOF'),
+};
+
+/** De kleur van een waarschuwing (`--warning-text`) in het thema van nu, zoals de browser hem rekent. */
+export const warningColor = (page: Page): Promise<string> =>
+  page.evaluate(() => {
+    const probe = document.createElement('span');
+    probe.style.color = 'var(--warning-text)';
+    document.body.append(probe);
+    const color = getComputedStyle(probe).color;
+    probe.remove();
+    return color;
+  });
