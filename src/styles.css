@@ -1759,6 +1759,11 @@ h1 {
   font-size: 0.85rem;
 }
 
+.plaintext__done--warning {
+  color: var(--warning-text);
+  font-weight: 600;
+}
+
 /* De lijst met leesvakken, met hun nummer zoals op het voorbeeld. */
 .plaintext-zones {
   display: grid;

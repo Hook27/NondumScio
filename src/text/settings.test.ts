@@ -5,6 +5,7 @@ import {
   SETTINGS_PREFIX,
   forgetStored,
   fromSettings,
+  isSettingsFile,
   loadStored,
   saveStored,
   settingsFileName,
@@ -268,6 +269,46 @@ describe('fromSettings', () => {
   it('geeft null bij iets wat geen instellingen zijn', () => {
     for (const raw of [null, 3, 'tekst', [A], undefined])
       expect(fromSettings(raw, BASE)).toBeNull();
+  });
+});
+
+describe('isSettingsFile', () => {
+  it('neemt een bestand van deze tool en van de extractor aan, ook het oude formaat', () => {
+    expect(isSettingsFile(ORIGINAL)).toBe(true);
+    expect(isSettingsFile(JSON.parse(JSON.stringify(toSettings('a.pdf', BASE))))).toBe(true);
+    // Het oude formaat van de extractor: alleen de vakken.
+    expect(isSettingsFile({ d: [A], p: {} })).toBe(true);
+    expect(isSettingsFile({ d: [] })).toBe(true);
+    expect(isSettingsFile({ p: { 2: [B] } })).toBe(true);
+    // Eén bekend onderdeel is genoeg.
+    for (const raw of [
+      { options: { dehyphen: false } },
+      { zones: { d: [] } },
+      { joinOverride: { 2: 'join' } },
+      { meta: { title: 'x' } },
+    ])
+      expect(isSettingsFile(raw)).toBe(true);
+  });
+
+  it('weigert ander JSON, zoals de database van Slim hernoemen', () => {
+    for (const raw of [
+      null,
+      3,
+      'tekst',
+      [A],
+      {},
+      { afzenders: [], onderwerpen: [] },
+      { v: 2, pdf: 'a.pdf' },
+      { x: 1 },
+      // Bekende namen, maar van het verkeerde soort.
+      { zones: [A] },
+      { d: { 0: A } },
+      { p: [[A]] },
+      { options: [true] },
+      { joinOverride: 'join' },
+      { meta: 'titel' },
+    ])
+      expect(isSettingsFile(raw), JSON.stringify(raw)).toBe(false);
   });
 });
 

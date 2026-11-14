@@ -782,7 +782,9 @@ function SaveSettings() {
   const v = t.plainText.save;
   const { slot } = useTextState();
   const input = useRef<HTMLInputElement>(null);
-  const [status, setStatus] = useState<string | null>(null);
+  // Wat er gebeurde; `warning` als laden niet lukte (dan in de kleur van een waarschuwing).
+  const [status, setStatusText] = useState<{ text: string; warning: boolean } | null>(null);
+  const setStatus = (text: string, warning = false) => setStatusText({ text, warning });
   const [confirming, setConfirming] = useState<'defaults' | 'forget' | null>(null);
   const ready = slot.status === 'ready';
   return (
@@ -827,7 +829,7 @@ function SaveSettings() {
               .then((text) => importSettings(JSON.parse(text)))
               .catch(() => false)
               .then((ok) =>
-                setStatus(format(ok ? v.imported : v.importFailed, { name: file.name })),
+                setStatus(format(ok ? v.imported : v.importFailed, { name: file.name }), !ok),
               );
           }}
         />
@@ -846,11 +848,16 @@ function SaveSettings() {
           {v.forget}
         </button>
       </div>
-      {status && (
-        <p class="plaintext__done" role="status">
-          {status}
-        </p>
-      )}
+      {status &&
+        (status.warning ? (
+          <p class="plaintext__done plaintext__done--warning" role="alert">
+            {status.text}
+          </p>
+        ) : (
+          <p class="plaintext__done" role="status">
+            {status.text}
+          </p>
+        ))}
       {confirming === 'defaults' && (
         <ConfirmDialog
           title={v.defaultsTitle}

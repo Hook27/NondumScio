@@ -592,6 +592,32 @@ test.describe('PDF → Platte tekst: vakken per pagina en bewaren', () => {
     await expect(page.getByText(format(p.skippedPages, { list: 'pagina 2' }))).toBeVisible();
   });
 
+  test('ander JSON, zoals de database van Slim hernoemen, verandert niets', async ({ page }) => {
+    await openArticle(page, 2);
+    await zones(page).getByRole('checkbox', { name: z.use }).check();
+    await draw(page, LEFT_BOX);
+    await openBlock(page, sv.title);
+    await page.locator('#plaintext-settings-file').setInputFiles({
+      name: 'pdf-hernoemer-database.json',
+      mimeType: 'application/json',
+      buffer: Buffer.from(JSON.stringify({ afzenders: [], onderwerpen: [] })),
+    });
+    const alert = page.getByRole('group', { name: sv.title }).getByRole('alert');
+    await expect(alert).toHaveText(
+      format(sv.importFailed, { name: 'pdf-hernoemer-database.json' }),
+    );
+    expect(await alert.evaluate((el) => getComputedStyle(el).color)).toBe(await warningColor(page));
+    await expect(labels(page)).toHaveText(['Vak 1']);
+    await extract(page);
+    await expect(output(page)).toHaveValue(
+      `${column('Linker', 1).join(' ')}\n\n${column('Linker', 2).join(' ')}`,
+    );
+    // Ook na herladen: het verkeerde bestand is niet onthouden.
+    await page.reload();
+    await page.locator('#plaintext-file').setInputFiles(await article('artikel.pdf', 2));
+    await expect(labels(page)).toHaveText(['Vak 1'], SLOW);
+  });
+
   test('onthouden instellingen vergeten, na een vraag', async ({ page }) => {
     await openArticle(page, 1);
     await zones(page).getByRole('checkbox', { name: z.use }).check();
