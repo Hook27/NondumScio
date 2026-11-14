@@ -45,11 +45,19 @@ export type CompareDoc = {
   thumb: string | null;
 };
 
+/**
+ * Een andere PDF voor een vak waarin al een PDF staat: die wordt nog gelezen, of kon niet worden
+ * gelezen. De PDF die er stond, blijft staan tot de nieuwe gelezen is (en bij een fout helemaal).
+ */
+export type Incoming =
+  | { status: 'reading'; name: string; done: number; total: number }
+  | { status: 'error'; name: string; code: LoadErrorCode };
+
 export type Slot =
   | { status: 'empty' }
   | { status: 'reading'; name: string; done: number; total: number }
   | { status: 'error'; name: string; code: LoadErrorCode }
-  | { status: 'ready'; doc: CompareDoc };
+  | { status: 'ready'; doc: CompareDoc; incoming?: Incoming };
 
 export type CompareState = {
   a: Slot;
@@ -148,12 +156,22 @@ async function load(side: Side, file: File) {
     release(state[side]);
     setSlots(side === 'a' ? slot : state.a, side === 'b' ? slot : state.b);
   };
-  put({ status: 'reading', name: file.name, done: 0, total: 0 });
+  /**
+   * Hoe het lezen gaat, of dat het mislukte. Staat er al een PDF, dan blijft die staan (met de
+   * vergelijking) en komt dit eronder; anders staat het in het vak zelf.
+   */
+  const pending = (incoming: Incoming) => {
+    if (!current()) return;
+    const slot = state[side];
+    if (slot.status === 'ready') setState({ [side]: { ...slot, incoming } });
+    else put(incoming);
+  };
+  pending({ status: 'reading', name: file.name, done: 0, total: 0 });
   try {
-    const { pageCount, pages, info, thumb } = await readPdf(file, (done, total) => {
+    const { pageCount, pages, info, thumb } = await readPdf(file, (done, total) =>
       // Alleen de voortgang: de vergelijking hoeft daarvoor niet opnieuw.
-      if (current()) setState({ [side]: { status: 'reading', name: file.name, done, total } });
-    });
+      pending({ status: 'reading', name: file.name, done, total }),
+    );
     const url = thumb
       ? URL.createObjectURL(new Blob([thumb as BlobPart], { type: 'image/png' }))
       : null;
@@ -163,7 +181,7 @@ async function load(side: Side, file: File) {
     }
     put({ status: 'ready', doc: { file, pageCount, pages, info, thumb: url } });
   } catch (error) {
-    put({
+    pending({
       status: 'error',
       name: file.name,
       code: error instanceof PdfLoadError ? error.code : 'damaged',
@@ -184,9 +202,13 @@ export function openFiles(side: Side, files: readonly File[]): Promise<void> {
   return Promise.all([load('a', first), load('b', second)]).then(() => undefined);
 }
 
+/** Wordt deze kant nog gelezen (ook een andere PDF voor een vak waarin al een PDF staat)? */
+const readingSide = (slot: Slot) =>
+  slot.status === 'reading' || (slot.status === 'ready' && slot.incoming?.status === 'reading');
+
 /** Wordt er nog een PDF gelezen? */
 export const isReading = (current: CompareState) =>
-  current.a.status === 'reading' || current.b.status === 'reading';
+  readingSide(current.a) || readingSide(current.b);
 
 /** A en B omwisselen (niet tijdens het lezen; de knop staat dan uit). */
 export function swapSides(): void {

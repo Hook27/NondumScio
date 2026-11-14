@@ -1,5 +1,6 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'preact/hooks';
 import { Dropzone } from '../components/Dropzone';
+import { IncomingNote } from '../components/IncomingNote';
 import { PaneHead } from '../components/WorkspaceParts';
 import { useI18n } from '../i18n/LanguageContext';
 import { format, plural } from '../i18n/format';
@@ -684,6 +685,13 @@ function SlotView({ side, slot }: { side: Side; slot: Slot }) {
         </p>
       )}
       {doc && <p class="compare-slot__meta">{docMeta(doc, c, language)}</p>}
+      {slot.status === 'ready' && slot.incoming && (
+        <IncomingNote
+          incoming={slot.incoming}
+          old={slot.doc.file.name}
+          class="compare-slot__meta"
+        />
+      )}
       {doc?.thumb && <img class="compare-slot__thumb" src={doc.thumb} alt="" />}
     </Dropzone>
   );

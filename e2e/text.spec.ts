@@ -4,7 +4,7 @@ import { expect, test, type Locator, type Page } from '@playwright/test';
 import { unzipSync } from 'fflate';
 import { PDFDocument, StandardFonts, degrees, rgb } from 'pdf-lib';
 import { format } from '../src/i18n/format';
-import { messages, openPage, SLOW, type Theme } from './helpers';
+import { BROKEN_PDF, messages, openPage, SLOW, warningColor, type Theme } from './helpers';
 
 /**
  * PDF → Platte tekst (Geavanceerd, alleen op de computer): een PDF openen, leesvakken tekenen en de
@@ -418,6 +418,51 @@ test.describe('PDF → Platte tekst', () => {
     await extract(page);
     await expect(output(page)).toHaveValue(TEXT);
     await expect(page.getByText(p.edited)).toHaveCount(0);
+  });
+
+  test('niets weggooien: eerst een vraag, en een PDF die niet opent laat alles staan', async ({
+    page,
+  }) => {
+    await openPage(page, '/#/advanced/text', { lang: 'nl' });
+    await choose(page);
+    await extract(page);
+    await expect(output(page)).toHaveValue(TEXT, SLOW);
+    await output(page).click();
+    await page.keyboard.press('Control+End');
+    await page.keyboard.type('\n\nMijn eigen aantekening.');
+    const edited = `${TEXT}\n\nMijn eigen aantekening.`;
+    await expect(output(page)).toHaveValue(edited);
+    const dialog = page.getByRole('dialog', { name: p.discard.title });
+
+    // Wissen en opnieuw extraheren vragen eerst; Annuleren laat de tekst staan.
+    await page.getByRole('button', { name: p.clear, exact: true }).click();
+    await expect(dialog).toContainText(p.discard.clear);
+    await axe(page);
+    await dialog.getByRole('button', { name: p.save.cancel }).click();
+    await extract(page);
+    await expect(dialog).toContainText(p.discard.extract);
+    await page.keyboard.press('Escape');
+    await expect(dialog).toHaveCount(0);
+    await expect(output(page)).toHaveValue(edited);
+
+    // Een andere PDF die niet opent: na de vraag blijft alles staan, met een rode melding.
+    await page.locator('#plaintext-file').setInputFiles(BROKEN_PDF);
+    await expect(dialog).toContainText(p.discard.replace);
+    await dialog.getByRole('button', { name: p.discard.confirmReplace }).click();
+    const alert = page.locator('.plaintext-slot').getByRole('alert');
+    await expect(alert).toHaveText(
+      format(nl.compare.replaceFailed, {
+        name: 'kapot.pdf',
+        reason: nl.compare.errors.damaged,
+        old: 'brief.pdf',
+      }),
+      SLOW,
+    );
+    expect(await alert.evaluate((el) => getComputedStyle(el).color)).toBe(await warningColor(page));
+    await expect(output(page)).toHaveValue(edited);
+    await expect(
+      page.locator('.plaintext-slot').getByText('brief.pdf', { exact: true }),
+    ).toBeVisible();
   });
 });
 

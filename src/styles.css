@@ -1530,7 +1530,7 @@ h1 {
 }
 
 .plaintext-slot__meta.dropzone__error {
-  color: var(--text);
+  color: var(--warning-text);
 }
 
 /* Blokken links die in- en uitklappen, zoals de accordeons van de extractor. */

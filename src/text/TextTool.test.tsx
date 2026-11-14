@@ -690,13 +690,15 @@ describe('PDF → Platte tekst: resultaat', () => {
     fireEvent.input(output()!, { target: { value: '' } });
     expect(button(p.copy).disabled).toBe(true);
     expect(button(p.download).disabled).toBe(true);
-    // Opnieuw extraheren zet de tekst terug.
+    // Opnieuw extraheren zet de tekst terug (na een vraag: de aanpassing is niet bewaard).
     fireEvent.click(button(p.extract));
+    fireEvent.click(screen.getByRole('button', { name: p.discard.confirmExtract }));
     expect(output()!.value).toBe(LETTER_TEXT);
     expect(getTextState().edited).toBeNull();
     // Een andere PDF begint ook zonder aanpassingen.
     fireEvent.input(output()!, { target: { value: 'weer anders' } });
     choose('tweede.pdf');
+    fireEvent.click(screen.getByRole('button', { name: p.discard.confirmReplace }));
     await waitFor(() => expect(getTextState().edited).toBeNull());
   });
 
@@ -721,6 +723,7 @@ describe('PDF → Platte tekst: resultaat', () => {
     // Weer precies de tekst uit de PDF, of opnieuw extraheren: niets te verliezen.
     fireEvent.input(output()!, { target: { value: 'Derde versie.' } });
     fireEvent.click(button(p.extract));
+    fireEvent.click(screen.getByRole('button', { name: p.discard.confirmExtract }));
     expect(unsavedSources()).not.toContain('text');
   });
 
@@ -827,6 +830,160 @@ describe('PDF → Platte tekst: wissen', () => {
     await settle();
     expect(button(p.extract).disabled).toBe(true);
     expect(screen.getByText(p.placeholder)).toBeTruthy();
+  });
+});
+
+describe('PDF → Platte tekst: niets weggooien', () => {
+  /** Het artikel open, met een vak, de tekst geëxtraheerd en aangepast (en gedownload). */
+  async function work() {
+    await open('artikel.pdf');
+    fireEvent.click(check(p.zones.use));
+    await settle();
+    draw(...LEFT_BOX);
+    fireEvent.click(button(p.extract));
+    fireEvent.input(output()!, { target: { value: 'Mijn eigen tekst.' } });
+  }
+
+  const dialog = () => screen.queryByRole('dialog', { name: p.discard.title });
+
+  it('een andere PDF die niet opent: de vorige PDF, de vakken en de tekst blijven, met een melding', async () => {
+    await work();
+    // Gedownload: niets te verliezen, dus geen vraag.
+    fireEvent.click(button(p.download));
+    choose('geheim.pdf');
+    await waitFor(() =>
+      expect(screen.getByRole('alert').textContent).toBe(
+        format(c.replaceFailed, {
+          name: 'geheim.pdf',
+          reason: c.errors.password,
+          old: 'artikel.pdf',
+        }),
+      ),
+    );
+    expect(output()!.value).toBe('Mijn eigen tekst.');
+    expect(zoneList()).toEqual(['Vak 1']);
+    expect(getTextState().slot.status).toBe('ready');
+    expect(button(p.extract).disabled).toBe(false);
+    expect(closeVisual).not.toHaveBeenCalled();
+    // De PDF blijft dezelfde: de naam in het vak, en de pagina's.
+    expect(
+      within(document.querySelector('.plaintext-slot')!).getByText('artikel.pdf'),
+    ).toBeTruthy();
+    // Een volgende PDF die wel opent: de melding is weg.
+    choose('brief.pdf');
+    await waitFor(() =>
+      expect(screen.getByText(format(p.preview.page, { n: 1, total: 1 }))).toBeTruthy(),
+    );
+    expect(screen.queryByRole('alert')).toBeNull();
+    expect(closeVisual).toHaveBeenCalled();
+  });
+
+  it('tijdens het lezen van een andere PDF blijft de vorige staan, met de voortgang', async () => {
+    await open('brief.pdf');
+    let release!: () => void;
+    gates['tweede.pdf'] = new Promise((resolve) => (release = resolve));
+    choose('tweede.pdf');
+    await waitFor(() =>
+      expect(
+        screen.getByText(format(c.replacingPage, { name: 'tweede.pdf', n: 0, total: 1 })),
+      ).toBeTruthy(),
+    );
+    expect(button(p.extract).disabled).toBe(false);
+    fireEvent.click(button(p.extract));
+    expect(output()!.value).toBe(LETTER_TEXT);
+    release();
+    await waitFor(() => expect(getTextState().result).toBeNull());
+    fireEvent.click(button(p.extract));
+    expect(output()!.value).toBe('De tweede PDF.');
+  });
+
+  it('Wissen tijdens het lezen van een andere PDF: die komt er niet meer bij', async () => {
+    await open('brief.pdf');
+    let release!: () => void;
+    gates['tweede.pdf'] = new Promise((resolve) => (release = resolve));
+    choose('tweede.pdf');
+    await waitFor(() => expect(screen.getByText(/^tweede\.pdf wordt gelezen/)).toBeTruthy());
+    fireEvent.click(button(p.clear));
+    release();
+    await settle();
+    expect(getTextState().slot.status).toBe('empty');
+  });
+
+  it('aangepaste tekst die nog niet bewaard is: eerst een vraag; annuleren laat alles staan', async () => {
+    await work();
+    fireEvent.click(button(p.clear));
+    expect(within(dialog()!).getByText(p.discard.clear)).toBeTruthy();
+    fireEvent.click(within(dialog()!).getByRole('button', { name: p.save.cancel }));
+    expect(dialog()).toBeNull();
+
+    fireEvent.click(button(p.extract));
+    expect(within(dialog()!).getByText(p.discard.extract)).toBeTruthy();
+    fireEvent.click(within(dialog()!).getByRole('button', { name: p.save.cancel }));
+
+    choose('brief.pdf');
+    expect(within(dialog()!).getByText(p.discard.replace)).toBeTruthy();
+    fireEvent.click(within(dialog()!).getByRole('button', { name: p.save.cancel }));
+    await settle();
+
+    expect(dialog()).toBeNull();
+    expect(readPdf).toHaveBeenCalledTimes(1);
+    expect(output()!.value).toBe('Mijn eigen tekst.');
+    expect(zoneList()).toEqual(['Vak 1']);
+  });
+
+  it('na de vraag: Wissen, opnieuw extraheren en een andere PDF gaan door', async () => {
+    await work();
+    fireEvent.click(button(p.extract));
+    fireEvent.click(within(dialog()!).getByRole('button', { name: p.discard.confirmExtract }));
+    expect(getTextState().edited).toBeNull();
+    expect(output()!.value).not.toBe('Mijn eigen tekst.');
+
+    fireEvent.input(output()!, { target: { value: 'Weer anders.' } });
+    choose('brief.pdf');
+    fireEvent.click(within(dialog()!).getByRole('button', { name: p.discard.confirmReplace }));
+    await waitFor(() =>
+      expect(screen.getByText(format(p.preview.page, { n: 1, total: 1 }))).toBeTruthy(),
+    );
+    expect(getTextState().edited).toBeNull();
+
+    // De leesvakken staan nog aan, maar brief.pdf heeft er geen: uit, dan is er tekst.
+    fireEvent.click(check(p.zones.use));
+    fireEvent.click(button(p.extract));
+    fireEvent.input(output()!, { target: { value: 'Derde keer.' } });
+    fireEvent.click(button(p.clear));
+    fireEvent.click(within(dialog()!).getByRole('button', { name: p.discard.confirmClear }));
+    expect(getTextState().slot.status).toBe('empty');
+    expect(dialog()).toBeNull();
+  });
+
+  it('een andere PDF met onthouden instellingen: de onbekende opties van de vorige gaan niet mee', async () => {
+    await open('brief.pdf');
+    fireEvent.click(check(p.settings.dehyphen));
+    choose('artikel.pdf');
+    await waitFor(() =>
+      expect(screen.getByText(format(p.preview.page, { n: 1, total: 3 }))).toBeTruthy(),
+    );
+    await loadSettings(json('later.json', { options: { laterNieuw: true } }));
+    expect(getTextState().extra.options).toEqual({ laterNieuw: true });
+    choose('brief.pdf');
+    await waitFor(() => expect(screen.getByText(/· instellingen hersteld$/)).toBeTruthy());
+    expect(getTextState().extra.options).toEqual({});
+  });
+
+  it('geen vraag zonder aanpassing, of als de aanpassing gedownload of gekopieerd is', async () => {
+    await open('brief.pdf');
+    fireEvent.click(button(p.extract));
+    fireEvent.click(button(p.extract));
+    expect(dialog()).toBeNull();
+    fireEvent.input(output()!, { target: { value: 'Mijn eigen tekst.' } });
+    fireEvent.click(button(p.copy));
+    await waitFor(() => expect(screen.getByText(p.copied)).toBeTruthy());
+    fireEvent.click(button(p.extract));
+    expect(dialog()).toBeNull();
+    expect(output()!.value).toBe(LETTER_TEXT);
+    fireEvent.click(button(p.clear));
+    expect(dialog()).toBeNull();
+    expect(getTextState().slot.status).toBe('empty');
   });
 });
 
