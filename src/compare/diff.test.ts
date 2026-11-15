@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   DEFAULT_OPTIONS,
   MAX_CELLS,
+  alignKeys,
   buildUnits,
   compareTexts,
   countRows,
@@ -110,6 +111,154 @@ describe('compareTexts', () => {
       opts,
     );
     expect(edge.fallback).toBe(false);
+  });
+});
+
+describe('lange documenten: eerst ankeren op unieke gelijke stukken', () => {
+  const opts = { ...DEFAULT_OPTIONS, level: 'line' as const, strip: false };
+  /** Een lang contract per regel: 3000 verschillende regels (te groot voor één volledige vergelijking). */
+  const LONG = Array.from({ length: 3000 }, (_, i) => `Regel ${i + 1} van het lange contract.`);
+
+  it('één regel erbij vooraan en één achteraan: alleen die twee, zonder terugval', () => {
+    const b = ['Een nieuwe eerste regel.', ...LONG, 'Een nieuwe laatste regel.'];
+    expect(LONG.length * b.length).toBeGreaterThan(MAX_CELLS);
+    const result = compareTexts([linesPage(LONG)], [linesPage(b)], opts);
+    expect(result.fallback).toBe(false);
+    expect(countRows(result.rows)).toEqual({ added: 2, removed: 0, changed: 0 });
+    expect(result.rows[0]).toMatchObject({ kind: 'added', b: { val: 'Een nieuwe eerste regel.' } });
+  });
+
+  it('een gewijzigde, een verwijderde en een toegevoegde regel, ver uit elkaar', () => {
+    const b = [...LONG];
+    b[99] = 'Regel 100 is nu anders.';
+    b.splice(2499, 0, 'Een ingevoegde regel.');
+    b.splice(1499, 1);
+    const result = compareTexts([linesPage(LONG)], [linesPage(b)], opts);
+    expect(result.fallback).toBe(false);
+    expect(countRows(result.rows)).toEqual({ added: 1, removed: 1, changed: 1 });
+    const changed = result.rows.find((row) => row.kind === 'changed');
+    expect(changed).toMatchObject({
+      a: { val: 'Regel 100 van het lange contract.' },
+      b: { val: 'Regel 100 is nu anders.' },
+    });
+    expect(result.rows.find((row) => row.kind === 'removed')).toMatchObject({
+      a: { val: 'Regel 1500 van het lange contract.' },
+    });
+  });
+
+  it('zonder één enkel stuk dat in beide precies één keer staat, blijft de terugval', () => {
+    // Alle regels komen twee keer voor: er is niets om op te ankeren.
+    const twice = (side: string) =>
+      Array.from({ length: 2400 }, (_, i) => `regel ${side} ${Math.floor(i / 2)}`);
+    const result = compareTexts([linesPage(twice('a'))], [linesPage(twice('b'))], opts);
+    expect(result.fallback).toBe(true);
+  });
+
+  it('een te groot tussenstuk zonder ankers: alleen daar de terugval, en de waarschuwing', () => {
+    // Vooraan en achteraan gelijke unieke regels (ankers); daartussen 2100 regels die in A en B
+    // anders zijn en elk twee keer voorkomen.
+    const middle = (side: string) =>
+      Array.from({ length: 2100 }, (_, i) => `tussen ${side} ${Math.floor(i / 2)}`);
+    // Met een uniek anker na dat stuk, en een slot dat verschilt: het anker valt midden in wat
+    // overblijft, dus de terugval komt uit het tussenstuk ervóór.
+    const a = [
+      ...LONG.slice(0, 500),
+      ...middle('a'),
+      'Een uniek anker.',
+      'Slot A.',
+      ...LONG.slice(500, 1000),
+    ];
+    const b = [
+      ...LONG.slice(0, 500),
+      'Een extra regel.',
+      ...middle('b'),
+      'Een uniek anker.',
+      'Slot B.',
+      ...LONG.slice(500, 1000),
+    ];
+    const result = compareTexts([linesPage(a)], [linesPage(b)], opts);
+    expect(result.fallback).toBe(true);
+    // Gelijk: de 1000 regels van het contract en het anker.
+    const equal = result.rows.filter((row) => row.kind === 'equal');
+    expect(equal).toHaveLength(1001);
+    expect(equal.some((row) => row.a.val === 'Een uniek anker.')).toBe(true);
+  });
+});
+
+describe('alignKeys', () => {
+  /** Bouwt A en B terug uit de stappen: gelijk en weg geven A, gelijk en erbij geven B. */
+  function rebuild(a: string[], b: string[], max: number) {
+    const { ops, fallback } = alignKeys(a, b, max);
+    const outA: string[] = [];
+    const outB: string[] = [];
+    for (const op of ops) {
+      if (op.op === 'eq') {
+        expect(a[op.ai]).toBe(b[op.bi]);
+        outA.push(a[op.ai]!);
+        outB.push(b[op.bi]!);
+      } else if (op.op === 'del') outA.push(a[op.ai]!);
+      else outB.push(b[op.bi]!);
+    }
+    return { outA, outB, ops, fallback };
+  }
+
+  /** Een vaste reeks "willekeurige" sleutels, met herhalingen (zodat niet alles uniek is). */
+  function keys(seed: number, length: number, alphabet: number): string[] {
+    let x = seed;
+    return Array.from({ length }, () => {
+      x = (x * 1103515245 + 12345) % 2 ** 31;
+      return `k${x % alphabet}`;
+    });
+  }
+
+  it('geeft altijd een juiste reeks stappen, ook met ankeren en terugval in stukken', () => {
+    for (let seed = 1; seed <= 200; seed++) {
+      const a = keys(seed, 20 + (seed % 40), 8 + (seed % 30));
+      const b = keys(seed * 7 + 3, 20 + ((seed * 3) % 40), 8 + (seed % 30));
+      // Een kleine grens, zodat ankeren en terugval per stuk echt gebeuren.
+      const { outA, outB } = rebuild(a, b, 30);
+      expect(outA).toEqual(a);
+      expect(outB).toEqual(b);
+    }
+  });
+
+  it('onder de grens precies de volledige vergelijking, zoals eerst', () => {
+    const a = keys(5, 40, 10);
+    const b = keys(9, 40, 10);
+    const full = alignKeys(a, b, Infinity);
+    expect(alignKeys(a, b, 40 * 40)).toEqual(full);
+    expect(full.fallback).toBe(false);
+  });
+
+  it('een gelijk begin en einde eraf, ook als het geheel te groot is: dan geen terugval', () => {
+    // Niets is uniek, maar alleen de laatste sleutel verschilt.
+    const a = ['d', 'd', 'd', 'd', 'd', 'a1'];
+    const b = ['d', 'd', 'd', 'd', 'd', 'b1'];
+    const { ops, fallback } = rebuild(a, b, 4);
+    expect(fallback).toBe(false);
+    expect(ops.filter((op) => op.op === 'eq')).toHaveLength(5);
+  });
+
+  it('een kop die in A twee keer staat, wordt geen anker (en dus niet aan de verkeerde gekoppeld)', () => {
+    // In B is het eerste artikel weg: de kop van B hoort bij het tweede artikel van A (plaats 4).
+    const a = ['Artikel', 'a1', 'a2', 'a3', 'Artikel', 'b1', 'b2', 'b3', 'eind A'];
+    const b = ['nieuw', 'Artikel', 'b1', 'b2', 'b3', 'eind B'];
+    const { ops } = rebuild(a, b, 4);
+    const kop = ops.find((op) => op.op === 'eq' && a[op.ai] === 'Artikel') as
+      { ai: number } | undefined;
+    expect(kop?.ai).not.toBe(0);
+    // De unieke regels van het tweede artikel staan wel gelijk.
+    const equal = ops.filter((op) => op.op === 'eq').map((op) => a[(op as { ai: number }).ai]);
+    expect(equal).toEqual(expect.arrayContaining(['b1', 'b2', 'b3']));
+  });
+
+  it('met ankers: de unieke gelijke sleutels staan gelijk, ook als het geheel te groot is', () => {
+    const a = ['x1', 'p', 'q', 'u1', 'p', 'q', 'u2', 'r'];
+    const b = ['p', 'u1', 'q', 'q', 'u2', 'x2'];
+    const { ops, fallback } = rebuild(a, b, 4);
+    const equal = ops.filter((op) => op.op === 'eq').map((op) => a[(op as { ai: number }).ai]);
+    expect(equal).toEqual(expect.arrayContaining(['u1', 'u2']));
+    expect(typeof fallback).toBe('boolean');
   });
 });
 
