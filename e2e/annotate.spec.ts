@@ -3,7 +3,7 @@ import { readFileSync } from 'node:fs';
 import { expect, test, type Page } from '@playwright/test';
 import { PDFDocument, degrees, rgb } from 'pdf-lib';
 import { pdfFile } from './fixtures';
-import { downloadVia, messages, openPage } from './helpers';
+import { downloadVia, messages, openPage, touchDrag } from './helpers';
 
 const nl = messages.nl;
 
@@ -642,13 +642,18 @@ test.describe('annotaties: op een telefoon en toegankelijkheid', () => {
     await pages(page).first().scrollIntoViewIfNeeded();
     const box = (await pages(page).first().boundingBox())!;
     const y = Math.min(box.y + 120, page.viewportSize()!.height - 150);
-    // Een vak met de aanraakgebaren van Playwright: touchscreen.tap plaatst niets (geen slepen),
-    // dus slepen we met de muis zoals de browser dat op aanraken vertaalt.
-    await page.mouse.move(box.x + 60, y);
-    await page.mouse.down();
-    await page.mouse.move(box.x + 200, y + 50, { steps: 6 });
-    await page.mouse.up();
+    // Een vak tekenen met een echte vinger (touchscreen.tap van Playwright kan niet slepen).
+    await touchDrag(page, { x: box.x + 60, y }, { x: box.x + 200, y: y + 50 });
     await expect(annotations(page)).toHaveCount(1);
+    // Bij Selecteren het vak met een vinger verslepen: het schuift mee.
+    await pages(page).first().focus();
+    await page.keyboard.press('v');
+    const shape = (await annotations(page).first().boundingBox())!;
+    const middle = { x: shape.x + shape.width / 2, y: shape.y + shape.height / 2 };
+    await touchDrag(page, middle, { x: middle.x + 30, y: middle.y + 40 });
+    await expect
+      .poll(async () => (await annotations(page).first().boundingBox())!.x)
+      .toBeGreaterThan(shape.x + 20);
   });
 
   for (const theme of ['light', 'dark'] as const) {

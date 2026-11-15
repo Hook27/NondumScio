@@ -514,6 +514,103 @@ describe('Bewerken en Redigeren: elk een eigen scherm', () => {
   });
 });
 
+describe('Bewerken en Redigeren: slepen, ook met een vinger', () => {
+  // In jsdom staat elke pagina op (0, 0): een punt op het scherm is dan een punt op de pagina in
+  // beeldpunten, en vakken en greepjes staan in dezelfde maat.
+  const overlay = (n = 1) => pageNr(n).querySelector('svg')!;
+  const rectOf = (i = 0) => {
+    const rect = shapes()[i]!.querySelector('rect')!;
+    return ['x', 'y', 'width', 'height'].map((key) => Number(rect.getAttribute(key)));
+  };
+  const handle = (n: number) => document.querySelector<SVGCircleElement>(`[data-handle="${n}"]`)!;
+  const at = (element: Element) => [
+    Number(element.getAttribute('cx')),
+    Number(element.getAttribute('cy')),
+  ];
+  /** Een vinger (of muis) neerzetten, bewegen en optillen. */
+  function slide(target: Element, from: number[], to: number[], pointerType = 'touch') {
+    const init = { button: 0, pointerId: 7, pointerType };
+    fireEvent.pointerDown(target, { ...init, clientX: from[0], clientY: from[1] });
+    fireEvent.pointerMove(overlay(), { ...init, clientX: to[0], clientY: to[1] });
+    fireEvent.pointerUp(overlay(), { ...init, clientX: to[0], clientY: to[1] });
+  }
+
+  it('Redigeren: met een vinger een vak tekenen', async () => {
+    await setup(1, 'redact');
+    fireEvent.click(button(nl.redact.redact));
+    slide(overlay(), [100, 100], [250, 180]);
+    expect(shapes()).toHaveLength(1);
+    expect(rectOf()).toEqual([100, 100, 150, 80]);
+  });
+
+  it('een afgebroken aanraking (de browser gaat scrollen) laat geen half vak achter', async () => {
+    await setup(1, 'redact');
+    fireEvent.click(button(nl.redact.redact));
+    const init = { button: 0, pointerId: 7, pointerType: 'touch' };
+    fireEvent.pointerDown(overlay(), { ...init, clientX: 100, clientY: 100 });
+    fireEvent.pointerMove(overlay(), { ...init, clientX: 160, clientY: 150 });
+    expect(shapes()).toHaveLength(1); // het concept, tijdens het slepen
+    fireEvent.pointerCancel(overlay(), init);
+    expect(shapes()).toHaveLength(0);
+    fireEvent.pointerUp(overlay(), { ...init, clientX: 200, clientY: 200 });
+    expect(shapes()).toHaveLength(0);
+  });
+
+  it('een greepje verslepen maakt het vak groter; het vak verslepen schuift het', async () => {
+    await setup(1, 'redact');
+    fireEvent.click(button(nl.redact.redact));
+    fireEvent.keyDown(pageNr(1), { key: 'Enter' });
+    const [x, y, width, height] = rectOf();
+    // Rechtsonder (greepje 3) 40 naar rechts en 30 omlaag.
+    slide(handle(3), at(handle(3)), [at(handle(3))[0]! + 40, at(handle(3))[1]! + 30]);
+    expect(rectOf()).toEqual([x, y, width! + 40, height! + 30]);
+    // Linksboven (greepje 0) 10 naar links: het vak groeit naar links.
+    slide(handle(0), at(handle(0)), [at(handle(0))[0]! - 10, at(handle(0))[1]!]);
+    expect(rectOf()).toEqual([x! - 10, y, width! + 50, height! + 30]);
+
+    // Bij Selecteren het hele vak verslepen.
+    fireEvent.click(button(nl.redact.select));
+    const box = shapes()[0]!.querySelector('rect')!;
+    slide(box, [x! + 20, y! + 10], [x! + 45, y! + 30]);
+    expect(rectOf()).toEqual([x! + 15, y! + 20, width! + 50, height! + 30]);
+  });
+
+  it('een beweging van minder dan 3 beeldpunten verplaatst een vak niet', async () => {
+    await setup(1, 'redact');
+    fireEvent.click(button(nl.redact.redact));
+    fireEvent.keyDown(pageNr(1), { key: 'Enter' });
+    fireEvent.click(button(nl.redact.select));
+    const before = rectOf();
+    const box = shapes()[0]!.querySelector('rect')!;
+    slide(box, [before[0]! + 5, before[1]! + 5], [before[0]! + 6, before[1]! + 7]);
+    expect(rectOf()).toEqual(before);
+    // Een echte beweging wel, ook met de muis.
+    slide(box, [before[0]! + 5, before[1]! + 5], [before[0]! + 25, before[1]! + 5], 'mouse');
+    expect(rectOf()[0]).toBe(before[0]! + 20);
+  });
+
+  it('een vinger op een greepje of een vak houdt het scrollen tegen; ernaast niet', async () => {
+    await setup(1, 'redact');
+    fireEvent.click(button(nl.redact.redact));
+    fireEvent.keyDown(pageNr(1), { key: 'Enter' });
+    fireEvent.click(button(nl.redact.select));
+    // fireEvent geeft false als de app het standaardgedrag (hier: scrollen) heeft tegengehouden.
+    expect(fireEvent.touchStart(handle(3))).toBe(false);
+    expect(fireEvent.touchStart(shapes()[0]!.querySelector('rect')!)).toBe(false);
+    expect(fireEvent.touchStart(overlay())).toBe(true);
+  });
+
+  it('een vak dat bij deze taak niet te pakken is, houdt het scrollen niet tegen', async () => {
+    const { switchTo } = await setup(1, 'edit');
+    fireEvent.click(button(nl.edit.rect));
+    fireEvent.keyDown(pageNr(1), { key: 'Enter' });
+    await switchTo('redact');
+    // De rechthoek van Bewerken staat in Redigeren alleen in beeld (data-inert).
+    const inert = document.querySelector('[data-inert] rect')!;
+    expect(fireEvent.touchStart(inert)).toBe(true);
+  });
+});
+
 describe('"getekend" betekent echt getekend', () => {
   afterEach(() => {
     drawing.hold = null;
