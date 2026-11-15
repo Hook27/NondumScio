@@ -447,6 +447,21 @@ describe('PDF → Platte tekst: voorbeeld', () => {
     expect(zoom()).toBe(fitted);
   });
 
+  it('het getekende beeld is precies zo hoog als de pagina (niet een afgeronde pixel meer)', async () => {
+    // Afgerond getekend (zoals op een scherm met schaal 150 %) is het beeld net iets hoger of lager
+    // dan de pagina; liep het een pixel over, dan kreeg het voorbeeld een eigen schuifbalk, werd het
+    // smaller, tekende het opnieuw, en zo heen en weer (audit F19).
+    await open('brief.pdf');
+    const box = document.querySelector<HTMLElement>('.plaintext-preview__page')!;
+    const canvas = await waitFor(() => {
+      const found = document.querySelector<HTMLCanvasElement>('canvas.plaintext-preview__canvas');
+      expect(found).not.toBeNull();
+      return found!;
+    });
+    expect(canvas.style.height).toBe(box.style.height);
+    expect(canvas.style.width).toBe(box.style.width);
+  });
+
   it('meldt het als een pagina niet getekend kan worden', async () => {
     vi.mocked(renderPage).mockRejectedValueOnce(new Error('kapot'));
     await open('brief.pdf');

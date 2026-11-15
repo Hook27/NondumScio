@@ -1211,6 +1211,7 @@ function PageView({ doc }: { doc: TextDoc }) {
               <CanvasBox
                 canvas={drawn.canvas}
                 width={widths.css}
+                height={(widths.css * size.h) / size.w}
                 label={format(v.canvas, { n: page })}
               />
             )}
@@ -1222,24 +1223,32 @@ function PageView({ doc }: { doc: TextDoc }) {
   );
 }
 
-/** Een getekend canvas op zijn weergavebreedte (getekend is het fijner, zie `targetWidths`). */
+/**
+ * Een getekend canvas op de maat van de pagina (getekend is het fijner, zie `targetWidths`). Ook de
+ * hoogte vast: uit de afgeronde tekenmaat volgt een hoogte die net iets afwijkt, en een pixel te
+ * hoog liet het voorbeeld overlopen. Dan kreeg het een eigen schuifbalk, werd het smaller, tekende
+ * het opnieuw, en zo heen en weer (audit F19, op een scherm met schaal 150 %).
+ */
 function CanvasBox({
   canvas,
   width,
+  height,
   label,
 }: {
   canvas: HTMLCanvasElement;
   width: number;
+  height: number;
   label: string;
 }) {
   const box = useRef<HTMLDivElement>(null);
   useLayoutEffect(() => {
     canvas.className = 'plaintext-preview__canvas';
     canvas.style.width = `${width}px`;
+    canvas.style.height = `${height}px`;
     canvas.setAttribute('role', 'img');
     canvas.setAttribute('aria-label', label);
     box.current?.replaceChildren(canvas);
-  }, [canvas, width, label]);
+  }, [canvas, width, height, label]);
   return <div ref={box} />;
 }
 
