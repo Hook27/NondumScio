@@ -65,13 +65,18 @@ export type Row =
   | { kind: 'removed'; a: Unit }
   | { kind: 'added'; b: Unit };
 
-type Op =
+/** Eén stap van A naar B: gelijk, weg (alleen in A) of erbij (alleen in B). */
+export type Op =
   { op: 'eq'; ai: number; bi: number } | { op: 'del'; ai: number } | { op: 'add'; bi: number };
 
 type Entry =
   { type: 'equal'; a: Unit; b: Unit } | { type: 'removed'; a: Unit } | { type: 'added'; b: Unit };
 
-/** Boven dit aantal cellen (stukken A × stukken B) wordt alleen op volgorde vergeleken. */
+/**
+ * Boven dit aantal cellen (stukken A × stukken B) is één volledige vergelijking te groot (4 miljoen
+ * cellen is 16 MB). Dan wordt eerst geankerd op unieke gelijke stukken (zie `alignKeys`); alleen een
+ * tussenstuk dat dan nog te groot is, wordt op volgorde vergeleken.
+ */
 export const MAX_CELLS = 4_000_000;
 
 /** Boven dit aantal (woorden A × woorden B) worden binnen een stuk geen woorden gemarkeerd. */
@@ -189,6 +194,110 @@ function simpleOps(keysA: readonly string[], keysB: readonly string[]): Op[] {
   return ops;
 }
 
+/**
+ * De ankers: sleutels die in A én in B precies één keer voorkomen, en daarvan de langste reeks die
+ * in A en B in dezelfde volgorde staat (de langste stijgende reeks van hun plaatsen in B). Als
+ * plaatsen [in A, in B], van voor naar achter.
+ */
+function uniqueAnchors(keysA: readonly string[], keysB: readonly string[]): [number, number][] {
+  const seen = new Map<string, { a: number; b: number; inA: number; inB: number }>();
+  keysA.forEach((key, i) => {
+    const entry = seen.get(key) ?? { a: i, b: -1, inA: 0, inB: 0 };
+    entry.inA++;
+    seen.set(key, entry);
+  });
+  keysB.forEach((key, j) => {
+    const entry = seen.get(key);
+    if (!entry) return;
+    entry.inB++;
+    entry.b = j;
+  });
+  const pairs = [...seen.values()]
+    .filter((entry) => entry.inA === 1 && entry.inB === 1)
+    .map((entry): [number, number] => [entry.a, entry.b])
+    .sort((x, y) => x[0] - y[0]);
+  // De langste stijgende reeks in de plaatsen in B (geduldsorteren, n log n).
+  const tails: number[] = [];
+  const previous = new Array<number>(pairs.length).fill(-1);
+  pairs.forEach(([, b], index) => {
+    let lo = 0;
+    let hi = tails.length;
+    while (lo < hi) {
+      const mid = (lo + hi) >> 1;
+      if (pairs[tails[mid]!]![1] < b) lo = mid + 1;
+      else hi = mid;
+    }
+    if (lo > 0) previous[index] = tails[lo - 1]!;
+    tails[lo] = index;
+  });
+  const anchors: [number, number][] = [];
+  for (let k = tails.length ? tails[tails.length - 1]! : -1; k >= 0; k = previous[k]!) {
+    anchors.push(pairs[k]!);
+  }
+  return anchors.reverse();
+}
+
+/**
+ * De stappen van A naar B. Klein genoeg (A × B hooguit `maxCells`): de volledige vergelijking
+ * (langste gemeenschappelijke reeks), zoals altijd. Te groot: eerst het gelijke begin en einde eraf,
+ * dan ankeren op unieke gelijke stukken en elk tussenstuk apart zo vergelijken. Alleen een tussenstuk
+ * zonder ankers dat nog te groot is, wordt op volgorde vergeleken (`fallback`).
+ */
+export function alignKeys(
+  keysA: readonly string[],
+  keysB: readonly string[],
+  maxCells = MAX_CELLS,
+): { ops: Op[]; fallback: boolean } {
+  if (keysA.length * keysB.length <= maxCells) {
+    return { ops: lcsOps(keysA, keysB), fallback: false };
+  }
+  let lo = 0;
+  while (lo < keysA.length && lo < keysB.length && keysA[lo] === keysB[lo]) lo++;
+  let endA = keysA.length;
+  let endB = keysB.length;
+  while (endA > lo && endB > lo && keysA[endA - 1] === keysB[endB - 1]) {
+    endA--;
+    endB--;
+  }
+  const midA = keysA.slice(lo, endA);
+  const midB = keysB.slice(lo, endB);
+  const ops: Op[] = [];
+  for (let i = 0; i < lo; i++) ops.push({ op: 'eq', ai: i, bi: i });
+  /** Stappen van een stuk, verschoven naar hun plaats in het geheel. */
+  const add = (part: Op[], ai: number, bi: number) => {
+    for (const op of part) {
+      if (op.op === 'eq') ops.push({ op: 'eq', ai: op.ai + ai, bi: op.bi + bi });
+      else if (op.op === 'del') ops.push({ op: 'del', ai: op.ai + ai });
+      else ops.push({ op: 'add', bi: op.bi + bi });
+    }
+  };
+  let fallback = false;
+  if (midA.length * midB.length <= maxCells) {
+    add(lcsOps(midA, midB), lo, lo);
+  } else {
+    const anchors = uniqueAnchors(midA, midB);
+    if (anchors.length === 0) {
+      add(simpleOps(midA, midB), lo, lo);
+      fallback = true;
+    } else {
+      let ai = 0;
+      let bi = 0;
+      for (const [x, y] of [...anchors, [midA.length, midB.length] as [number, number]]) {
+        const part = alignKeys(midA.slice(ai, x), midB.slice(bi, y), maxCells);
+        fallback ||= part.fallback;
+        add(part.ops, lo + ai, lo + bi);
+        if (x < midA.length) ops.push({ op: 'eq', ai: lo + x, bi: lo + y });
+        ai = x + 1;
+        bi = y + 1;
+      }
+    }
+  }
+  for (let k = 0; k < keysA.length - endA; k++) {
+    ops.push({ op: 'eq', ai: endA + k, bi: endB + k });
+  }
+  return { ops, fallback };
+}
+
 /** Snijdt het gelijke begin en einde eraf en vergelijkt alleen het middenstuk. */
 function diffEntries(
   itemsA: readonly Unit[],
@@ -209,8 +318,7 @@ function diffEntries(
   const midB = itemsB.slice(lo, hiB);
   const keysA = midA.map((it) => it.key);
   const keysB = midB.map((it) => it.key);
-  const fallback = midA.length * midB.length > MAX_CELLS;
-  const ops = fallback ? simpleOps(keysA, keysB) : lcsOps(keysA, keysB);
+  const { ops, fallback } = alignKeys(keysA, keysB);
 
   const entries: Entry[] = [];
   for (let i = 0; i < lo; i++) entries.push({ type: 'equal', a: itemsA[i]!, b: itemsB[i]! });
