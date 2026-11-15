@@ -338,6 +338,19 @@ export const AnnotatePage = memo(function AnnotatePage({
     else controller.setDraft(null);
   };
 
+  /**
+   * Een vinger op een greepje of op een vak dat je kunt verslepen: dan niet de pagina laten scrollen
+   * (anders breekt de browser het slepen af). `touch-action` helpt hier niet: Chromium kijkt bij
+   * aanraken alleen naar het `<svg>` zelf, niet naar wat erin staat; en het hele `<svg>` op `none`
+   * zetten zou bij Selecteren het scrollen met een vinger onmogelijk maken. Elders op de pagina
+   * scrolt een vinger dus gewoon, ook op een vak dat bij deze taak niet te pakken is (dat heeft geen
+   * `data-annotation`, alleen `data-inert`).
+   */
+  const onTouchStart = (event: TouchEvent) => {
+    if ((event.target as Element).closest('[data-handle], [data-annotation]'))
+      event.preventDefault();
+  };
+
   /* Toetsenbord */
 
   const onAnnotationKey = (event: KeyboardEvent, annotation: Annotation) => {
@@ -447,6 +460,7 @@ export const AnnotatePage = memo(function AnnotatePage({
         width={width}
         height={height}
         viewBox={`0 0 ${width} ${height}`}
+        onTouchStart={onTouchStart}
         onPointerDown={onPointerDown}
         onPointerMove={onPointerMove}
         onPointerUp={onPointerUp}

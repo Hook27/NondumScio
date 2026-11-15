@@ -112,3 +112,35 @@ export const warningColor = (page: Page): Promise<string> =>
     probe.remove();
     return color;
   });
+
+/**
+ * Slepen met een vinger, zoals op een aanraakscherm. Playwright kan met `touchscreen` alleen tikken;
+ * daarom gaan de aanrakingen via Chromium zelf (DevTools-protocol). Zo beslist de browser net als op
+ * een telefoon of hij gaat scrollen (en het slepen dan afbreekt) of de app het slepen laat doen.
+ */
+export async function touchDrag(
+  page: Page,
+  from: { x: number; y: number },
+  to: { x: number; y: number },
+  steps = 8,
+) {
+  const cdp = await page.context().newCDPSession(page);
+  const at = ({ x, y }: { x: number; y: number }) => [{ x, y, id: 1, radiusX: 1, radiusY: 1 }];
+  await cdp.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: at(from) });
+  for (let i = 1; i <= steps; i += 1) {
+    const point = {
+      x: from.x + ((to.x - from.x) * i) / steps,
+      y: from.y + ((to.y - from.y) * i) / steps,
+    };
+    await cdp.send('Input.dispatchTouchEvent', { type: 'touchMove', touchPoints: at(point) });
+  }
+  await cdp.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
+  await cdp.detach();
+}
+
+/** Hoe ver de pagina en het werkvak gescrold zijn (om te zien of een vinger heeft gescrold). */
+export const scrolled = (page: Page) =>
+  page.evaluate(() => [
+    window.scrollY,
+    ...[...document.querySelectorAll('[data-scroll-root]')].map((element) => element.scrollTop),
+  ]);

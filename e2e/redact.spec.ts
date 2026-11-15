@@ -2,7 +2,7 @@ import AxeBuilder from '@axe-core/playwright';
 import { readFileSync } from 'node:fs';
 import { expect, test, type Page } from '@playwright/test';
 import { PDFDocument, PDFName, PDFRawStream, StandardFonts, rgb } from 'pdf-lib';
-import { downloadVia, messages, openPage } from './helpers';
+import { downloadVia, messages, openPage, scrolled, touchDrag } from './helpers';
 import {
   download,
   drag,
@@ -11,6 +11,7 @@ import {
   linkTargets,
   pages,
   pixels,
+  pointOn,
   textOf,
 } from './redact-helpers';
 
@@ -441,6 +442,68 @@ test.describe('redigeren: toegankelijkheid en telefoon', () => {
     expect(text[0]).toContain('OPENBAAR een');
     expect(text[1]!.trim()).toBe('');
     expect(text[2]).toContain('OPENBAAR drie');
+  });
+
+  test('met een vinger: een vak tekenen, zonder dat de pagina scrolt (aanraken)', async ({
+    page,
+    isMobile,
+  }) => {
+    test.skip(!isMobile, 'Alleen voor de telefoon (aanraakscherm)');
+    await openRedact(page);
+    await page.keyboard.press('r');
+    await pages(page).first().scrollIntoViewIfNeeded();
+    const before = await scrolled(page);
+    await touchDrag(page, await pointOn(page, 0, 100, 150), await pointOn(page, 0, 450, 350));
+    await expect(boxes(page)).toHaveCount(1);
+    expect(await scrolled(page)).toEqual(before);
+    // Het vak ligt waar de vinger ging: van ongeveer (100, 150) tot (450, 350) op de pagina.
+    const box = (await boxes(page).first().boundingBox())!;
+    const start = await pointOn(page, 0, 100, 150);
+    const end = await pointOn(page, 0, 450, 350);
+    expect(Math.abs(box.x - start.x)).toBeLessThan(4);
+    expect(Math.abs(box.y + box.height - end.y)).toBeLessThan(4);
+  });
+
+  test('met een vinger een greepje verslepen: het vak wordt groter (aanraken)', async ({
+    page,
+    isMobile,
+  }) => {
+    test.skip(!isMobile, 'Alleen voor de telefoon (aanraakscherm)');
+    await openRedact(page);
+    // Een vak met het toetsenbord (in het midden van de pagina), dan Selecteren: de greepjes staan er.
+    await page.keyboard.press('r');
+    await pages(page).first().focus();
+    await page.keyboard.press('Enter');
+    await expect(boxes(page)).toHaveCount(1);
+    await pages(page).first().focus();
+    await page.keyboard.press('v');
+    const corner = page.locator('[data-handle="3"]');
+    await corner.scrollIntoViewIfNeeded();
+    const before = (await boxes(page).first().boundingBox())!;
+    const handle = (await corner.boundingBox())!;
+    const from = { x: handle.x + handle.width / 2, y: handle.y + handle.height / 2 };
+    await touchDrag(page, from, { x: from.x + 40, y: from.y + 60 });
+    await expect
+      .poll(async () => (await boxes(page).first().boundingBox())!.height)
+      .toBeGreaterThan(before.height + 40);
+    const after = (await boxes(page).first().boundingBox())!;
+    expect(after.width).toBeGreaterThan(before.width + 25);
+    expect(Math.abs(after.x - before.x)).toBeLessThan(2);
+
+    // Het hele vak verslepen met een vinger: het schuift mee, de pagina scrolt niet.
+    const scroll = await scrolled(page);
+    const middle = { x: after.x + after.width / 2, y: after.y + after.height / 2 };
+    await touchDrag(page, middle, { x: middle.x - 30, y: middle.y + 50 });
+    await expect
+      .poll(async () => (await boxes(page).first().boundingBox())!.y)
+      .toBeGreaterThan(after.y + 40);
+    expect(await scrolled(page)).toEqual(scroll);
+
+    // Naast het vak, bij Selecteren: daar scrolt een vinger de pagina gewoon.
+    const sheet = (await pages(page).first().boundingBox())!;
+    const beside = { x: sheet.x + 20, y: middle.y };
+    await touchDrag(page, beside, { x: beside.x, y: beside.y - 120 });
+    await expect.poll(() => scrolled(page)).not.toEqual(scroll);
   });
 
   test('de uitleg staat bij de ⓘ-knop en noemt wat wel en niet wordt overgenomen', async ({
