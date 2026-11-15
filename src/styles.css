@@ -3676,10 +3676,6 @@ h1 {
     grid-template-columns: minmax(15rem, 18rem) minmax(0, 1fr);
   }
 
-  .workspace.triage .workspace__view {
-    scrollbar-gutter: stable;
-  }
-
   /* Elk vak is het kader voor wat erin absoluut staat (zoals tekst alleen voor schermlezers):
      anders telt de browser dat mee voor de hele pagina, en krijgt de pagina zelf een schuifbalk. */
   .workspace.triage .workspace__tools,
@@ -3694,18 +3690,19 @@ h1 {
     z-index: 2;
   }
 
-  /* Altijd ruimte voor de schuifbalk: anders wordt het vak smaller als hij verschijnt, tekent het
-     beeld opnieuw (passend), kan hij weer verdwijnen, en zo heen en weer. */
-  .workspace.compare .workspace__view {
-    scrollbar-gutter: stable;
-  }
-
   /* Een beetje ruimte rondom, zodat het focuskader niet wordt afgeknipt. */
   .workspace__tools,
   .workspace__view {
     min-height: 0;
     overflow-y: auto;
     padding: 4px 6px 1rem 4px;
+  }
+
+  /* In elk rechtervak altijd ruimte voor de schuifbalk: anders wordt het vak smaller als hij
+     verschijnt, tekent het de pagina's opnieuw (passend), kan hij weer verdwijnen, en zo heen en
+     weer. Het linkervak niet: daar zou het de knoppen krapper maken. */
+  .workspace__view {
+    scrollbar-gutter: stable;
   }
 
   .workspace__view .pane-head {
