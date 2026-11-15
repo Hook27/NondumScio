@@ -1,3 +1,4 @@
+import { boundary } from '../text/pages';
 import { analyseRunning, pageText, type PageText } from './layout';
 
 export { GAP_FACTOR } from './layout';
@@ -45,8 +46,15 @@ export const DEFAULT_OPTIONS: CompareOptions = {
   gapFactor: 1.3,
 };
 
-/** Eén stuk tekst om te vergelijken, met de pagina waar het stond. */
-export type Unit = { page: number; val: string; key: string };
+/**
+ * Eén stuk tekst om te vergelijken, met de pagina waar het staat; `pageEnd` als het over een
+ * pagina-overgang doorloopt (de pagina waar het eindigt).
+ */
+export type Unit = { page: number; pageEnd?: number; val: string; key: string };
+
+/** De pagina('s) van een stuk: "3", of "3–4" als het over de overgang doorloopt. */
+export const pageSpan = (unit: Unit): string =>
+  unit.pageEnd === undefined ? String(unit.page) : `${unit.page}–${unit.pageEnd}`;
 
 /** Een stukje tekst binnen een gewijzigd stuk; `mark` als het in de andere versie niet staat. */
 export type Segment = { text: string; mark: boolean };
@@ -81,7 +89,12 @@ function splitSentences(paragraph: string): string[] {
   return paragraph.split(/(?<=[.!?…])\s+(?=["'“«([]?[A-ZÀ-Þ0-9])/);
 }
 
-/** De tekst van alle pagina's in stukken; elk stuk onthoudt zijn pagina, om het terug te vinden. */
+/**
+ * De tekst van alle pagina's in stukken; elk stuk onthoudt zijn pagina, om het terug te vinden. Per
+ * alinea en per zin loopt een stuk over een pagina-overgang door als de zin doorloopt (dezelfde
+ * regel als in Platte tekst, `boundary`): anders zou een pagina-einde dat in B één regel verschuift,
+ * elke alinea over de overgang "gewijzigd" maken. Per regel niet: daar zijn de regels de stukken.
+ */
 export function buildUnits(pages: readonly PageText[], opts: CompareOptions): Unit[] {
   const layout = {
     strip: opts.strip,
@@ -101,10 +114,29 @@ export function buildUnits(pages: readonly PageText[], opts: CompareOptions): Un
         : opts.level === 'sentence'
           ? text.split(/\n{2,}/).flatMap(splitSentences)
           : text.split(/\n{2,}/);
-    for (const part of parts) {
-      const val = part.trim();
-      if (val) units.push({ page: page.no, val, key: normKey(val, opts) });
+    const fresh = parts.map((part) => part.trim()).filter(Boolean);
+    // Het laatste stuk tot nu toe komt van de vorige gelezen pagina: loopt de zin door?
+    const previous = units[units.length - 1];
+    if (opts.level !== 'line' && previous && fresh.length > 0) {
+      const how = boundary(previous.val, fresh[0]!, 'auto', {
+        crossPage: true,
+        dehyphen: opts.dehyphen,
+      });
+      if (how !== 'break') {
+        const val =
+          how === 'hyphen'
+            ? `${previous.val.slice(0, -1)}${fresh[0]}`
+            : `${previous.val} ${fresh[0]}`;
+        units[units.length - 1] = {
+          page: previous.page,
+          pageEnd: page.no,
+          val,
+          key: normKey(val, opts),
+        };
+        fresh.shift();
+      }
     }
+    for (const val of fresh) units.push({ page: page.no, val, key: normKey(val, opts) });
   });
   return units;
 }

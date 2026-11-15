@@ -85,6 +85,15 @@ const DOCS: Record<string, PageText[] | Error> = {
     page(1, [...SAME, 'De huur is 500 euro per maand.', 'Deze alinea vervalt straks.']),
   ],
   'scan.pdf': [page(1, []), page(2, ['Alleen hier tekst.'])],
+  // Een alinea over de pagina-overgang, met in B één woord anders.
+  'over-a.pdf': [
+    page(1, ['Het begin.', ['Deze alinea loopt over het einde', 'van de']]),
+    page(2, [['pagina door en stopt hier.'], 'Het slot.']),
+  ],
+  'over-b.pdf': [
+    page(1, ['Het begin.', ['Deze alinea loopt over het einde']]),
+    page(2, [['van de pagina door en stopt daar.'], 'Het slot.']),
+  ],
   'word-a.pdf': [wordPage(WORD)],
   'word-b.pdf': [wordPage([WORD[0]!, [WORD[1]![0]!, 'een witregel van 6 pt ertussen.'], WORD[2]!])],
   'kop-a.pdf': [1, 2].map((no) => page(no, ['Gewone tekst op de pagina.'], 'Rapport 2026')),
@@ -299,6 +308,18 @@ describe('PDF’s vergelijken', () => {
     expect(screen.getByText(c.noDiffNote)).toBeTruthy();
     expect(screen.queryByRole('table')).toBeNull();
     expect(screen.getByText('0 gewijzigd')).toBeTruthy();
+  });
+
+  it('een alinea over de pagina-overgang is één stuk, met de pagina’s 1–2', async () => {
+    setup();
+    choose('a', 'over-a.pdf', 'over-b.pdf');
+    const table = await screen.findByRole('table');
+    expect(screen.getByText('1 gewijzigd')).toBeTruthy();
+    const changed = table.querySelector('.compare-diff__row--changed')!;
+    expect(within(changed as HTMLElement).getAllByText('p1–2')).toHaveLength(2);
+    expect(within(changed as HTMLElement).getAllByText('Pagina’s 1–2')).toHaveLength(2);
+    expect(changed.querySelector('del')!.textContent).toBe('hier.');
+    expect(changed.querySelector('ins')!.textContent).toBe('daar.');
   });
 
   it('waarschuwt voor pagina’s zonder tekstlaag', async () => {

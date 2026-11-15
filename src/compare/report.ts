@@ -1,7 +1,7 @@
 import { format, plural } from '../i18n/format';
 import type { Messages } from '../i18n/nl';
 import { formatFileSize } from '../lib/format';
-import { countRows, type CompareOptions, type Row } from './diff';
+import { countRows, pageSpan, type CompareOptions, type Row } from './diff';
 import type { ProfileRow } from './profile';
 
 /**
@@ -107,8 +107,8 @@ export function buildReport(input: ReportInput): string {
     let j = i;
     while (j < rows.length && keep[j]) j++;
     const first = rows[i]!;
-    const pageA = first.kind === 'added' ? first.b.page : first.a.page;
-    const pageB = first.kind === 'removed' ? first.a.page : first.b.page;
+    const pageA = pageSpan(first.kind === 'added' ? first.b : first.a);
+    const pageB = pageSpan(first.kind === 'removed' ? first.a : first.b);
     lines.push(format(r.hunk, { a: pageA, b: pageB }));
     for (const row of rows.slice(i, j)) {
       if (row.kind === 'equal') lines.push(`  ${row.a.val}`);

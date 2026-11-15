@@ -252,6 +252,31 @@ test.describe('PDF’s vergelijken', () => {
     await expect(page.getByText(c.noDiff)).toBeVisible(SLOW);
   });
 
+  test('een pagina-einde dat in B een regel eerder valt: geen verschillen', async ({ page }) => {
+    // Dezelfde tekst; alleen breekt de alinea over de overgang in B eerder af.
+    const start = [
+      'Partijen komen het volgende overeen.',
+      'De woning ligt aan de Voorbeeldstraat.',
+    ];
+    const end = ['De opzegtermijn is een maand.', 'Huisdieren zijn niet toegestaan.'];
+    const a = [
+      [...start, 'Deze alinea loopt over het einde van de'],
+      ['pagina door en stopt pas hier.', ...end],
+    ];
+    const b = [
+      [...start, 'Deze alinea loopt over het einde'],
+      ['van de pagina door en stopt pas hier.', ...end],
+    ];
+    await openPage(page, '/#/advanced/compare', { lang: 'nl' });
+    await page
+      .locator('#compare-file-a')
+      .setInputFiles([await file('a.pdf', a), await file('b.pdf', b)]);
+    await expect(page.getByText(c.noDiff)).toBeVisible(SLOW);
+    // Per regel vergeleken zijn het wél andere regels: daar wordt niets samengevoegd.
+    await page.getByRole('button', { name: c.levels.line.label }).click();
+    await expect(page.getByRole('table')).toBeVisible();
+  });
+
   test('een andere PDF die niet opent: de vorige en de vergelijking blijven staan', async ({
     page,
   }) => {

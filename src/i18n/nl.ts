@@ -794,6 +794,7 @@ export const nl = {
     kinds: { added: 'Toegevoegd', removed: 'Verwijderd', changed: 'Gewijzigd' },
     page: 'p{n}',
     pageLabel: 'Pagina {n}',
+    pagesLabel: 'Pagina’s {n}',
     noDiff: 'Geen tekstverschillen gevonden.',
     noDiffNote: 'Dit zegt niets over afbeeldingen, stempels, handtekeningen of opmaak.',
     fallback:

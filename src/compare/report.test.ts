@@ -128,6 +128,20 @@ describe('buildReport', () => {
     );
   });
 
+  it('een stuk over een pagina-overgang: de pagina’s van begin tot eind', () => {
+    const hunk = (rows: Row[]) =>
+      buildReport(input({ rows }))
+        .split('\n')
+        .find((l) => l.startsWith('@@'));
+    const spanning = (val: string): Unit => ({ page: 3, pageEnd: 4, val, key: val });
+    expect(hunk([{ kind: 'removed', a: spanning('Y.') }])).toBe(
+      '@@ A pagina 3–4 | B pagina 3–4 @@',
+    );
+    expect(
+      hunk([{ kind: 'changed', a: spanning('X.'), b: unit(5, 'Z.'), partsA: [], partsB: [] }]),
+    ).toBe('@@ A pagina 3–4 | B pagina 5 @@');
+  });
+
   it('zegt het als er geen tekstverschillen zijn', () => {
     const report = buildReport(input({ rows: [equal(1, 'Een.')] }));
     expect(
