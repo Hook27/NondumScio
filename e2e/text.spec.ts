@@ -170,11 +170,18 @@ const ink = (page: Page) =>
     return n;
   });
 
+/**
+ * Opent Platte tekst met het artikel. Geeft het bestand terug: wie dezelfde PDF nog eens wil
+ * openen, gebruikt dat (pdf-lib zet de tijd in een nieuwe PDF, dus een nieuw artikel is een andere
+ * PDF voor de vingerafdruk).
+ */
 const openArticle = async (page: Page, pages = 2, options?: { lying?: boolean }) => {
   await openPage(page, '/#/advanced/text', { lang: 'nl' });
   await withoutPageMarks(page);
-  await page.locator('#plaintext-file').setInputFiles(await article('artikel.pdf', pages, options));
+  const file = await article('artikel.pdf', pages, options);
+  await page.locator('#plaintext-file').setInputFiles(file);
   await expect(page.locator('canvas.plaintext-preview__canvas')).toBeVisible(SLOW);
+  return file;
 };
 
 const extract = (page: Page) => page.getByRole('button', { name: p.extract }).click();
@@ -525,8 +532,8 @@ test.describe('PDF → Platte tekst: vakken per pagina en bewaren', () => {
       .toContain(`Proefartikel over leesvakken\n\n${column('Linker', 3).join(' ')}`);
   });
 
-  test('onthoudt de vakken per bestandsnaam, ook na herladen', async ({ page }) => {
-    await openArticle(page, 2);
+  test('onthoudt de vakken van deze PDF, ook na herladen', async ({ page }) => {
+    const file = await openArticle(page, 2);
     await zones(page).getByRole('checkbox', { name: z.use }).check();
     await draw(page, RIGHT_BOX);
     await page
@@ -535,7 +542,7 @@ test.describe('PDF → Platte tekst: vakken per pagina en bewaren', () => {
       .uncheck();
 
     await page.reload();
-    await page.locator('#plaintext-file').setInputFiles(await article('artikel.pdf', 2));
+    await page.locator('#plaintext-file').setInputFiles(file);
     await expect(
       page.locator('section.plaintext-slot').getByText(/instellingen hersteld$/),
     ).toBeVisible(SLOW);
@@ -548,6 +555,33 @@ test.describe('PDF → Platte tekst: vakken per pagina en bewaren', () => {
     await expect(output(page)).toHaveValue(
       `${column('Rechter', 1).join(' ')}\n\n${column('Rechter', 2).join(' ')}`,
     );
+  });
+
+  test('een andere PDF met dezelfde naam: niets vanzelf, wel "Toch gebruiken"', async ({
+    page,
+  }) => {
+    await openArticle(page, 2);
+    await zones(page).getByRole('checkbox', { name: z.use }).check();
+    await draw(page, RIGHT_BOX);
+    await page.getByRole('button', { name: p.clear, exact: true }).click();
+
+    // Een ander artikel.pdf (drie pagina's): de vakken van het eerste komen niet vanzelf.
+    await page.locator('#plaintext-file').setInputFiles(await article('artikel.pdf', 3));
+    const note = page.locator('.plaintext-slot__other');
+    await expect(note).toContainText(p.other.text, SLOW);
+    expect(await note.evaluate((el) => getComputedStyle(el).color)).toBe(await warningColor(page));
+    await expect(page.getByText(/instellingen hersteld/)).toHaveCount(0);
+    await expect(zones(page).getByRole('checkbox', { name: z.use })).not.toBeChecked();
+    await axe(page);
+
+    // Toch gebruiken: het vak en "Leesvakken gebruiken" komen terug.
+    await note.getByRole('button', { name: p.other.use }).click();
+    await expect(note).toHaveCount(0);
+    await expect(zones(page).getByRole('checkbox', { name: z.use })).toBeChecked();
+    await expect(labels(page)).toHaveText(['Vak 1']);
+    await expect(
+      page.locator('section.plaintext-slot').getByText(/instellingen hersteld$/),
+    ).toBeVisible();
   });
 
   test('opslaan en laden als .json, ook een bestand van de losse extractor', async ({ page }) => {
@@ -593,7 +627,7 @@ test.describe('PDF → Platte tekst: vakken per pagina en bewaren', () => {
   });
 
   test('ander JSON, zoals de database van Slim hernoemen, verandert niets', async ({ page }) => {
-    await openArticle(page, 2);
+    const file = await openArticle(page, 2);
     await zones(page).getByRole('checkbox', { name: z.use }).check();
     await draw(page, LEFT_BOX);
     await openBlock(page, sv.title);
@@ -614,7 +648,7 @@ test.describe('PDF → Platte tekst: vakken per pagina en bewaren', () => {
     );
     // Ook na herladen: het verkeerde bestand is niet onthouden.
     await page.reload();
-    await page.locator('#plaintext-file').setInputFiles(await article('artikel.pdf', 2));
+    await page.locator('#plaintext-file').setInputFiles(file);
     await expect(labels(page)).toHaveText(['Vak 1'], SLOW);
   });
 
@@ -875,9 +909,12 @@ test.describe('PDF → Platte tekst: documentkop en metadata', () => {
 
   const field = (page: Page, name: string) => page.getByRole('textbox', { name, exact: true });
 
-  /** De brief openen en het blok openklappen (het staat dicht, zoals in de extractor). */
-  async function openLetter(page: Page) {
-    await page.locator('#plaintext-file').setInputFiles(await letterWithMeta());
+  /**
+   * De brief openen en het blok openklappen (het staat dicht, zoals in de extractor). Met `file`
+   * nog eens dezelfde PDF (een nieuwe brief heeft een andere tijd erin, dus een andere afdruk).
+   */
+  async function openLetter(page: Page, file?: Awaited<ReturnType<typeof letterWithMeta>>) {
+    await page.locator('#plaintext-file').setInputFiles(file ?? (await letterWithMeta()));
     await expect(page.locator('canvas.plaintext-preview__canvas')).toBeVisible(SLOW);
     await expect(field(page, h.fields.title)).toBeHidden();
     await page.locator('summary', { hasText: h.title }).click();
@@ -913,11 +950,12 @@ test.describe('PDF → Platte tekst: documentkop en metadata', () => {
     page,
   }) => {
     await openPage(page, '/#/advanced/text', { lang: 'nl' });
-    let block = await openLetter(page);
+    const file = await letterWithMeta();
+    let block = await openLetter(page, file);
     await block.getByRole('checkbox', { name: h.use }).check();
     await field(page, h.fields.subject).fill('Huurverhoging');
     await page.reload();
-    block = await openLetter(page);
+    block = await openLetter(page, file);
     await expect(page.getByText(/instellingen hersteld/)).toBeVisible();
     await expect(field(page, h.fields.subject)).toHaveValue('Huurverhoging');
     await expect(field(page, h.fields.title)).toHaveValue('Nieuwe huurovereenkomst');

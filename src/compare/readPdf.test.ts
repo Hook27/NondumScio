@@ -69,6 +69,34 @@ async function croppedPdf() {
 const TOP: Zone = { x0: 0, y0: 0, x1: 1, y1: 0.5 };
 const BOTTOM: Zone = { x0: 0, y0: 0.5, x1: 1, y1: 1 };
 
+describe('readPdf: vingerafdruk van de inhoud', () => {
+  it('met `fingerprint`: de SHA-256 van de bytes, zoals elk ander programma hem rekent', async () => {
+    const file = await croppedPdf();
+    const bytes = new Uint8Array(await file.arrayBuffer());
+    const { createHash } = await import('node:crypto');
+    const expected = createHash('sha256').update(bytes).digest('hex');
+    const read = await readPdf(file, undefined, { thumb: false, fingerprint: true });
+    expect(read.fingerprint).toBe(expected);
+    // De tekst is er gewoon ook: de bytes zijn vóór pdf.js geteld, niet in plaats van.
+    expect(read.pages[0]!.items).toHaveLength(3);
+  });
+
+  it('zonder `fingerprint`: geen afdruk', async () => {
+    const read = await readPdf(await croppedPdf(), undefined, { thumb: false });
+    expect(read.fingerprint).toBeNull();
+  });
+
+  it('één byte anders: een andere afdruk', async () => {
+    const file = await croppedPdf();
+    const bytes = new Uint8Array(await file.arrayBuffer());
+    // Een spatie extra achter %%EOF: dezelfde PDF voor pdf.js, maar andere bytes.
+    const other = new File([bytes as BlobPart, ' '], 'uitsnede.pdf', { type: 'application/pdf' });
+    const a = await readPdf(file, undefined, { thumb: false, fingerprint: true });
+    const b = await readPdf(other, undefined, { thumb: false, fingerprint: true });
+    expect(a.fingerprint).not.toBe(b.fingerprint);
+  });
+});
+
 describe('readPdf: tekst staat waar je hem ziet', () => {
   it.each([0, 90, 180, 270] as const)(
     'een pagina met draai %i°: de regels in de goede volgorde, en in het vak waar ze staan',

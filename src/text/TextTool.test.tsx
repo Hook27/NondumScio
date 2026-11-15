@@ -130,15 +130,30 @@ const INFO: Record<string, DocInfo> = {
 /** Een "poortje" om het lezen van een bestand even vast te houden. */
 const gates: Record<string, Promise<void>> = {};
 
+// De pagina's horen bij de naam; de vingerafdruk bij de inhoud van het bestand (zo kan een test
+// een andere PDF met dezelfde naam maken).
 vi.mock('../compare/readPdf', () => ({
-  readPdf: vi.fn(async (file: File, onProgress?: (done: number, total: number) => void) => {
-    const pages = DOCS[file.name]!;
-    if (!(pages instanceof Error)) onProgress?.(0, pages.length);
-    if (gates[file.name]) await gates[file.name];
-    if (pages instanceof Error) throw pages;
-    onProgress?.(pages.length, pages.length);
-    return { pageCount: pages.length, pages, info: INFO[file.name] ?? {}, thumb: null };
-  }),
+  readPdf: vi.fn(
+    async (
+      file: File,
+      onProgress?: (done: number, total: number) => void,
+      options?: { fingerprint?: boolean },
+    ) => {
+      const pages = DOCS[file.name]!;
+      if (!(pages instanceof Error)) onProgress?.(0, pages.length);
+      if (gates[file.name]) await gates[file.name];
+      if (pages instanceof Error) throw pages;
+      onProgress?.(pages.length, pages.length);
+      const fingerprint = options?.fingerprint ? `afdruk van ${await file.text()}` : null;
+      return {
+        pageCount: pages.length,
+        pages,
+        info: INFO[file.name] ?? {},
+        thumb: null,
+        fingerprint,
+      };
+    },
+  ),
 }));
 
 // Het tekenen nagebootst (jsdom kan niet echt tekenen); de rekenregels voor de zoom blijven echt.
@@ -182,6 +197,8 @@ vi.mock('../lib/zip', async (importOriginal) => {
 const p = messages.nl.plainText;
 const c = messages.nl.compare;
 const pdf = (name: string) => new File([`%PDF-1.7 ${name}`], name, { type: 'application/pdf' });
+/** De (nagebootste) vingerafdruk van brief.pdf, zoals `pdf('brief.pdf')` hem krijgt. */
+const BRIEF = 'afdruk van %PDF-1.7 brief.pdf';
 
 function setup() {
   render(
@@ -1184,6 +1201,103 @@ describe('PDF → Platte tekst: instellingen bewaren', () => {
     expect(getTextState().zones).toEqual([]);
   });
 
+  /** Een andere PDF met dezelfde naam: andere inhoud, dus een andere vingerafdruk. */
+  const chooseOther = (name: string) =>
+    fireEvent.change(document.querySelector('#plaintext-file')!, {
+      target: { files: [new File(['%PDF-1.7 een heel andere inhoud'], name)] },
+    });
+  const notice = () => document.querySelector('.plaintext-slot__other');
+
+  it('een andere PDF met dezelfde naam: niets hersteld, wel een melding met "Toch gebruiken"', async () => {
+    await open('brief.pdf');
+    fireEvent.click(check(p.zones.use));
+    await settle();
+    draw(...LEFT_BOX);
+    fireEvent.click(check(p.settings.dehyphen));
+    fireEvent.input(screen.getByLabelText(p.header.fields.title), {
+      target: { value: 'Titel van de eerste' },
+    });
+    fireEvent.click(button(p.clear));
+
+    chooseOther('brief.pdf');
+    await waitFor(() => expect(notice()).not.toBeNull());
+    expect(notice()!.textContent).toContain(p.other.text);
+    expect(screen.queryByText(/instellingen hersteld/)).toBeNull();
+    // Niets van de eerste: geen vakken, de titel uit deze PDF; de vinkjes van nu blijven staan.
+    expect(getTextState().zones).toEqual([]);
+    expect(getTextState().useZones).toBe(false);
+    expect(getTextState().meta.title).toBe('Nieuwe huurovereenkomst');
+
+    // Toch gebruiken: alles van de eerste terug, en dat kan ongedaan.
+    fireEvent.click(within(notice() as HTMLElement).getByRole('button', { name: p.other.use }));
+    expect(notice()).toBeNull();
+    expect(zoneList()).toEqual(['Vak 1']);
+    expect(getTextState().meta.title).toBe('Titel van de eerste');
+    expect(screen.getByText(/· instellingen hersteld$/)).toBeTruthy();
+    fireEvent.click(button(p.zones.undo));
+    expect(getTextState().zones).toEqual([]);
+  });
+
+  it('daarna geldt wat er voor deze PDF onthouden is: weer openen herstelt zonder vraag', async () => {
+    await open('brief.pdf');
+    fireEvent.click(check(p.settings.dehyphen));
+    fireEvent.click(button(p.clear));
+    chooseOther('brief.pdf');
+    await waitFor(() => expect(notice()).not.toBeNull());
+    // Iets aanpassen: nu wordt dit voor deze PDF onthouden (dezelfde naam, dus in plaats van de eerste).
+    fireEvent.click(check(p.settings.strip));
+    fireEvent.click(button(p.clear));
+    chooseOther('brief.pdf');
+    await waitFor(() => expect(screen.getByText(/· instellingen hersteld$/)).toBeTruthy());
+    expect(notice()).toBeNull();
+    // En de eerste is nu de "andere".
+    choose('brief.pdf');
+    await waitFor(() => expect(notice()).not.toBeNull());
+  });
+
+  it('onthouden van vóór de vingerafdruk: niet zeker of het dezelfde PDF is, dus de melding', async () => {
+    localStorage.setItem(
+      `${SETTINGS_PREFIX}artikel.pdf`,
+      JSON.stringify({
+        v: 2,
+        pdf: 'artikel.pdf',
+        zones: { d: [{ x0: 0.1, y0: 0.1, x1: 0.5, y1: 0.5 }], p: {} },
+        options: { useCrop: true },
+      }),
+    );
+    await open('artikel.pdf');
+    expect(notice()!.textContent).toContain(p.other.unsure);
+    expect(getTextState().zones).toEqual([]);
+    fireEvent.click(within(notice() as HTMLElement).getByRole('button', { name: p.other.use }));
+    expect(getTextState().zones).toHaveLength(1);
+    expect(check(p.zones.use).checked).toBe(true);
+  });
+
+  it('de melding verdwijnt bij Wissen, een andere PDF en Vergeten', async () => {
+    await open('brief.pdf');
+    fireEvent.click(check(p.settings.dehyphen));
+    fireEvent.click(button(p.clear));
+    chooseOther('brief.pdf');
+    await waitFor(() => expect(notice()).not.toBeNull());
+    fireEvent.click(button(p.clear));
+    expect(notice()).toBeNull();
+    // Ook niet meer vastgehouden: na Wissen staan er geen gegevens van een andere PDF meer klaar.
+    expect(getTextState().other).toBeNull();
+
+    chooseOther('brief.pdf');
+    await waitFor(() => expect(notice()).not.toBeNull());
+    choose('tweede.pdf');
+    await waitFor(() => expect(notice()).toBeNull());
+
+    chooseOther('brief.pdf');
+    await waitFor(() => expect(notice()).not.toBeNull());
+    fireEvent.click(button(p.save.forget));
+    fireEvent.click(
+      within(screen.getByRole('dialog')).getByRole('button', { name: p.save.forgetConfirm }),
+    );
+    expect(notice()).toBeNull();
+  });
+
   it('slaat de instellingen op als .json, in het formaat van de extractor', async () => {
     await open('artikel.pdf');
     fireEvent.click(check(p.zones.use));
@@ -1723,6 +1837,7 @@ describe('PDF → Platte tekst: documentkop en metadata', () => {
         pdf: 'brief.pdf',
         zones: { d: [], p: {} },
         options: { dehyphen: false },
+        fingerprint: BRIEF,
       }),
     );
     await open('brief.pdf');
@@ -1740,6 +1855,7 @@ describe('PDF → Platte tekst: documentkop en metadata', () => {
           v: 2,
           pdf: 'brief.pdf',
           meta: { title: 'Eigen titel', author: '', subject: '', date },
+          fingerprint: BRIEF,
         }),
       );
     stored('4 juni 2018');

@@ -5,6 +5,7 @@ import {
   type Annotation,
   type BoxAnnotation,
 } from '../annotations/model';
+import { sha256Hex } from '../lib/fingerprint';
 import type { PageItem, Rotation } from '../pages/plan';
 import { attachPageRefs, detachPageRefs, strayObjects } from './links';
 import { addTextLayer, squash, wordsOutside, type OcrWord } from './ocrText';
@@ -295,13 +296,7 @@ export async function redactPdf(
 
 /** Vingerafdrukken (SHA-256) van de inhoud van afbeeldingen, om ze in een ander bestand terug te vinden. */
 export async function fingerprintsOf(contents: readonly Uint8Array[]): Promise<Set<string>> {
-  const prints = await Promise.all(
-    contents.map(async (bytes) => {
-      const digest = await crypto.subtle.digest('SHA-256', bytes as BufferSource);
-      return [...new Uint8Array(digest)].map((b) => b.toString(16).padStart(2, '0')).join('');
-    }),
-  );
-  return new Set(prints);
+  return new Set(await Promise.all(contents.map(sha256Hex)));
 }
 
 /**

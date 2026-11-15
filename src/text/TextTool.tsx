@@ -23,8 +23,10 @@ import {
   type Zone,
 } from './extract';
 import {
+  applyOtherSettings,
   clearText,
   clearZones,
+  dropOtherSettings,
   editingZones,
   exportSettings,
   extract,
@@ -159,7 +161,7 @@ function SlotView() {
   const { t, language } = useI18n();
   const p = t.plainText;
   const c = t.compare;
-  const { slot, restored } = useTextState();
+  const { slot, restored, other } = useTextState();
   const [guard, dialog] = useDiscardGuard();
   return (
     <>
@@ -204,6 +206,14 @@ function SlotView() {
             {docMeta(slot.doc, t, language)}
             {restored && ` · ${p.restored}`}
           </p>
+        )}
+        {slot.status === 'ready' && other && (
+          <div class="plaintext-slot__meta plaintext-slot__other" role="status">
+            {other.kind === 'other' ? p.other.text : p.other.unsure}
+            <button type="button" class="link-button" onClick={applyOtherSettings}>
+              {p.other.use}
+            </button>
+          </div>
         )}
         {slot.status === 'ready' && slot.incoming && (
           <IncomingNote
@@ -881,6 +891,7 @@ function SaveSettings() {
           onCancel={() => setConfirming(null)}
           onConfirm={() => {
             const n = forgetStored();
+            dropOtherSettings();
             setConfirming(null);
             setStatus(n === 0 ? v.forgottenNone : plural(n, v.forgottenOne, v.forgotten));
           }}
