@@ -985,6 +985,12 @@ export const nl = {
       forgotten: 'De onthouden instellingen van {n} PDF’s zijn vergeten.',
     },
     restored: 'instellingen hersteld',
+    other: {
+      text: 'Er zijn instellingen onthouden van een andere PDF met dezelfde naam. Die zijn niet gebruikt.',
+      unsure:
+        'Er zijn instellingen onthouden voor een PDF met deze naam, maar niet of het deze PDF was. Die zijn niet gebruikt.',
+      use: 'Toch gebruiken',
+    },
     extract: 'Tekst extraheren',
     done: 'Klaar: {summary}.',
     stale:

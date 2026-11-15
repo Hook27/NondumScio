@@ -1,5 +1,6 @@
+import { fingerprintOf } from '../lib/fingerprint';
 import { renderPageImage } from '../pdf/images';
-import { closePdf, openPdfFile } from '../pdf/loader';
+import { closePdf, loadPdf, readPdfBytes } from '../pdf/loader';
 import { piecesFrom, type PageText, type RawTextItem } from './layout';
 import type { DocInfo } from './profile';
 
@@ -10,14 +11,25 @@ const THUMB_DPI = 24;
  * Leest de tekstlaag van alle pagina's van een PDF, met de maat van elke pagina, de gegevens van
  * het document (metadata) en een klein plaatje van de eerste pagina. `onProgress` meldt hoeveel
  * pagina's er gelezen zijn. De PDF wordt daarna weer gesloten; het bestand zelf bewaart de tool.
- * Met `thumb: false` geen plaatje (bijvoorbeeld bij een batch van PDF → Platte tekst).
+ * Met `thumb: false` geen plaatje (bijvoorbeeld bij een batch van PDF → Platte tekst). Met
+ * `fingerprint: true` ook een vingerafdruk van de inhoud (zie `lib/fingerprint.ts`), om te weten of
+ * het dezelfde PDF is als eerder; null als dat niet kan.
  */
 export async function readPdf(
   file: File,
   onProgress?: (done: number, total: number) => void,
-  { thumb: withThumb = true }: { thumb?: boolean } = {},
-): Promise<{ pageCount: number; pages: PageText[]; info: DocInfo; thumb: Uint8Array | null }> {
-  const { pdf, pageCount } = await openPdfFile(file);
+  { thumb: withThumb = true, fingerprint: withFingerprint = false } = {},
+): Promise<{
+  pageCount: number;
+  pages: PageText[];
+  info: DocInfo;
+  thumb: Uint8Array | null;
+  fingerprint: string | null;
+}> {
+  const bytes = await readPdfBytes(file);
+  // Vóór het openen: pdf.js neemt de bytes daarna over (en ze kunnen dan leeg zijn).
+  const fingerprint = withFingerprint ? await fingerprintOf(bytes) : null;
+  const { pdf, pageCount } = await loadPdf(bytes);
   try {
     const pages: PageText[] = [];
     for (let no = 1; no <= pageCount; no += 1) {
@@ -55,7 +67,7 @@ export async function readPdf(
           .then((image) => image.bytes)
           .catch(() => null)
       : null;
-    return { pageCount, pages, info, thumb };
+    return { pageCount, pages, info, thumb, fingerprint };
   } finally {
     closePdf(pdf);
   }

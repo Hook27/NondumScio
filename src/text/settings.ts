@@ -227,13 +227,28 @@ export function loadStored(pdf: string, store = storage()): unknown {
   }
 }
 
-/** De instellingen van een PDF onthouden. Lukt dat niet (vol, geblokkeerd), dan niet. */
-export function saveStored(pdf: string, settings: Settings, store = storage()): void {
+/**
+ * De instellingen van een PDF onthouden, met de vingerafdruk van de inhoud (`fingerprint`), zodat
+ * ze later alleen vanzelf terugkomen bij precies dezelfde PDF. Lukt onthouden niet (vol,
+ * geblokkeerd), dan niet.
+ */
+export function saveStored(
+  pdf: string,
+  settings: Settings,
+  fingerprint: string | null,
+  store = storage(),
+): void {
   try {
-    store?.setItem(keyFor(pdf), JSON.stringify(toSettings(pdf, settings)));
+    store?.setItem(keyFor(pdf), JSON.stringify({ ...toSettings(pdf, settings), fingerprint }));
   } catch {
     // Bewust genegeerd: onthouden is een gemak, geen voorwaarde.
   }
+}
+
+/** De vingerafdruk waarmee instellingen onthouden zijn, of null (van vóór de afdruk, of onbekend). */
+export function storedFingerprint(raw: unknown): string | null {
+  if (!isObject(raw)) return null;
+  return typeof raw.fingerprint === 'string' ? raw.fingerprint : null;
 }
 
 /** Alle onthouden instellingen van deze tool wissen; geeft het aantal PDF's. */

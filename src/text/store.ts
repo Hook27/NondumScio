@@ -34,6 +34,7 @@ import {
   loadStored,
   saveStored,
   settingsFileName,
+  storedFingerprint,
   toSettings,
   type Extra,
   type Settings,
@@ -52,7 +53,16 @@ export type TextDoc = {
   printed: Printed;
   /** De gegevens van het document (metadata), zoals pdf.js ze geeft. */
   info: DocInfo;
+  /** De vingerafdruk van de inhoud (SHA-256), of null als de browser die niet kan rekenen. */
+  fingerprint: string | null;
 };
+
+/**
+ * Onthouden instellingen voor een PDF met deze naam die niet vanzelf zijn teruggezet: van een
+ * andere PDF (`other`, een andere vingerafdruk), of niet zeker van welke (`unsure`, onthouden van
+ * vóór de vingerafdruk, of de browser kan hem niet rekenen). Met "Toch gebruiken" komen ze terug.
+ */
+export type OtherSettings = { kind: 'other' | 'unsure'; raw: unknown };
 
 export type TextSlot =
   | { status: 'empty' }
@@ -134,6 +144,8 @@ export type TextState = {
   extra: Extra;
   /** De instellingen van deze PDF zijn bij het openen uit de opslag teruggehaald. */
   restored: boolean;
+  /** Onthouden instellingen voor deze naam die niet zijn teruggezet (zie `OtherSettings`), of null. */
+  other: OtherSettings | null;
   view: TextView;
   /** De pagina in het voorbeeld (vanaf 1). */
   page: number;
@@ -183,6 +195,7 @@ const INITIAL: TextState = {
   undo: [],
   extra: NO_EXTRA,
   restored: false,
+  other: null,
   view: 'preview',
   page: 1,
   fit: 'page',
@@ -249,11 +262,15 @@ const settingsOf = (s: TextState): Settings => ({
 
 /**
  * Iets aan de instellingen of vakken veranderen: de tekst is dan niet meer bij, en de instellingen
- * van deze PDF worden onthouden (op bestandsnaam), zoals in de extractor.
+ * van deze PDF worden onthouden: op bestandsnaam zoals in de extractor, met de vingerafdruk erbij
+ * (een andere PDF met dezelfde naam krijgt ze dan niet vanzelf).
  */
 function change(next: Partial<TextState>) {
   setState({ ...next, stale: state.result !== null });
-  if (state.slot.status === 'ready') saveStored(state.slot.doc.file.name, settingsOf(state));
+  if (state.slot.status === 'ready') {
+    const { file, fingerprint } = state.slot.doc;
+    saveStored(file.name, settingsOf(state), fingerprint);
+  }
 }
 
 /** Het plaatje niet langer vasthouden, en de PDF sluiten als die voor het voorbeeld open was. */
@@ -274,6 +291,7 @@ function setSlot(slot: TextSlot, extra: Partial<TextState> = {}) {
     undo: [],
     extra: NO_EXTRA,
     restored: false,
+    other: null,
     view: 'preview',
     page: 1,
     fit: 'page',
@@ -307,8 +325,10 @@ async function load(file: File) {
   };
   pending({ status: 'reading', name: file.name, done: 0, total: 0 });
   try {
-    const { pageCount, pages, info, thumb } = await readPdf(file, (done, total) =>
-      pending({ status: 'reading', name: file.name, done, total }),
+    const { pageCount, pages, info, thumb, fingerprint } = await readPdf(
+      file,
+      (done, total) => pending({ status: 'reading', name: file.name, done, total }),
+      { fingerprint: true },
     );
     const url = thumb
       ? URL.createObjectURL(new Blob([thumb as BlobPart], { type: 'image/png' }))
@@ -317,24 +337,37 @@ async function load(file: File) {
       if (url) URL.revokeObjectURL(url);
       return;
     }
-    // De gegevens uit de PDF in de velden; eerder onthouden instellingen voor deze PDF (met de
-    // velden zoals ze toen waren) gaan voor, zoals in de extractor. Een onthouden datum in de vorm
-    // van eerder ("4 juni 2018") wordt ISO. De onbekende opties van de vorige PDF gaan niet mee
-    // (vakken en overgangen vervangt `fromSettings` altijd); de instellingen van nu wel.
+    // De gegevens uit de PDF in de velden; eerder onthouden instellingen voor precies deze PDF
+    // (dezelfde vingerafdruk), met de velden zoals ze toen waren, gaan voor. Zijn er onthouden
+    // instellingen voor deze naam maar van een andere (of onbekende) PDF, dan niet vanzelf: dat zou
+    // verkeerde vakken en documentgegevens geven; ze kunnen terug met "Toch gebruiken". Een
+    // onthouden datum in de vorm van eerder ("4 juni 2018") wordt ISO. De onbekende opties van de
+    // vorige PDF gaan niet mee (vakken en overgangen vervangt `fromSettings` altijd).
     const meta = metaFromInfo(info);
-    const stored = fromSettings(loadStored(file.name), {
-      ...settingsOf(state),
-      extra: NO_EXTRA,
-      meta,
-    });
+    const raw = loadStored(file.name);
+    const known = storedFingerprint(raw);
+    const same = fingerprint !== null && known === fingerprint;
+    const stored = same ? fromSettings(raw, { ...settingsOf(state), extra: NO_EXTRA, meta }) : null;
     if (stored)
       stored.meta = { ...stored.meta, date: upgradeDate(stored.meta.date, info.CreationDate) };
+    const other: OtherSettings | null =
+      !same && isSettingsFile(raw)
+        ? { kind: known === null || fingerprint === null ? 'unsure' : 'other', raw }
+        : null;
     put(
       {
         status: 'ready',
-        doc: { file, pageCount, pages, thumb: url, printed: printedPages(pages), info },
+        doc: {
+          file,
+          pageCount,
+          pages,
+          thumb: url,
+          printed: printedPages(pages),
+          info,
+          fingerprint,
+        },
       },
-      { meta, ...(stored ? { ...stored, restored: true } : {}) },
+      { meta, other, ...(stored ? { ...stored, restored: true } : {}) },
     );
   } catch (error) {
     pending({
@@ -482,6 +515,22 @@ export function importSettings(raw: unknown): boolean {
     ),
   });
   return true;
+}
+
+/**
+ * "Toch gebruiken": de onthouden instellingen van een andere (of onbekende) PDF met deze naam
+ * toepassen, zoals bij Instellingen laden; wat er was, kan terug met Ongedaan. Daarna worden ze
+ * voor deze PDF onthouden.
+ */
+export function applyOtherSettings(): void {
+  const other = state.other;
+  if (!other || !importSettings(other.raw)) return;
+  setState({ other: null, restored: true });
+}
+
+/** De melding over onthouden instellingen van een andere PDF weghalen (na Vergeten). */
+export function dropOtherSettings(): void {
+  if (state.other) setState({ other: null });
 }
 
 /** De instellingen van nu, om als bestand op te slaan (in het formaat van de extractor). */

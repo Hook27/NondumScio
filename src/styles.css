@@ -1533,6 +1533,11 @@ h1 {
   color: var(--warning-text);
 }
 
+/* Onthouden instellingen van een andere PDF met dezelfde naam: niet gebruikt, met een knop. */
+.plaintext-slot__meta.plaintext-slot__other {
+  color: var(--warning-text);
+}
+
 /* Blokken links die in- en uitklappen, zoals de accordeons van de extractor. */
 .plaintext-block {
   margin: 0 0 0.6rem;

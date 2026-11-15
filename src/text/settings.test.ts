@@ -9,6 +9,7 @@ import {
   loadStored,
   saveStored,
   settingsFileName,
+  storedFingerprint,
   toSettings,
   type Settings,
   type SettingsStorage,
@@ -323,12 +324,27 @@ describe('settingsFileName', () => {
 describe('onthouden in de browser', () => {
   it('bewaart per bestandsnaam en haalt het terug', () => {
     const store = fakeStorage();
-    saveStored('a.pdf', { ...BASE, zones: [A] }, store);
-    saveStored('b.pdf', { ...BASE, zones: [B] }, store);
+    saveStored('a.pdf', { ...BASE, zones: [A] }, null, store);
+    saveStored('b.pdf', { ...BASE, zones: [B] }, null, store);
     expect([...store.data.keys()]).toEqual([`${SETTINGS_PREFIX}a.pdf`, `${SETTINGS_PREFIX}b.pdf`]);
     expect(fromSettings(loadStored('a.pdf', store), BASE)!.zones).toEqual([A]);
     expect(fromSettings(loadStored('b.pdf', store), BASE)!.zones).toEqual([B]);
     expect(loadStored('c.pdf', store)).toBeNull();
+  });
+
+  it('bewaart de vingerafdruk van de PDF erbij; een bestand om op te slaan heeft hem niet', () => {
+    const store = fakeStorage();
+    saveStored('a.pdf', { ...BASE, zones: [A] }, 'abc123', store);
+    expect(storedFingerprint(loadStored('a.pdf', store))).toBe('abc123');
+    saveStored('b.pdf', BASE, null, store);
+    expect(storedFingerprint(loadStored('b.pdf', store))).toBeNull();
+    // Van vóór de vingerafdruk, of iets anders dan een tekst: onbekend.
+    expect(storedFingerprint(toSettings('c.pdf', BASE))).toBeNull();
+    expect(storedFingerprint({ fingerprint: 12 })).toBeNull();
+    expect(storedFingerprint(null)).toBeNull();
+    expect('fingerprint' in toSettings('a.pdf', BASE)).toBe(false);
+    // De instellingen zelf lezen zoals altijd.
+    expect(fromSettings(loadStored('a.pdf', store), BASE)!.zones).toEqual([A]);
   });
 
   it('een kapotte waarde telt als niets', () => {
@@ -351,7 +367,7 @@ describe('onthouden in de browser', () => {
       removeItem: () => undefined,
     };
     expect(loadStored('a.pdf', broken)).toBeNull();
-    expect(() => saveStored('a.pdf', BASE, broken)).not.toThrow();
+    expect(() => saveStored('a.pdf', BASE, null, broken)).not.toThrow();
     expect(forgetStored(broken)).toBe(0);
     expect(loadStored('a.pdf', null)).toBeNull();
     expect(forgetStored(null)).toBe(0);
@@ -359,8 +375,8 @@ describe('onthouden in de browser', () => {
 
   it('vergeten wist alleen de instellingen van deze tool, van alle PDF’s', () => {
     const store = fakeStorage({ 'nondumscio:lang': 'nl', 'nondumscio:theme': 'dark' });
-    saveStored('a.pdf', BASE, store);
-    saveStored('b.pdf', BASE, store);
+    saveStored('a.pdf', BASE, null, store);
+    saveStored('b.pdf', BASE, null, store);
     expect(forgetStored(store)).toBe(2);
     expect([...store.data.keys()]).toEqual(['nondumscio:lang', 'nondumscio:theme']);
     expect(forgetStored(store)).toBe(0);

@@ -973,6 +973,12 @@ export const en: Messages = {
       forgotten: 'The remembered settings of {n} PDFs have been forgotten.',
     },
     restored: 'settings restored',
+    other: {
+      text: 'Settings are remembered for another PDF with the same name. They were not used.',
+      unsure:
+        'Settings are remembered for a PDF with this name, but not whether it was this PDF. They were not used.',
+      use: 'Use anyway',
+    },
     extract: 'Extract text',
     done: 'Done: {summary}.',
     stale: 'The settings or the zones have changed since extracting. Click Extract text again.',
