@@ -11,6 +11,7 @@ import {
   GAP_FACTOR,
   countRows,
   displayList,
+  pageSpan,
   type CompareLevel,
   type CompareOptions,
   type Row,
@@ -1166,8 +1167,10 @@ function Cell({
   return (
     <td class="compare-diff__cell">
       <span class="compare-diff__page">
-        <span aria-hidden="true">{format(c.page, { n: unit.page })}</span>
-        <span class="visually-hidden">{format(c.pageLabel, { n: unit.page })}</span>
+        <span aria-hidden="true">{format(c.page, { n: pageSpan(unit) })}</span>
+        <span class="visually-hidden">
+          {format(unit.pageEnd === undefined ? c.pageLabel : c.pagesLabel, { n: pageSpan(unit) })}
+        </span>
       </span>
       {sign !== undefined && (
         <span class="compare-diff__sign" aria-hidden="true">

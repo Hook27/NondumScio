@@ -781,6 +781,7 @@ export const en: Messages = {
     kinds: { added: 'Added', removed: 'Removed', changed: 'Changed' },
     page: 'p{n}',
     pageLabel: 'Page {n}',
+    pagesLabel: 'Pages {n}',
     noDiff: 'No text differences found.',
     noDiffNote: 'This says nothing about images, stamps, signatures or layout.',
     fallback:

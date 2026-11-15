@@ -177,6 +177,89 @@ describe('buildUnits', () => {
   });
 });
 
+describe('over een pagina-overgang', () => {
+  // De pagina-einde valt in B één regel eerder: dezelfde tekst, anders over de pagina's verdeeld.
+  const A = [
+    page(1, ['Het begin van het contract.', 'Deze alinea loopt over het einde van de']),
+    page(2, ['pagina door en stopt pas hier.', 'Het slot.']),
+  ];
+  const B = [
+    page(1, ['Het begin van het contract.', 'Deze alinea loopt over het einde']),
+    page(2, ['van de pagina door en stopt pas hier.', 'Het slot.']),
+  ];
+  const joined = 'Deze alinea loopt over het einde van de pagina door en stopt pas hier.';
+
+  it('per alinea: één stuk over de overgang, dus geen valse verschillen', () => {
+    const result = compareTexts(A, B, DEFAULT_OPTIONS);
+    expect(countRows(result.rows)).toEqual({ added: 0, removed: 0, changed: 0 });
+    expect(result.rows[1]).toMatchObject({
+      kind: 'equal',
+      a: { page: 1, pageEnd: 2, val: joined },
+      b: { page: 1, pageEnd: 2, val: joined },
+    });
+  });
+
+  it('per zin net zo', () => {
+    const result = compareTexts(A, B, { ...DEFAULT_OPTIONS, level: 'sentence' });
+    expect(countRows(result.rows)).toEqual({ added: 0, removed: 0, changed: 0 });
+    expect(result.rows.map((row) => row.kind === 'equal' && row.a.val)).toContain(joined);
+  });
+
+  it('per regel niet: daar zijn de regels zelf de stukken', () => {
+    const units = buildUnits(A, { ...DEFAULT_OPTIONS, level: 'line' });
+    expect(units.some((unit) => 'pageEnd' in unit)).toBe(false);
+  });
+
+  it('een afgebroken woord over de overgang wordt weer heel', () => {
+    const a = [
+      page(1, ['Eerst iets anders.', 'Dit is een verge-']),
+      page(2, ['lijking van twee teksten.']),
+    ];
+    const b = [page(1, ['Eerst iets anders.', 'Dit is een vergelijking van twee teksten.'])];
+    const result = compareTexts(a, b, DEFAULT_OPTIONS);
+    expect(countRows(result.rows)).toEqual({ added: 0, removed: 0, changed: 0 });
+    expect(result.rows[1]).toMatchObject({ a: { page: 1, pageEnd: 2 }, b: { page: 1 } });
+  });
+
+  it('niet samen na een leesteken, of als de volgende pagina met een hoofdletter begint', () => {
+    const vals = (pages: PageText[]) => buildUnits(pages, DEFAULT_OPTIONS).map((unit) => unit.val);
+    expect(vals([page(1, ['Hier eindigt de zin.']), page(2, ['dan iets kleins.'])])).toEqual([
+      'Hier eindigt de zin.',
+      'dan iets kleins.',
+    ]);
+    expect(vals([page(1, ['Een kop zonder punt']), page(2, ['Nieuwe alinea.'])])).toEqual([
+      'Een kop zonder punt',
+      'Nieuwe alinea.',
+    ]);
+  });
+
+  it('een echt verschil vlak bij de overgang is nog te zien, met de pagina’s 1–2', () => {
+    const b = [
+      page(1, ['Het begin van het contract.', 'Deze alinea loopt over het einde van de']),
+      page(2, ['pagina door en stopt al hier.', 'Het slot.']),
+    ];
+    const result = compareTexts(A, b, DEFAULT_OPTIONS);
+    expect(countRows(result.rows)).toEqual({ added: 0, removed: 0, changed: 1 });
+    const changed = result.rows.find((row) => row.kind === 'changed');
+    expect(changed).toMatchObject({ a: { page: 1, pageEnd: 2 }, b: { page: 1, pageEnd: 2 } });
+  });
+
+  it('een pagina zonder tekst ertussen: samen met de vorige gelezen pagina, zoals in Platte tekst', () => {
+    const units = buildUnits(
+      [page(1, ['Deze zin loopt door over']), page(2, []), page(3, ['een lege pagina heen.'])],
+      DEFAULT_OPTIONS,
+    );
+    expect(units).toEqual([
+      {
+        page: 1,
+        pageEnd: 3,
+        val: 'Deze zin loopt door over een lege pagina heen.',
+        key: 'Deze zin loopt door over een lege pagina heen.',
+      },
+    ]);
+  });
+});
+
 describe('inlineDiff', () => {
   it('markeert niets als de stukken geen enkel woord gemeen hebben', () => {
     expect(inlineDiff('Appels en peren', 'Iets heel anders', DEFAULT_OPTIONS)).toEqual([
