@@ -85,16 +85,20 @@ export async function loadPdf(bytes: Uint8Array): Promise<LoadedPdf> {
     // Het ligt dan niet aan de PDF maar aan de app (bijvoorbeeld een nieuwe versie): herladen helpt.
     throw new PdfLoadError('app');
   }
+  let task: ReturnType<typeof lib.getDocument> | null = null;
   try {
     // pdf.js neemt de bytes over (en maakt ze daarna onbruikbaar). Dat is goed: voor latere
     // bewerkingen bewaren we het bestand zelf, niet deze bytes. Zo staat de PDF maar één keer
     // in het geheugen.
-    const pdf = await lib.getDocument({
+    task = lib.getDocument({
       data: bytes,
       ...pdfjsAssetOptions(document.baseURI),
-    }).promise;
+    });
+    const pdf = await task.promise;
     return { pdf, pageCount: pdf.numPages };
   } catch (error) {
+    // Mislukt het openen, dan blijft de worker van pdf.js anders staan tot je herlaadt.
+    void task?.destroy().catch(() => undefined);
     throw new PdfLoadError(classifyLoadError(error));
   }
 }
