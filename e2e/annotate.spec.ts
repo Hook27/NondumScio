@@ -281,8 +281,8 @@ test.describe('annotaties: de weergave en het maken', () => {
     expect(after.x - before.x).toBeCloseTo(50 * scale, 0);
     expect(after.y - before.y).toBeCloseTo(30 * scale, 0);
 
-    // Vergroten: het rechteronderhoekpunt (hoek 3) 40 punten verder.
-    const handle = page.locator('[data-handle="3"]');
+    // Vergroten: het greepje rechtsonder 40 punten verder.
+    const handle = page.locator('[data-handle="se"]');
     await expect(handle).toBeVisible();
     const grip = (await handle.boundingBox())!;
     await page.mouse.move(grip.x + grip.width / 2, grip.y + grip.height / 2);

@@ -45,7 +45,7 @@ function fakeLoad(bytes: Uint8Array): Promise<LoadedPdf> {
 const drawing: { hold: Promise<void> | null } = { hold: null };
 
 async function setup(pages = 3, mode: 'edit' | 'redact' = 'edit') {
-  const tree = (current: 'edit' | 'redact') => (
+  const tree = (current: 'edit' | 'redact' | 'pages') => (
     <LanguageProvider initial="nl">
       <DocumentProvider load={fakeLoad} unload={() => {}}>
         <Workspace mode={current} />
@@ -70,7 +70,12 @@ async function setup(pages = 3, mode: 'edit' | 'redact' = 'edit') {
       expect(document.querySelectorAll('.annotate-page[data-rendered="true"]')).toHaveLength(pages),
     );
   };
-  return { switchTo };
+  /** Even naar Pagina's (bijvoorbeeld om een pagina te draaien); daarna terug met `switchTo`. */
+  const showPages = async () => {
+    view.rerender(tree('pages'));
+    await screen.findAllByRole('option');
+  };
+  return { switchTo, showPages };
 }
 
 const button = (name: string) => screen.getByRole('button', { name }) as HTMLButtonElement;
@@ -522,11 +527,15 @@ describe('Bewerken en Redigeren: slepen, ook met een vinger', () => {
     const rect = shapes()[i]!.querySelector('rect')!;
     return ['x', 'y', 'width', 'height'].map((key) => Number(rect.getAttribute(key)));
   };
-  const handle = (n: number) => document.querySelector<SVGCircleElement>(`[data-handle="${n}"]`)!;
-  const at = (element: Element) => [
-    Number(element.getAttribute('cx')),
-    Number(element.getAttribute('cy')),
-  ];
+  const handle = (name: string) =>
+    document.querySelector<SVGRectElement>(`[data-handle="${name}"]`)!;
+  /** Het midden van een greepje (een vierkantje). */
+  const at = (element: Element) => {
+    const [x, y, width, height] = ['x', 'y', 'width', 'height'].map((key) =>
+      Number(element.getAttribute(key)),
+    );
+    return [x! + width! / 2, y! + height! / 2];
+  };
   /** Een vinger (of muis) neerzetten, bewegen en optillen. */
   function slide(target: Element, from: number[], to: number[], pointerType = 'touch') {
     const init = { button: 0, pointerId: 7, pointerType };
@@ -561,11 +570,11 @@ describe('Bewerken en Redigeren: slepen, ook met een vinger', () => {
     fireEvent.click(button(nl.redact.redact));
     fireEvent.keyDown(pageNr(1), { key: 'Enter' });
     const [x, y, width, height] = rectOf();
-    // Rechtsonder (greepje 3) 40 naar rechts en 30 omlaag.
-    slide(handle(3), at(handle(3)), [at(handle(3))[0]! + 40, at(handle(3))[1]! + 30]);
+    // Rechtsonder 40 naar rechts en 30 omlaag.
+    slide(handle('se'), at(handle('se')), [at(handle('se'))[0]! + 40, at(handle('se'))[1]! + 30]);
     expect(rectOf()).toEqual([x, y, width! + 40, height! + 30]);
-    // Linksboven (greepje 0) 10 naar links: het vak groeit naar links.
-    slide(handle(0), at(handle(0)), [at(handle(0))[0]! - 10, at(handle(0))[1]!]);
+    // Linksboven 10 naar links: het vak groeit naar links.
+    slide(handle('nw'), at(handle('nw')), [at(handle('nw'))[0]! - 10, at(handle('nw'))[1]!]);
     expect(rectOf()).toEqual([x! - 10, y, width! + 50, height! + 30]);
 
     // Bij Selecteren het hele vak verslepen.
@@ -573,6 +582,92 @@ describe('Bewerken en Redigeren: slepen, ook met een vinger', () => {
     const box = shapes()[0]!.querySelector('rect')!;
     slide(box, [x! + 20, y! + 10], [x! + 45, y! + 30]);
     expect(rectOf()).toEqual([x! + 15, y! + 20, width! + 50, height! + 30]);
+  });
+
+  it('een gekozen vak heeft acht vierkante greepjes, zoals de leesvakken van Platte tekst', async () => {
+    await setup(1, 'edit');
+    fireEvent.click(button(nl.edit.rect));
+    fireEvent.keyDown(pageNr(1), { key: 'Enter' });
+    const grips = [...document.querySelectorAll('[data-handle]')];
+    expect(grips.map((grip) => grip.getAttribute('data-handle'))).toEqual([
+      'nw',
+      'n',
+      'ne',
+      'e',
+      'se',
+      's',
+      'sw',
+      'w',
+    ]);
+    for (const grip of grips) {
+      expect(grip.tagName.toLowerCase()).toBe('rect');
+      // De gedeelde vormgeving en de pijl in de richting van het greepje.
+      expect(grip.classList.contains('handle')).toBe(true);
+      expect(grip.classList.contains(`handle--${grip.getAttribute('data-handle')}`)).toBe(true);
+    }
+    // Op de hoeken en midden op de zijden van het vak.
+    const [x, y, width, height] = rectOf();
+    expect(at(handle('nw'))).toEqual([x, y]);
+    expect(at(handle('n'))).toEqual([x! + width! / 2, y]);
+    expect(at(handle('e'))).toEqual([x! + width!, y! + height! / 2]);
+    expect(at(handle('se'))).toEqual([x! + width!, y! + height!]);
+    expect(at(handle('sw'))).toEqual([x, y! + height!]);
+  });
+
+  it('een zijgreepje verandert alleen die kant van het vak', async () => {
+    await setup(1, 'redact');
+    fireEvent.click(button(nl.redact.redact));
+    fireEvent.keyDown(pageNr(1), { key: 'Enter' });
+    const [x, y, width, height] = rectOf();
+    slide(handle('e'), at(handle('e')), [at(handle('e'))[0]! + 30, at(handle('e'))[1]! + 25]);
+    expect(rectOf()).toEqual([x, y, width! + 30, height]);
+    slide(handle('n'), at(handle('n')), [at(handle('n'))[0]! - 15, at(handle('n'))[1]! - 20]);
+    expect(rectOf()).toEqual([x, y! - 20, width! + 30, height! + 20]);
+    slide(handle('w'), at(handle('w')), [at(handle('w'))[0]! + 10, at(handle('w'))[1]! + 40]);
+    expect(rectOf()).toEqual([x! + 10, y! - 20, width! + 20, height! + 20]);
+    slide(handle('s'), at(handle('s')), [at(handle('s'))[0]! + 50, at(handle('s'))[1]! + 5]);
+    expect(rectOf()).toEqual([x! + 10, y! - 20, width! + 20, height! + 25]);
+  });
+
+  it('op een gedraaide pagina volgt een zijgreepje wat je ziet', async () => {
+    const { switchTo, showPages } = await setup(1, 'redact');
+    // In Pagina's een kwartslag rechtsom draaien, dan terug naar Redigeren.
+    await showPages();
+    fireEvent.click(screen.getAllByRole('option')[0]!);
+    fireEvent.click(button(nl.pages.rotateRight));
+    await switchTo('redact');
+    fireEvent.click(button(nl.redact.redact));
+    fireEvent.keyDown(pageNr(1), { key: 'Enter' });
+    const [x, y, width, height] = rectOf();
+    // Liggend in beeld: het vak van het toetsenbord staat nu rechtop.
+    expect(height!).toBeGreaterThan(width!);
+    // De rechterkant op het scherm 30 naar rechts: alleen breder, zoals je het ziet.
+    slide(handle('e'), at(handle('e')), [at(handle('e'))[0]! + 30, at(handle('e'))[1]! + 20]);
+    const [x2, y2, width2, height2] = rectOf();
+    expect(x2).toBeCloseTo(x!, 5);
+    expect(y2).toBeCloseTo(y!, 5);
+    expect(width2).toBeCloseTo(width! + 30, 5);
+    expect(height2).toBeCloseTo(height!, 5);
+  });
+
+  it('een lijn heeft twee vierkante greepjes, op de uiteinden', async () => {
+    await setup(1, 'edit');
+    fireEvent.click(button(nl.edit.line));
+    fireEvent.keyDown(pageNr(1), { key: 'Enter' });
+    const grips = [...document.querySelectorAll('[data-handle]')];
+    expect(grips.map((grip) => grip.getAttribute('data-handle'))).toEqual(['p1', 'p2']);
+    const line = shapes()[0]!.querySelectorAll('line')[1]!;
+    const end = (n: 1 | 2) => [
+      Number(line.getAttribute(`x${n}`)),
+      Number(line.getAttribute(`y${n}`)),
+    ];
+    expect(at(handle('p1'))).toEqual(end(1));
+    expect(at(handle('p2'))).toEqual(end(2));
+    for (const grip of grips) {
+      expect(grip.tagName.toLowerCase()).toBe('rect');
+      expect(grip.classList.contains('handle')).toBe(true);
+      expect(grip.classList.contains('handle--end')).toBe(true);
+    }
   });
 
   it('een beweging van minder dan 3 beeldpunten verplaatst een vak niet', async () => {
@@ -595,7 +690,7 @@ describe('Bewerken en Redigeren: slepen, ook met een vinger', () => {
     fireEvent.keyDown(pageNr(1), { key: 'Enter' });
     fireEvent.click(button(nl.redact.select));
     // fireEvent geeft false als de app het standaardgedrag (hier: scrollen) heeft tegengehouden.
-    expect(fireEvent.touchStart(handle(3))).toBe(false);
+    expect(fireEvent.touchStart(handle('se'))).toBe(false);
     expect(fireEvent.touchStart(shapes()[0]!.querySelector('rect')!)).toBe(false);
     expect(fireEvent.touchStart(overlay())).toBe(true);
   });

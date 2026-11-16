@@ -1,3 +1,4 @@
+import { dragEdges, type Handle } from '../lib/handles';
 import type { Rotation } from '../pages/plan';
 
 export type Size = { width: number; height: number };
@@ -25,6 +26,46 @@ export function fromDisplay(base: Size, extra: Rotation, { x, y }: Point): Point
   if (extra === 180) return { x: base.width - x, y: base.height - y };
   if (extra === 270) return { x: base.width - y, y: x };
   return { x, y };
+}
+
+/** Een vak in de basisstand: linksboven (`x`, `y`), met breedte en hoogte. */
+export type Rect = Point & Size;
+
+/**
+ * Een vak met één greepje versleept naar `to` (in de basisstand). Het greepje heet naar wat je op
+ * het scherm ziet ("e" is de rechterkant zoals de pagina in beeld staat), dus het vak wordt eerst
+ * naar het scherm omgerekend, daar aangepast en dan terug. Voorbij de overkant klapt het om.
+ */
+export function resizeBox<T extends Rect>(
+  box: T,
+  handle: Handle,
+  to: Point,
+  base: Size,
+  extra: Rotation,
+): T {
+  const a = toDisplay(base, extra, { x: box.x, y: box.y });
+  const d = toDisplay(base, extra, { x: box.x + box.width, y: box.y + box.height });
+  const at = toDisplay(base, extra, to);
+  const edges = dragEdges(
+    {
+      x0: Math.min(a.x, d.x),
+      y0: Math.min(a.y, d.y),
+      x1: Math.max(a.x, d.x),
+      y1: Math.max(a.y, d.y),
+    },
+    handle,
+    at.x,
+    at.y,
+  );
+  const from = fromDisplay(base, extra, { x: edges.x0, y: edges.y0 });
+  const until = fromDisplay(base, extra, { x: edges.x1, y: edges.y1 });
+  return {
+    ...box,
+    x: Math.min(from.x, until.x),
+    y: Math.min(from.y, until.y),
+    width: Math.abs(until.x - from.x),
+    height: Math.abs(until.y - from.y),
+  };
 }
 
 /** De matrix van PDF: [a, b, c, d, e, f], zodat x' = a·x + c·y + e en y' = b·x + d·y + f. */

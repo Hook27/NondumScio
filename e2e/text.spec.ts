@@ -504,6 +504,12 @@ test.describe('PDF → Platte tekst: vakken per pagina en bewaren', () => {
         .first()
         .evaluate((el) => getComputedStyle(el).borderTopColor);
     const own = await colour('.plaintext-zone--own');
+    // De greepjes van een eigen vak hebben die kleur ook.
+    expect(
+      await page
+        .locator('.plaintext-zone--own [data-handle="e"]')
+        .evaluate((el) => getComputedStyle(el).backgroundColor),
+    ).toBe(own);
     await page.getByRole('button', { name: p.preview.previous }).click();
     await expect(page.locator('.plaintext-zone--own')).toHaveCount(0);
     expect(await colour('.plaintext-zone')).not.toBe(own);

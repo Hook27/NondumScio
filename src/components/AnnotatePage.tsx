@@ -3,6 +3,7 @@ import { useEffect, useLayoutEffect, useRef, useState } from 'preact/hooks';
 import {
   displaySize,
   fromDisplay,
+  resizeBox,
   toDisplay,
   type Point,
   type Size,
@@ -22,6 +23,7 @@ import {
 } from '../annotations/model';
 import { useI18n } from '../i18n/LanguageContext';
 import { format } from '../i18n/format';
+import { HANDLES, HANDLE_SIZE, handlePoint, type Handle } from '../lib/handles';
 import { watchInView } from '../lib/inView';
 import { memo } from '../lib/memo';
 import type { PageItem } from '../pages/plan';
@@ -322,7 +324,7 @@ export const AnnotatePage = memo(function AnnotatePage({
       controller.setDraft(reshaped(original, current.start, at));
     } else if (current.mode === 'resize') {
       current.moved = true;
-      controller.setDraft(resized(original, current.handle!, at));
+      controller.setDraft(resized(original, current.handle!, at, base, extra));
     }
   };
 
@@ -577,10 +579,16 @@ function reshaped(annotation: Annotation, from: Point, to: Point): Annotation {
 }
 
 /**
- * Een annotatie waarvan één hoekpunt (of eindpunt) naar `to` is gesleept en de rest blijft staan.
- * De hoekpunten van een vak heten 0 tot 3 (zie `boxCorners`); de overliggende is 3 min de eigen.
+ * Een annotatie waarvan één greepje naar `to` is gesleept: bij een lijn een uiteinde (p1, p2), bij
+ * een vak een hoek of zijde zoals op het scherm (zie `resizeBox`); de rest blijft staan.
  */
-function resized(annotation: Annotation, handle: string, to: Point): Annotation {
+function resized(
+  annotation: Annotation,
+  handle: string,
+  to: Point,
+  base: Size,
+  extra: PageItem['rotation'],
+): Annotation {
   if (annotation.kind === 'line') {
     return handle === 'p1'
       ? { ...annotation, x1: to.x, y1: to.y }
@@ -591,8 +599,7 @@ function resized(annotation: Annotation, handle: string, to: Point): Annotation 
     annotation.kind === 'rect' ||
     annotation.kind === 'redact'
   ) {
-    const opposite = boxCorners(annotation)[3 - Number(handle)]!;
-    return { ...annotation, ...boxFrom(opposite.x, opposite.y, to.x, to.y) };
+    return resizeBox(annotation, handle as Handle, to, base, extra);
   }
   return annotation;
 }
@@ -769,7 +776,11 @@ function LineShape({
   );
 }
 
-/** De greepjes om een vak of lijn aan te passen: de hoeken, of de twee uiteinden. */
+/**
+ * De greepjes om een vak of lijn aan te passen: bij een vak dezelfde acht als bij de leesvakken
+ * van Platte tekst (hoeken en zijden, genoemd naar hoe je het vak op het scherm ziet), bij een
+ * lijn de twee uiteinden.
+ */
 function Handles({
   annotation,
   toScreen,
@@ -777,23 +788,38 @@ function Handles({
   annotation: BoxAnnotation | LineAnnotation;
   toScreen: (point: Point) => Point;
 }) {
-  const points =
-    annotation.kind === 'line'
-      ? [
-          ['p1', toScreen({ x: annotation.x1, y: annotation.y1 })],
-          ['p2', toScreen({ x: annotation.x2, y: annotation.y2 })],
-        ]
-      : boxCorners(annotation).map((corner, i) => [String(i), toScreen(corner)] as const);
+  let points: [name: string, point: Point, cursor: string][];
+  if (annotation.kind === 'line') {
+    points = [
+      ['p1', toScreen({ x: annotation.x1, y: annotation.y1 }), 'end'],
+      ['p2', toScreen({ x: annotation.x2, y: annotation.y2 }), 'end'],
+    ];
+  } else {
+    const corners = boxCorners(annotation).map(toScreen);
+    const xs = corners.map((corner) => corner.x);
+    const ys = corners.map((corner) => corner.y);
+    const edges = {
+      x0: Math.min(...xs),
+      y0: Math.min(...ys),
+      x1: Math.max(...xs),
+      y1: Math.max(...ys),
+    };
+    points = HANDLES.map((handle) => [handle, handlePoint(edges, handle), handle]);
+  }
+  // De rand (1 beeldpunt) valt half buiten het vlak: samen precies zo groot als in Platte tekst.
+  const size = HANDLE_SIZE - 1;
   return (
     <g class="annotate-handles">
-      {points.map(([handle, point]) => (
-        <circle
-          key={String(handle)}
-          class="annotate-handle"
-          data-handle={String(handle)}
-          cx={(point as Point).x}
-          cy={(point as Point).y}
-          r={6}
+      {points.map(([name, point, cursor]) => (
+        <rect
+          key={name}
+          class={`handle handle--${cursor} annotate-handle`}
+          data-handle={name}
+          x={point.x - size / 2}
+          y={point.y - size / 2}
+          width={size}
+          height={size}
+          rx={2}
         />
       ))}
     </g>

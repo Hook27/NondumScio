@@ -477,7 +477,7 @@ test.describe('redigeren: toegankelijkheid en telefoon', () => {
     await expect(boxes(page)).toHaveCount(1);
     await pages(page).first().focus();
     await page.keyboard.press('v');
-    const corner = page.locator('[data-handle="3"]');
+    const corner = page.locator('[data-handle="se"]');
     await corner.scrollIntoViewIfNeeded();
     const before = (await boxes(page).first().boundingBox())!;
     const handle = (await corner.boundingBox())!;
