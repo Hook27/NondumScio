@@ -2,7 +2,7 @@ import { Fragment, type ComponentChildren } from 'preact';
 import { useEffect, useLayoutEffect, useRef, useState } from 'preact/hooks';
 import { GAP_FACTOR } from '../compare/layout';
 import { copyText } from '../compare/report';
-import { ZOOM_STEPS, renderPage, stepZoom, targetWidths } from '../compare/visual';
+import { ZOOM_STEPS, closeVisual, renderPage, stepZoom, targetWidths } from '../compare/visual';
 import { ConfirmDialog } from '../components/ConfirmDialog';
 import { Dropzone } from '../components/Dropzone';
 import { IconButton } from '../components/Icon';
@@ -92,6 +92,15 @@ export function TextTool() {
   const { t } = useI18n();
   const p = t.plainText;
   const { view, tooMany } = useTextState();
+  // Weg uit Platte tekst: de PDF van het voorbeeld dicht, dan komen geheugen en worker vrij. De PDF
+  // zelf, de vakken en de tekst blijven bewaard; terug opent het voorbeeld hem opnieuw.
+  useEffect(
+    () => () => {
+      const { slot } = getTextState();
+      if (slot.status === 'ready') closeVisual(slot.doc.file);
+    },
+    [],
+  );
   return (
     <section class="workspace plaintext" aria-label={p.toolbar}>
       <div class="workspace__tools">
@@ -1040,17 +1049,16 @@ function PageView({ doc }: { doc: TextDoc }) {
   const fitCss = fit === 'width' ? availW : Math.min(availW, (availH * size.w) / size.h);
   const widths = targetWidths(Math.floor(fitCss), zoom, window.devicePixelRatio);
 
+  // Tekenen; bij een andere pagina of breedte (of weggaan) breekt het af wat nog bezig is.
   useEffect(() => {
-    let cancelled = false;
-    renderPage(doc.file, page, widths.dev)
+    const stop = new AbortController();
+    renderPage(doc.file, page, widths.dev, stop.signal)
       .then((canvas): Drawn => (canvas ? { canvas } : { error: true }))
       .catch((): Drawn => ({ error: true }))
       .then((next) => {
-        if (!cancelled) setDrawn(next);
+        if (!stop.signal.aborted) setDrawn(next);
       });
-    return () => {
-      cancelled = true;
-    };
+    return () => stop.abort();
   }, [doc, page, widths.dev]);
 
   // Toetsen: ← → (en PageUp/PageDown) bladeren, Home en End naar de eerste of laatste pagina,

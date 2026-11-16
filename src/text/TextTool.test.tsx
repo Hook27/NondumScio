@@ -289,7 +289,12 @@ describe('PDF → Platte tekst: beginnen', () => {
     await open('brief.pdf');
     expect(screen.getByText(format(p.preview.page, { n: 1, total: 1 }))).toBeTruthy();
     expect(screen.getByRole('img', { name: format(p.preview.canvas, { n: 1 }) })).toBeTruthy();
-    expect(renderPage).toHaveBeenLastCalledWith(expect.any(File), 1, expect.any(Number));
+    expect(renderPage).toHaveBeenLastCalledWith(
+      expect.any(File),
+      1,
+      expect.any(Number),
+      expect.anything(),
+    );
     expect(output()).toBeNull();
 
     fireEvent.click(button(p.views.result));
@@ -377,7 +382,12 @@ describe('PDF → Platte tekst: voorbeeld', () => {
     fireEvent.click(button(p.preview.next));
     expect(at(2)).toBeTruthy();
     await waitFor(() =>
-      expect(renderPage).toHaveBeenLastCalledWith(expect.any(File), 2, expect.any(Number)),
+      expect(renderPage).toHaveBeenLastCalledWith(
+        expect.any(File),
+        2,
+        expect.any(Number),
+        expect.anything(),
+      ),
     );
     fireEvent.click(button(p.preview.last));
     expect(at(3)).toBeTruthy();
@@ -2313,5 +2323,34 @@ describe('PDF → Platte tekst: batch', () => {
       'Date: 2018-06-04',
     ]);
     expect(message()).toContain(format(en.batch.doneCombined, { ok: 1, failed: '' }));
+  });
+});
+
+describe('PDF → Platte tekst: opruimen', () => {
+  it('verder bladeren breekt het tekenen van de vorige pagina af', async () => {
+    await open('artikel.pdf');
+    const first = vi.mocked(renderPage).mock.lastCall![3]!;
+    expect(first).toBeInstanceOf(AbortSignal);
+    expect(first.aborted).toBe(false);
+    fireEvent.click(button(p.preview.next));
+    await waitFor(() => expect(vi.mocked(renderPage).mock.lastCall![1]).toBe(2));
+    expect(first.aborted).toBe(true);
+    expect(vi.mocked(renderPage).mock.lastCall![3]!.aborted).toBe(false);
+  });
+
+  it('Platte tekst verlaten sluit de PDF van het voorbeeld; de PDF zelf blijft bewaard', async () => {
+    await open('artikel.pdf');
+    const slot = getTextState().slot;
+    if (slot.status !== 'ready') throw new Error('niet geopend');
+    const signal = vi.mocked(renderPage).mock.lastCall![3]!;
+    vi.mocked(closeVisual).mockClear();
+    cleanup();
+    // Preact ruimt een weggehaald scherm een tikje later op.
+    await waitFor(() => expect(closeVisual).toHaveBeenCalledWith(slot.doc.file));
+    expect(signal.aborted).toBe(true);
+    // Terugkomen: alles staat er nog, het voorbeeld wordt opnieuw getekend.
+    expect(getTextState().slot.status).toBe('ready');
+    setup();
+    await waitFor(() => expect(vi.mocked(renderPage).mock.lastCall![3]!.aborted).toBe(false));
   });
 });
