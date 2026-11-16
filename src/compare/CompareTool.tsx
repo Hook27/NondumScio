@@ -23,6 +23,7 @@ import { pageRows, pageSize, profileRows, type PageNote, type ProfileDoc } from 
 import { buildReport, copyText, type ReportDoc } from './report';
 import {
   ZOOM_STEPS,
+  closeVisual,
   composeDiff,
   composeOverlay,
   fitWidth,
@@ -81,6 +82,15 @@ export function CompareTool() {
     null,
   );
   const reportStatus = report?.result === result ? report.text : null;
+  // Weg uit Vergelijken: de PDF's van het beeld dicht, dan komen geheugen en workers vrij. De
+  // documenten en de vergelijking blijven bewaard; terug opent het beeld ze opnieuw.
+  useEffect(
+    () => () => {
+      const now = getCompareState();
+      for (const slot of [now.a, now.b]) if (slot.status === 'ready') closeVisual(slot.doc.file);
+    },
+    [],
+  );
 
   return (
     <>
@@ -395,6 +405,8 @@ function VisualView() {
 type Rendered = {
   key: string;
   pages: Promise<[HTMLCanvasElement | null, HTMLCanvasElement | null]>;
+  /** Breekt het tekenen af (bij een andere pagina of breedte, of als je weggaat). */
+  stop: AbortController;
 };
 
 /** Elk bestand een eigen nummer, voor de sleutel van de getekende pagina's. */
@@ -421,6 +433,9 @@ function VisualCanvas({ a, b }: { a: CompareDoc; b: CompareDoc }) {
   const [busy, setBusy] = useState(false);
   const rendered = useRef<Rendered | null>(null);
 
+  // Weg uit het beeld (of uit Vergelijken): wat nog getekend wordt, afbreken.
+  useEffect(() => () => rendered.current?.stop.abort(), []);
+
   // Bij "passend" hangt de tekenbreedte aan de breedte van het vak: opnieuw meten als die verandert.
   useLayoutEffect(() => {
     const element = wrap.current;
@@ -443,16 +458,21 @@ function VisualCanvas({ a, b }: { a: CompareDoc; b: CompareDoc }) {
     );
     const key = [fileId(a.file), pageA, fileId(b.file), pageB, widths.dev].join('|');
     if (rendered.current?.key !== key) {
+      // Andere pagina's of een andere breedte: wat nog getekend wordt, is niet meer nodig.
+      rendered.current?.stop.abort();
+      const stop = new AbortController();
       rendered.current = {
         key,
+        stop,
         pages: Promise.all([
-          renderPage(a.file, pageA, widths.dev),
-          renderPage(b.file, pageB, widths.dev),
+          renderPage(a.file, pageA, widths.dev, stop.signal),
+          renderPage(b.file, pageB, widths.dev, stop.signal),
         ]),
       };
     }
+    const current = rendered.current;
     setBusy(true);
-    rendered.current.pages
+    current.pages
       .then(([ca, cb]): Drawn => {
         if (!ca) return { kind: 'missing', side: 'a', page: pageA, count: a.pageCount };
         if (!cb) return { kind: 'missing', side: 'b', page: pageB, count: b.pageCount };
@@ -467,8 +487,8 @@ function VisualCanvas({ a, b }: { a: CompareDoc; b: CompareDoc }) {
         return { kind: 'diff', ratio: widths.ratio, ...composeDiff(ca, cb, visual.threshold) };
       })
       .catch((): Drawn => {
-        // De volgende keer opnieuw proberen.
-        rendered.current = null;
+        // De volgende keer opnieuw proberen (tenzij er intussen al andere pagina's getekend worden).
+        if (rendered.current === current) rendered.current = null;
         return { kind: 'error' };
       })
       .then((next) => {

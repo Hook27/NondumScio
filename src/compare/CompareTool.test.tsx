@@ -915,6 +915,61 @@ describe('beeld', () => {
     await screen.findByText(format(v.page, { n: 1, total: 2 }));
     expect(mode(v.modes.overlay).getAttribute('aria-pressed')).toBe('true');
   });
+
+  it('verder bladeren breekt het tekenen van de vorige pagina’s af; een andere drempel niet', async () => {
+    await openVisual('scan.pdf', 'oud.pdf');
+    const first = vi.mocked(renderPage).mock.calls.map((call) => call[3]);
+    expect(first).toHaveLength(2);
+    expect(first.every((signal) => signal instanceof AbortSignal && !signal.aborted)).toBe(true);
+    // Een andere drempel rekent opnieuw met dezelfde pagina's: niets afbreken.
+    fireEvent.input(screen.getByRole('slider', { name: v.threshold }), { target: { value: '60' } });
+    await waitFor(() => expect(vi.mocked(composeDiff).mock.lastCall![2]).toBe(60));
+    expect(first.some((signal) => signal!.aborted)).toBe(false);
+    fireEvent.click(button(v.next));
+    await waitFor(() => expect(vi.mocked(renderPage).mock.calls.length).toBeGreaterThan(2));
+    expect(first.every((signal) => signal!.aborted)).toBe(true);
+  });
+
+  it('een afgebroken tekening laat de nieuwe pagina’s staan (een andere drempel tekent niet opnieuw)', async () => {
+    // De eerste twee tekeningen blijven hangen tot ze worden afgebroken, zoals pdf.js dan doet.
+    const hang = (_file: File, _page: number, _width: number, signal?: AbortSignal) =>
+      new Promise<HTMLCanvasElement | null>((_resolve, reject) =>
+        signal?.addEventListener('abort', () => reject(new Error('afgebroken'))),
+      );
+    vi.mocked(renderPage).mockImplementationOnce(hang).mockImplementationOnce(hang);
+    setup();
+    choose('a', 'scan.pdf', 'scan.pdf');
+    await screen.findByText(/^A: \d+ pagina/);
+    fireEvent.click(button(c.tabs.visual));
+    await waitFor(() => expect(renderPage).toHaveBeenCalledTimes(2));
+    // Nog vóór pagina 1 klaar is, naar pagina 2.
+    fireEvent.click(button(v.next));
+    await screen.findByText('A: pagina 2 · B: pagina 2');
+    expect(renderPage).toHaveBeenCalledTimes(4);
+    fireEvent.input(screen.getByRole('slider', { name: v.threshold }), { target: { value: '60' } });
+    await waitFor(() => expect(vi.mocked(composeDiff).mock.lastCall![2]).toBe(60));
+    expect(renderPage).toHaveBeenCalledTimes(4);
+  });
+
+  it('Vergelijken verlaten sluit de PDF’s van het beeld; de documenten blijven bewaard', async () => {
+    await openVisual('scan.pdf', 'oud.pdf');
+    vi.mocked(closeVisual).mockClear();
+    const signals = vi.mocked(renderPage).mock.calls.map((call) => call[3]);
+    cleanup();
+    // Preact ruimt een weggehaald scherm een tikje later op.
+    await waitFor(() =>
+      expect(
+        vi
+          .mocked(closeVisual)
+          .mock.calls.map(([file]) => file.name)
+          .sort(),
+      ).toEqual(['oud.pdf', 'scan.pdf']),
+    );
+    expect(signals.every((signal) => signal!.aborted)).toBe(true);
+    // Terug: de documenten staan er nog.
+    setup();
+    expect(within(slot('a')).getByText('scan.pdf')).toBeTruthy();
+  });
 });
 
 describe('rapport', () => {

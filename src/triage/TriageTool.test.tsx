@@ -376,6 +376,28 @@ describe('TriageTool', () => {
     expect(current()?.textContent).toContain('b.pdf');
   });
 
+  it('verder bladeren breekt het tekenen af; Triage verlaten sluit de PDF van nu', async () => {
+    setup();
+    choose(pdf('a.pdf'), pdf('b.pdf'));
+    await settle();
+    const first = vi.mocked(renderPage).mock.lastCall![3]!;
+    expect(first).toBeInstanceOf(AbortSignal);
+    expect(first.aborted).toBe(false);
+    await key('PageDown');
+    await settle();
+    expect(first.aborted).toBe(true);
+    const second = vi.mocked(renderPage).mock.lastCall![3]!;
+    expect(second.aborted).toBe(false);
+
+    vi.mocked(closeVisual).mockClear();
+    cleanup();
+    // Preact ruimt een weggehaald scherm een tikje later op.
+    await waitFor(() => expect(second.aborted).toBe(true));
+    expect(vi.mocked(closeVisual)).toHaveBeenCalledWith(getTriageState().files[0]!.file);
+    // De lijst en de besluiten blijven bewaard.
+    expect(getTriageState().files).toHaveLength(2);
+  });
+
   it('de PDF van het vorige bestand gaat dicht', async () => {
     setup();
     choose(pdf('a.pdf'), pdf('b.pdf'));

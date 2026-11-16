@@ -1,6 +1,6 @@
 import { expect, test, type Page } from '@playwright/test';
 import { PDFDocument, StandardFonts } from 'pdf-lib';
-import { openPage, SLOW } from './helpers';
+import { messages, openPage, SLOW } from './helpers';
 
 /**
  * Geheugen: wat na het werk achterblijft. Telt met de ontwikkelaarsingang van Chromium (opruimen
@@ -120,4 +120,32 @@ test('een PDF die niet opent, laat geen pdf.js-worker achter', async ({ page }) 
   await choose(page, '#plaintext-file', 'goed.pdf', await letter(1));
   await expect(page.locator('canvas.plaintext-preview__canvas')).toBeVisible(SLOW);
   expect(page.workers().length).toBeGreaterThan(0);
+});
+
+test('Platte tekst en Vergelijken verlaten: de PDF van het voorbeeld gaat dicht', async ({
+  page,
+}) => {
+  const preview = page.locator('canvas.plaintext-preview__canvas');
+  await openPage(page, '/#/advanced/text', { lang: 'nl' });
+  await choose(page, '#plaintext-file', 'brief.pdf', await letter(2));
+  await expect(preview).toBeVisible(SLOW);
+  expect(page.workers().length).toBeGreaterThan(0);
+  await go(page, '#/merge');
+  await expect.poll(() => page.workers().length, SLOW).toBe(0);
+  // Terug: de PDF staat er nog en het voorbeeld wordt opnieuw getekend.
+  await go(page, '#/advanced/text');
+  await expect(preview).toBeVisible(SLOW);
+  await expect(
+    page.locator('.plaintext-slot').getByText('brief.pdf', { exact: true }),
+  ).toBeVisible();
+
+  // Vergelijken, met het beeld (dat opent beide PDF's): weggaan sluit ze allebei.
+  await go(page, '#/advanced/compare');
+  await choose(page, '#compare-file-a', 'oud.pdf', await letter(2));
+  await choose(page, '#compare-file-b', 'nieuw.pdf', await letter(2));
+  await page.getByRole('button', { name: messages.nl.compare.tabs.visual }).click();
+  await expect(page.locator('canvas.compare-visual__canvas')).toBeVisible(SLOW);
+  expect(page.workers().length).toBeGreaterThan(0);
+  await go(page, '#/split');
+  await expect.poll(() => page.workers().length, SLOW).toBe(0);
 });

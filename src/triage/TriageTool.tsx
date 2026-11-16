@@ -1,6 +1,13 @@
 import type { ComponentChildren } from 'preact';
 import { useEffect, useLayoutEffect, useRef, useState } from 'preact/hooks';
-import { ZOOM_STEPS, pageSize, renderPage, stepZoom, targetWidths } from '../compare/visual';
+import {
+  ZOOM_STEPS,
+  closeVisual,
+  pageSize,
+  renderPage,
+  stepZoom,
+  targetWidths,
+} from '../compare/visual';
 import { ConfirmDialog } from '../components/ConfirmDialog';
 import { Dropzone } from '../components/Dropzone';
 import { useI18n } from '../i18n/LanguageContext';
@@ -95,6 +102,16 @@ export function TriageTool() {
   useEffect(() => {
     if (mode === 'folder' && !getTriageState().root) void loadRememberedRoot();
   }, [mode]);
+  // Weg uit Triage: de PDF die nu in beeld is dicht, dan komen geheugen en worker vrij. De lijst en
+  // de besluiten blijven bewaard; terug opent hij opnieuw.
+  useEffect(
+    () => () => {
+      const { files, cur } = getTriageState();
+      const current = files[cur];
+      if (current) closeVisual(current.file);
+    },
+    [],
+  );
   return (
     <section class="workspace triage" aria-label={t.triage.toolbar}>
       <div class="workspace__tools">
@@ -739,20 +756,19 @@ function PageView({ entry }: { entry: TriageFile }) {
   const fitCss = fit === 'width' ? availW : Math.min(availW, availH * ratio);
   const widths = targetWidths(Math.floor(fitCss), zoom, window.devicePixelRatio);
 
+  // Tekenen; bij een andere pagina, breedte of PDF (of weggaan) breekt het af wat nog bezig is.
   useEffect(() => {
     if (!size) return;
-    let cancelled = false;
-    renderPage(file, page, widths.dev)
+    const stop = new AbortController();
+    renderPage(file, page, widths.dev, stop.signal)
       .then((canvas): Drawn => (canvas ? { canvas } : { error: true }))
       .catch((): Drawn => ({ error: true }))
       .then((next) => {
-        if (cancelled) return;
+        if (stop.signal.aborted) return;
         setDrawn(next);
         markShown(entry.id);
       });
-    return () => {
-      cancelled = true;
-    };
+    return () => stop.abort();
   }, [file, page, widths.dev, size !== null, entry.id]);
 
   // Het scrollwiel bladert door aan de boven- of onderrand van het vak, zoals bij Platte tekst.

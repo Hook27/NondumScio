@@ -127,22 +127,41 @@ export async function pageSize(
   }
 }
 
-/** Tekent een pagina op een witte achtergrond, `width` beeldpunten breed; null als hij niet bestaat. */
+/**
+ * Tekent een pagina op een witte achtergrond, `width` beeldpunten breed; null als hij niet bestaat.
+ * Met `signal` kan het tekenen worden afgebroken (bijvoorbeeld als je al verder bladert): pdf.js
+ * stopt dan, het halve plaatje wordt vrijgegeven en de belofte wordt afgewezen. Zonder afbreken
+ * tekende elke pagina waar je langs bladerde helemaal af, en kwam de laatste pas seconden later.
+ */
 export async function renderPage(
   file: File,
   pageNumber: number,
   width: number,
+  signal?: AbortSignal,
 ): Promise<HTMLCanvasElement | null> {
   const pdf = await pdfFor(file);
   if (pageNumber < 1 || pageNumber > pdf.numPages) return null;
   const page = await pdf.getPage(pageNumber);
   try {
+    // Intussen al afgebroken: dan niet meer beginnen.
+    signal?.throwIfAborted();
     const base = page.getViewport({ scale: 1 });
     const viewport = page.getViewport({ scale: width / base.width });
     const canvas = document.createElement('canvas');
     canvas.width = Math.max(1, Math.round(viewport.width));
     canvas.height = Math.max(1, Math.round(viewport.height));
-    await page.render({ canvas, viewport, background: '#ffffff' }).promise;
+    const task = page.render({ canvas, viewport, background: '#ffffff' });
+    const stop = () => task.cancel();
+    signal?.addEventListener('abort', stop);
+    try {
+      await task.promise;
+    } catch (error) {
+      canvas.width = 0;
+      canvas.height = 0;
+      throw error;
+    } finally {
+      signal?.removeEventListener('abort', stop);
+    }
     return canvas;
   } finally {
     page.cleanup();
