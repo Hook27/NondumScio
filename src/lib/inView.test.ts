@@ -5,6 +5,7 @@ import { IN_VIEW_MARGIN, SCROLL_ROOT, resetInView, watchInView } from './inView'
 class FakeObserver {
   static instances: FakeObserver[] = [];
   observed = new Set<Element>();
+  disconnected = false;
   constructor(
     readonly callback: (entries: Array<{ target: Element; isIntersecting: boolean }>) => void,
     readonly options: { root?: Element | null; rootMargin?: string },
@@ -19,6 +20,7 @@ class FakeObserver {
   }
   disconnect() {
     this.observed.clear();
+    this.disconnected = true;
   }
   show(element: Element, isIntersecting = true) {
     this.callback([{ target: element, isIntersecting }]);
@@ -97,6 +99,50 @@ describe('watchInView', () => {
     FakeObserver.instances[0]!.show(el);
     expect(callback).not.toHaveBeenCalled();
     expect(FakeObserver.instances[0]!.observed.size).toBe(0);
+  });
+
+  it('ruimt een kijker op zodra zijn laatste element weg is (anders blijft het oude vak bewaard)', () => {
+    const box = scrollBox('auto');
+    const stopA = watchInView(element(box), () => {});
+    const stopB = watchInView(element(box), () => {});
+    const first = FakeObserver.instances[0]!;
+    stopA();
+    expect(first.disconnected).toBe(false);
+    stopB();
+    expect(first.disconnected).toBe(true);
+    // Een nieuw werkvak (of hetzelfde, terug) krijgt een nieuwe kijker.
+    watchInView(element(box), () => {});
+    expect(FakeObserver.instances).toHaveLength(2);
+    expect(FakeObserver.instances[1]!.observed.size).toBe(1);
+  });
+
+  it('twee keer stoppen telt één keer; een ander vak houdt zijn kijker', () => {
+    const one = scrollBox('auto');
+    const two = scrollBox('auto');
+    const stopA = watchInView(element(one), () => {});
+    watchInView(element(one), () => {});
+    const stopC = watchInView(element(two), () => {});
+    stopA();
+    stopA();
+    expect(FakeObserver.instances[0]!.disconnected).toBe(false);
+    expect(FakeObserver.instances[0]!.observed.size).toBe(1);
+    stopC();
+    expect(FakeObserver.instances[1]!.disconnected).toBe(true);
+    expect(FakeObserver.instances[0]!.disconnected).toBe(false);
+  });
+
+  it('na opnieuw beginnen haalt een oude stop de nieuwe kijker van hetzelfde vak niet weg', () => {
+    const box = scrollBox('auto');
+    const stopOld = watchInView(element(box), () => {});
+    resetInView();
+    watchInView(element(box), () => {});
+    stopOld();
+    const fresh = FakeObserver.instances[1]!;
+    expect(fresh.disconnected).toBe(false);
+    // Een volgend element in dat vak komt bij dezelfde, nieuwe kijker.
+    watchInView(element(box), () => {});
+    expect(FakeObserver.instances).toHaveLength(2);
+    expect(fresh.observed.size).toBe(2);
   });
 
   it('geldt meteen als in beeld als de browser geen IntersectionObserver kent', () => {

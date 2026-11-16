@@ -18,21 +18,27 @@ export const IN_VIEW_MARGIN = '100% 0px';
  */
 export const SCROLL_ROOT = 'data-scroll-root';
 
-const observers = new Map<Element | null, IntersectionObserver>();
+/**
+ * De kijkers per scrollvak, met het aantal elementen dat ze nog volgen. Een kijker houdt zijn vak
+ * vast (en daarmee alles erin, ook getekende pagina's); daarom gaat hij weg zodra zijn laatste
+ * element weg is. Anders bleef bij elke wissel van taak het oude werkvak in het geheugen.
+ */
+const observers = new Map<Element | null, { observer: IntersectionObserver; watched: number }>();
 const callbacks = new Map<Element, Callback>();
 
-function observerFor(root: Element | null): IntersectionObserver {
-  let observer = observers.get(root);
-  if (!observer) {
-    observer = new IntersectionObserver(
+function observerFor(root: Element | null) {
+  let entry = observers.get(root);
+  if (!entry) {
+    const observer = new IntersectionObserver(
       (entries) => {
         for (const entry of entries) callbacks.get(entry.target)?.(entry.isIntersecting);
       },
       { root, rootMargin: IN_VIEW_MARGIN },
     );
-    observers.set(root, observer);
+    entry = { observer, watched: 0 };
+    observers.set(root, entry);
   }
-  return observer;
+  return entry;
 }
 
 /** Het scrollvak waarin het element staat, als dat vak nu echt scrolt (anders: het venster). */
@@ -53,18 +59,28 @@ export function watchInView(element: Element, callback: Callback): () => void {
     callback(true);
     return () => {};
   }
-  const observer = observerFor(scrollRootOf(element));
+  const root = scrollRootOf(element);
+  const entry = observerFor(root);
   callbacks.set(element, callback);
-  observer.observe(element);
+  entry.observer.observe(element);
+  entry.watched += 1;
+  let stopped = false;
   return () => {
+    if (stopped) return;
+    stopped = true;
     callbacks.delete(element);
-    observer.unobserve(element);
+    entry.observer.unobserve(element);
+    entry.watched -= 1;
+    if (entry.watched === 0 && observers.get(root) === entry) {
+      entry.observer.disconnect();
+      observers.delete(root);
+    }
   };
 }
 
 /** Alleen voor tests: begin opnieuw. */
 export function resetInView(): void {
-  for (const observer of observers.values()) observer.disconnect();
+  for (const { observer } of observers.values()) observer.disconnect();
   observers.clear();
   callbacks.clear();
 }
