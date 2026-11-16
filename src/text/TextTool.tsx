@@ -11,6 +11,7 @@ import { useDragReorder } from '../components/useDragReorder';
 import { useI18n } from '../i18n/LanguageContext';
 import { format, plural } from '../i18n/format';
 import { formatFileSize } from '../lib/format';
+import { HANDLES, type Handle } from '../lib/handles';
 import { downloadFile } from '../pdf/save';
 import {
   clampZone,
@@ -19,7 +20,6 @@ import {
   quality,
   resizeZone,
   type Extraction,
-  type Handle,
   type Zone,
 } from './extract';
 import {
@@ -74,7 +74,6 @@ import { forgetStored } from './settings';
 type Texts = ReturnType<typeof useI18n>['t'];
 
 const VIEWS: readonly TextView[] = ['preview', 'result'];
-const HANDLES: readonly Handle[] = ['nw', 'n', 'ne', 'e', 'se', 's', 'sw', 'w'];
 const FITS: readonly Fit[] = ['page', 'width'];
 
 /** Kleiner getekend dan dit (in beeldpunten, breed of hoog) telt niet als vak, zoals in de extractor. */
@@ -1359,7 +1358,7 @@ function ZoneLayer({ zones, own }: { zones: Zone[]; own: boolean }) {
           {HANDLES.map((h) => (
             <span
               key={h}
-              class={`plaintext-zone__handle plaintext-zone__handle--${h}`}
+              class={`handle handle--${h} plaintext-zone__handle plaintext-zone__handle--${h}`}
               data-handle={h}
             />
           ))}

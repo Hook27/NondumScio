@@ -1,6 +1,14 @@
 import { describe, expect, it } from 'vitest';
 import type { Rotation } from '../pages/plan';
-import { apply, baseSize, baseToPdf, displaySize, fromDisplay, toDisplay } from './geometry';
+import {
+  apply,
+  baseSize,
+  baseToPdf,
+  displaySize,
+  fromDisplay,
+  resizeBox,
+  toDisplay,
+} from './geometry';
 import {
   annotationsOf,
   boxFrom,
@@ -49,6 +57,64 @@ describe('weergave van een pagina met extra draaiing', () => {
         expect(fromDisplay(base, rotation, toDisplay(base, rotation, point))).toEqual(point);
       }
     }
+  });
+});
+
+describe('een vak vergroten aan een greepje (zoals je het op het scherm ziet)', () => {
+  const box = { x: 100, y: 200, width: 50, height: 30 };
+  // Het punt waar je loslaat, in de basisstand: zo geeft de pagina het door.
+  const onScreen = (extra: Rotation, x: number, y: number) => fromDisplay(base, extra, { x, y });
+
+  it('een zijgreepje verandert alleen die kant', () => {
+    expect(resizeBox(box, 'e', onScreen(0, 170, 999), base, 0)).toEqual({ ...box, width: 70 });
+    expect(resizeBox(box, 'n', onScreen(0, 999, 180), base, 0)).toEqual({
+      ...box,
+      y: 180,
+      height: 50,
+    });
+    expect(resizeBox(box, 's', onScreen(0, -5, 250), base, 0)).toEqual({ ...box, height: 50 });
+    expect(resizeBox(box, 'w', onScreen(0, 90, -5), base, 0)).toEqual({
+      ...box,
+      x: 90,
+      width: 60,
+    });
+  });
+
+  it('een hoekgreepje verandert twee kanten; voorbij de overkant klapt het vak om', () => {
+    expect(resizeBox(box, 'se', onScreen(0, 160, 250), base, 0)).toEqual({
+      x: 100,
+      y: 200,
+      width: 60,
+      height: 50,
+    });
+    expect(resizeBox(box, 'w', onScreen(0, 170, 0), base, 0)).toEqual({
+      ...box,
+      x: 150,
+      width: 20,
+    });
+  });
+
+  it('op een gedraaide pagina volgt het greepje het scherm, niet de basisstand', () => {
+    // Een kwartslag rechtsom: de rechterkant op het scherm is de bovenkant in de basisstand.
+    expect(resizeBox(box, 'e', onScreen(90, 640, 999), base, 90)).toEqual({
+      x: 100,
+      y: 160,
+      width: 50,
+      height: 70,
+    });
+    // Een halve slag: linksboven op het scherm is rechtsonder in de basisstand.
+    expect(resizeBox(box, 'nw', onScreen(180, 440, 560), base, 180)).toEqual({
+      x: 100,
+      y: 200,
+      width: 60,
+      height: 40,
+    });
+    // Drie kwartslagen: de onderkant op het scherm is de linkerkant in de basisstand.
+    expect(resizeBox(box, 's', onScreen(270, -5, 520), base, 270)).toEqual({
+      ...box,
+      x: 80,
+      width: 70,
+    });
   });
 });
 

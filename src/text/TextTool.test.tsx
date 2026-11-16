@@ -529,6 +529,28 @@ describe('PDF → Platte tekst: leesvakken', () => {
     expect(output()!.value!.split('\n\n')[0]).toBe(rows('rechts', 1).slice(0, 2).join(' '));
   });
 
+  it('de greepjes van een vak zijn dezelfde als in Bewerken en Redigeren', async () => {
+    await open('artikel.pdf');
+    fireEvent.click(check(p.zones.use));
+    await settle();
+    draw(...LEFT_BOX);
+    const grips = [...document.querySelectorAll('.plaintext-zone [data-handle]')];
+    expect(grips.map((grip) => grip.getAttribute('data-handle'))).toEqual([
+      'nw',
+      'n',
+      'ne',
+      'e',
+      'se',
+      's',
+      'sw',
+      'w',
+    ]);
+    for (const grip of grips) {
+      expect(grip.classList.contains('handle')).toBe(true);
+      expect(grip.classList.contains(`handle--${grip.getAttribute('data-handle')}`)).toBe(true);
+    }
+  });
+
   it('ongedaan maken met de knop en met Ctrl+Z; vakken wissen', async () => {
     await open('artikel.pdf');
     fireEvent.click(check(p.zones.use));

@@ -438,6 +438,53 @@ h1 {
   flex: none;
 }
 
+/* De greepjes om een vak groter of kleiner te maken: overal hetzelfde (Bewerken, Redigeren en de
+   leesvakken van Platte tekst, zie lib/handles.ts). Een gevuld vierkantje van 12 beeldpunten met
+   een dunne rand in de kleur van het papier; de muisaanwijzer wijst de richting waarin het vak
+   verandert. Als HTML (Platte tekst) met achtergrond en rand, als SVG (Bewerken) met vulling en lijn. */
+.handle {
+  --handle-color: var(--accent);
+}
+
+span.handle {
+  width: 12px;
+  height: 12px;
+  background: var(--handle-color);
+  border: 1px solid var(--paper);
+  border-radius: 2px;
+}
+
+rect.handle {
+  fill: var(--handle-color);
+  stroke: var(--paper);
+  stroke-width: 1;
+}
+
+.handle--nw,
+.handle--se {
+  cursor: nwse-resize;
+}
+
+.handle--ne,
+.handle--sw {
+  cursor: nesw-resize;
+}
+
+.handle--n,
+.handle--s {
+  cursor: ns-resize;
+}
+
+.handle--e,
+.handle--w {
+  cursor: ew-resize;
+}
+
+/* Het uiteinde van een lijn kan alle kanten op. */
+.handle--end {
+  cursor: move;
+}
+
 /* Draagt de hover-tekst. Een knop die uit staat laat de muis door naar dit omhulsel,
    zodat de hover-tekst ook dan verschijnt. */
 .tip-anchor {
@@ -2426,8 +2473,8 @@ h1 {
   color: var(--candidate);
 }
 
-.plaintext-zone--own .plaintext-zone__handle {
-  background: var(--candidate);
+.plaintext-zone--own .handle {
+  --handle-color: var(--candidate);
 }
 
 /* In de lijst: het nummer met een oranje rand (oranje als achtergrond is te weinig contrast). */
@@ -2452,55 +2499,43 @@ h1 {
   pointer-events: none;
 }
 
+/* Het greepje zelf ziet eruit als overal (`.handle`); hier alleen zijn plek op het vak. */
 .plaintext-zone__handle {
   position: absolute;
-  width: 12px;
-  height: 12px;
   margin: -6px 0 0 -6px;
-  background: var(--accent);
-  border: 1px solid var(--paper);
-  border-radius: 2px;
 }
 
 .plaintext-zone__handle--nw {
   left: 0;
   top: 0;
-  cursor: nwse-resize;
 }
 .plaintext-zone__handle--n {
   left: 50%;
   top: 0;
-  cursor: ns-resize;
 }
 .plaintext-zone__handle--ne {
   left: 100%;
   top: 0;
-  cursor: nesw-resize;
 }
 .plaintext-zone__handle--e {
   left: 100%;
   top: 50%;
-  cursor: ew-resize;
 }
 .plaintext-zone__handle--se {
   left: 100%;
   top: 100%;
-  cursor: nwse-resize;
 }
 .plaintext-zone__handle--s {
   left: 50%;
   top: 100%;
-  cursor: ns-resize;
 }
 .plaintext-zone__handle--sw {
   left: 0;
   top: 100%;
-  cursor: nesw-resize;
 }
 .plaintext-zone__handle--w {
   left: 0;
   top: 50%;
-  cursor: ew-resize;
 }
 
 /* De verschillen naast elkaar: twee even brede kolommen, elk stuk op een eigen rij. */
@@ -3949,10 +3984,6 @@ h1 {
 }
 
 .annotate-handle {
-  fill: var(--surface);
-  stroke: var(--accent);
-  stroke-width: 2;
-  cursor: crosshair;
   pointer-events: all;
 }
 

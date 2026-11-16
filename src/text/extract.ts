@@ -6,6 +6,7 @@ import {
   type PageText,
   type Piece,
 } from '../compare/layout';
+import { dragEdges, type Handle } from '../lib/handles';
 import { DUTCH_HEAD, EMPTY_META, withHead, type HeadTexts, type Meta } from './header';
 import { DUTCH_CONCORDANCE, assemble, printedPages, type Assembly } from './pages';
 
@@ -209,17 +210,9 @@ export function clampZone(zone: Zone): Zone {
   };
 }
 
-/** Welke kant of hoek van een vak je versleept: n(oord), z = s, o = e, w, of een hoek. */
-export type Handle = 'nw' | 'n' | 'ne' | 'e' | 'se' | 's' | 'sw' | 'w';
-
 /** Een vak met een versleepte kant of hoek naar (`x`, `y`), als deel van de pagina. */
 export function resizeZone(zone: Zone, handle: Handle, x: number, y: number): Zone {
-  const next = { ...zone };
-  if (handle.includes('w')) next.x0 = x;
-  if (handle.includes('e')) next.x1 = x;
-  if (handle.includes('n')) next.y0 = y;
-  if (handle.includes('s')) next.y1 = y;
-  return clampZone(next);
+  return clampZone(dragEdges(zone, handle, x, y));
 }
 
 /** Een vak verschoven over (`dx`, `dy`), zonder dat het buiten de pagina komt. */
