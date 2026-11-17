@@ -137,10 +137,41 @@ describe('waarschuwen bij het sluiten van het tabblad', () => {
     expect(unsavedSources()).not.toContain('document');
     act(() => get().edit(get().pages.slice(1)));
     expect(unsavedSources()).toContain('document');
-    act(() => get().markSaved());
+    act(() => get().beginSave()());
     expect(unsavedSources()).not.toContain('document');
     act(() => get().edit(get().pages.slice(1)));
     act(() => get().close());
     expect(unsavedSources()).not.toContain('document');
+  });
+});
+
+describe('"bewaard" na het opslaan', () => {
+  it('geldt voor de stand van het begin: wat je tijdens het opslaan verandert, blijft gewijzigd', async () => {
+    const { get } = await openThree();
+    act(() => get().edit(get().pages.slice(1)));
+    const done = get().beginSave();
+    // Tijdens het opslaan nog een pagina weg.
+    act(() => get().edit(get().pages.slice(1)));
+    act(() => done());
+    expect(get().unsaved).toBe(true);
+    // Zonder wijziging tijdens het opslaan: bewaard.
+    const again = get().beginSave();
+    act(() => again());
+    expect(get().unsaved).toBe(false);
+  });
+
+  it('alleen als het nog hetzelfde document is', async () => {
+    const { get } = await openThree();
+    act(() => get().edit(get().pages.slice(1)));
+    const done = get().beginSave();
+    // Tijdens het opslaan: sluiten en een ander document openen.
+    act(() => get().close());
+    await act(async () => {
+      await get().open(new File(['%PDF-1.7'], 'ander.pdf', { type: 'application/pdf' }));
+    });
+    await waitFor(() => expect(get().pages).toHaveLength(3));
+    act(() => done());
+    // Het nieuwe document is niet veranderd, en staat dus niet op "gewijzigd".
+    expect(get().unsaved).toBe(false);
   });
 });

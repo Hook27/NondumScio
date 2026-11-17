@@ -7,6 +7,7 @@ import { messages } from '../i18n';
 import { LanguageProvider } from '../i18n/LanguageContext';
 import { PdfLoadError, type LoadedPdf } from '../pdf/loader';
 import { buildPdf, downloadPdf } from '../pdf/save';
+import { held } from '../lib/testFiles';
 import { Workspace, type WorkspaceMode } from './Workspace';
 
 vi.mock('../pdf/save', async (importOriginal) => ({
@@ -161,6 +162,18 @@ describe('Samenvoegen', () => {
     expect(alert.textContent).toContain('geheim.pdf is beveiligd met een wachtwoord');
   });
 
+  it('na de download telt de volgorde als bewaard', async () => {
+    setup();
+    choose([pdfFile('offerte.pdf', 2), pdfFile('bijlage.pdf', 1)]);
+    await screen.findByRole('list', { name: nl.merge.files });
+    fireEvent.click(button('bijlage.pdf omhoog'));
+    expect(screen.getByText(nl.pages.unsaved)).toBeTruthy();
+    fireEvent.click(button(nl.merge.download));
+    fireEvent.click(screen.getByRole('button', { name: nl.saveDialog.download }));
+    await waitFor(() => expect(downloadPdf).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect(screen.queryByText(nl.pages.unsaved)).toBeNull());
+  });
+
   it('downloadt alle bestanden als één PDF, met een voorgestelde naam', async () => {
     setup();
     choose([pdfFile('offerte.pdf', 2), pdfFile('bijlage.pdf', 1)]);
@@ -263,6 +276,7 @@ describe('Samenvoegen', () => {
     fireEvent.click(screen.getByRole('button', { name: nl.saveDialog.download }));
     await waitFor(() => expect(downloadPdf).toHaveBeenCalledTimes(1));
     expect(vi.mocked(buildPdf).mock.calls[0]![2]).toEqual({
+      signal: expect.anything(),
       annotations: [],
       redaction: { dpi: 300, stripMetadata: true, ocr: false },
       outlines: new Map([
@@ -281,6 +295,7 @@ describe('Samenvoegen', () => {
     fireEvent.click(screen.getByRole('button', { name: nl.saveDialog.download }));
     await waitFor(() => expect(downloadPdf).toHaveBeenCalledTimes(1));
     expect(vi.mocked(buildPdf).mock.calls[0]![2]).toEqual({
+      signal: expect.anything(),
       annotations: [],
       redaction: { dpi: 300, stripMetadata: true, ocr: false },
       dropBookmarks: true,
@@ -308,6 +323,7 @@ describe('Samenvoegen', () => {
     fireEvent.click(screen.getByRole('button', { name: nl.saveDialog.download }));
     await waitFor(() => expect(downloadPdf).toHaveBeenCalledTimes(1));
     expect(vi.mocked(buildPdf).mock.calls[0]![2]).toEqual({
+      signal: expect.anything(),
       annotations: [],
       redaction: { dpi: 300, stripMetadata: true, ocr: false },
       outlines: new Map([
@@ -338,5 +354,27 @@ describe('Samenvoegen', () => {
     await screen.findAllByRole('option');
     choose([pdfFile('b.pdf', 2)], '#add-pdf');
     await waitFor(() => expect(screen.getAllByRole('option')).toHaveLength(3));
+  });
+});
+
+describe('Samenvoegen: weggaan tijdens het opslaan', () => {
+  it('er komt geen download meer, en het opslaan wordt afgebroken', async () => {
+    setup();
+    choose([pdfFile('offerte.pdf', 2), pdfFile('bijlage.pdf', 1)]);
+    await screen.findByRole('list', { name: nl.merge.files });
+    const work = held(new Uint8Array([1, 2, 3]));
+    vi.mocked(buildPdf).mockImplementationOnce(() => work.promise);
+    fireEvent.click(button(nl.merge.download));
+    fireEvent.click(screen.getByRole('button', { name: nl.saveDialog.download }));
+    await waitFor(() => expect(buildPdf).toHaveBeenCalledTimes(1));
+    const abort = vi.spyOn(AbortController.prototype, 'abort');
+    cleanup();
+    // Preact ruimt een weggehaald scherm een tikje later op: wachten tot er afgebroken is.
+    await waitFor(() => expect(abort).toHaveBeenCalled());
+    abort.mockRestore();
+    expect(vi.mocked(buildPdf).mock.calls[0]![2]!.signal!.aborted).toBe(true);
+    work.release();
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    expect(downloadPdf).not.toHaveBeenCalled();
   });
 });

@@ -29,3 +29,15 @@ export function flakyFile(name: string, failures: number, content = '%PDF-1.7 in
   const file = new File([content], name, { type: 'application/pdf' });
   return { file, arrayBuffer: makeFlaky(file, failures) };
 }
+
+/**
+ * Alleen voor tests: werk dat blijft hangen tot de test het loslaat, zoals een opslag die nog
+ * bezig is. `promise` lost op met `value` zodra `release()` wordt aangeroepen.
+ */
+export function held<T>(value: T) {
+  let release: () => void = () => {};
+  const promise = new Promise<T>((resolve) => {
+    release = () => resolve(value);
+  });
+  return { promise, release: () => release() };
+}

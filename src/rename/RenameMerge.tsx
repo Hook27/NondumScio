@@ -12,6 +12,7 @@ import { PreviewDialog } from '../components/PreviewDialog';
 import { countPages } from './readText';
 import { proposeNames } from './recognize';
 import { clearRename, newId, setRenameState, useRenameState, type ExtraDoc } from './store';
+import { useSaveJob } from '../components/useSaveJob';
 
 type SaveState =
   | { status: 'idle' }
@@ -30,6 +31,7 @@ export function RenameMerge() {
   const m = r.merge;
   const { docs, extras, mergeOrder, mergeSkip, bookmarks, changed } = useRenameState();
   const [save, setSave] = useState<SaveState>({ status: 'idle' });
+  const job = useSaveJob();
   const [notice, setNotice] = useState<string | null>(null);
   const [asking, setAsking] = useState<'save' | 'clear' | null>(null);
   const [viewing, setViewing] = useState<number | null>(null);
@@ -119,7 +121,7 @@ export function RenameMerge() {
   const saveAs = async (fileName: string) => {
     setAsking(null);
     setSave({ status: 'saving' });
-    try {
+    const outcome = await job.run(async (signal) => {
       const files = new Map(chosen.map((entry) => [entry.id, fileOf(entry.id)]));
       let key = 0;
       const pages: PageItem[] = chosen.flatMap((entry) => {
@@ -135,12 +137,17 @@ export function RenameMerge() {
             })),
           }
         : {};
-      const bytes = await buildPdf(await readSources(files, pages), pages, options);
-      downloadPdf(bytes, fileName);
-      setSave({ status: 'saved', fileName });
-    } catch (error) {
+      return buildPdf(await readSources(files, pages), pages, { ...options, signal });
+    });
+    // Weggegaan: niets meer doen (ook niet downloaden).
+    if (!outcome.ok && outcome.stopped) return;
+    if (!outcome.ok) {
+      const { error } = outcome;
       setSave({ status: 'error', code: error instanceof PdfSaveError ? error.code : 'failed' });
+      return;
     }
+    downloadPdf(outcome.value, fileName);
+    setSave({ status: 'saved', fileName });
   };
 
   const clear = () => {

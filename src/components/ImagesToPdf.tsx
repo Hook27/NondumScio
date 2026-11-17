@@ -19,6 +19,7 @@ import { Dropzone } from './Dropzone';
 import { ListToolbar } from './FilesParts';
 import { Icon, IconButton } from './Icon';
 import { SaveDialog } from './SaveDialog';
+import { useSaveJob } from './useSaveJob';
 import { useDragReorder } from './useDragReorder';
 import { PaneHead, useInfo } from './WorkspaceParts';
 import { readFileBytes } from '../lib/readFile';
@@ -191,6 +192,7 @@ export function ImagesToPdf({ state, head }: { state: ImagesState; head: Compone
     setMargin,
   } = state;
   const [save, setSave] = useState<SaveState>({ status: 'idle' });
+  const job = useSaveJob();
   const [asking, setAsking] = useState(false);
   const info = useInfo(<p>{t.convert.imagesHint}</p>);
   useUndoShortcuts(undo, redo);
@@ -246,19 +248,25 @@ export function ImagesToPdf({ state, head }: { state: ImagesState; head: Compone
   const make = async (fileName: string) => {
     setAsking(false);
     setSave({ status: 'saving' });
-    try {
+    const outcome = await job.run(async () => {
       const inputs = [];
       for (const item of items) {
         inputs.push({ bytes: await readFileBytes(item.file), type: item.type });
       }
-      downloadPdf(await imagesToPdf(inputs, { pageSize, margin }), fileName);
-      setSave({ status: 'saved', fileName });
-    } catch (error) {
+      return imagesToPdf(inputs, { pageSize, margin });
+    });
+    // Weggegaan: niets meer doen (ook niet downloaden).
+    if (!outcome.ok && outcome.stopped) return;
+    if (!outcome.ok) {
+      const { error } = outcome;
       setSave({
         status: 'error',
         index: error instanceof ImageConvertError ? error.index : undefined,
       });
+      return;
     }
+    downloadPdf(outcome.value, fileName);
+    setSave({ status: 'saved', fileName });
   };
 
   return (

@@ -8,6 +8,7 @@ import { messages } from '../i18n';
 import { LanguageProvider } from '../i18n/LanguageContext';
 import type { LoadedPdf } from '../pdf/loader';
 import { buildParts, downloadFile, downloadPdf } from '../pdf/save';
+import { held } from '../lib/testFiles';
 import { Workspace } from './Workspace';
 
 vi.mock('../pdf/save', async (importOriginal) => ({
@@ -224,5 +225,26 @@ describe('Splitsen', () => {
       'rapport (pagina 3).pdf',
     ]);
     expect(new TextDecoder().decode(files['rapport (pagina 2).pdf'])).toBe('2');
+  });
+});
+
+describe('Splitsen: weggaan tijdens het opslaan', () => {
+  it('er komt geen download meer, en het opslaan wordt afgebroken', async () => {
+    await setup(4);
+    const work = held([new Uint8Array([1, 2, 3])]);
+    vi.mocked(buildParts).mockImplementationOnce(() => work.promise);
+    fireEvent.click(screen.getByRole('button', { name: 'Deel 2 downloaden' }));
+    fireEvent.click(screen.getByRole('button', { name: nl.saveDialog.download }));
+    await waitFor(() => expect(buildParts).toHaveBeenCalledTimes(1));
+    const abort = vi.spyOn(AbortController.prototype, 'abort');
+    cleanup();
+    // Preact ruimt een weggehaald scherm een tikje later op: wachten tot er afgebroken is.
+    await waitFor(() => expect(abort).toHaveBeenCalled());
+    abort.mockRestore();
+    expect(vi.mocked(buildParts).mock.calls[0]![7]!.aborted).toBe(true);
+    work.release();
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    expect(downloadPdf).not.toHaveBeenCalled();
+    expect(downloadFile).not.toHaveBeenCalled();
   });
 });

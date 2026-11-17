@@ -7,14 +7,18 @@ import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vite
 import { DocumentProvider, useDocument } from '../document/DocumentContext';
 import { messages } from '../i18n';
 import { LanguageProvider } from '../i18n/LanguageContext';
-import { renderPageImage } from '../pdf/images';
+import { imagesToPdf, renderPageImage } from '../pdf/images';
 import { makePng } from '../pdf/testPng';
 import type { LoadedPdf } from '../pdf/loader';
 import { downloadFile, downloadPdf } from '../pdf/save';
+import { held } from '../lib/testFiles';
+import { format } from '../i18n/format';
 import { Workspace } from './Workspace';
 
 vi.mock('../pdf/images', async (importOriginal) => ({
   ...(await importOriginal<typeof import('../pdf/images')>()),
+  // De echte, maar te laten hangen in een test (weggaan tijdens het maken).
+  imagesToPdf: vi.fn((await importOriginal<typeof import('../pdf/images')>()).imagesToPdf),
   // Een nep-afbeelding met het paginanummer erin, zodat je het in de ZIP terugziet.
   renderPageImage: vi.fn(async (_pdf: unknown, pageNumber: number) => ({
     bytes: new TextEncoder().encode(`pagina ${pageNumber}`),
@@ -474,3 +478,42 @@ function OpenedConvert() {
   }, [open]);
   return started && doc.status === 'ready' ? <Workspace mode="convert" /> : null;
 }
+
+describe('Omzetten: weggaan tijdens het maken', () => {
+  it('PDF naar afbeeldingen: geen download, en de volgende pagina’s worden niet meer gemaakt', async () => {
+    setup();
+    await openPdfs(pdfFile('rapport.pdf', 3));
+    const work = held({ bytes: new TextEncoder().encode('pagina 1'), reduced: false });
+    vi.mocked(renderPageImage).mockImplementationOnce(() => work.promise);
+    fireEvent.click(button(format(nl.convert.downloadAll, { n: 3 })));
+    confirm();
+    await waitFor(() => expect(renderPageImage).toHaveBeenCalledTimes(1));
+    const abort = vi.spyOn(AbortController.prototype, 'abort');
+    cleanup();
+    // Preact ruimt een weggehaald scherm een tikje later op: wachten tot er afgebroken is.
+    await waitFor(() => expect(abort).toHaveBeenCalled());
+    abort.mockRestore();
+    work.release();
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    expect(renderPageImage).toHaveBeenCalledTimes(1);
+    expect(downloadFile).not.toHaveBeenCalled();
+  });
+
+  it('afbeeldingen naar PDF: geen download', async () => {
+    setup();
+    await addImages(png('a.png'));
+    const work = held(new Uint8Array([37, 80, 68, 70]));
+    vi.mocked(imagesToPdf).mockImplementationOnce(() => work.promise);
+    fireEvent.click(button(nl.convert.make));
+    confirm();
+    await waitFor(() => expect(imagesToPdf).toHaveBeenCalledTimes(1));
+    const abort = vi.spyOn(AbortController.prototype, 'abort');
+    cleanup();
+    // Preact ruimt een weggehaald scherm een tikje later op: wachten tot er afgebroken is.
+    await waitFor(() => expect(abort).toHaveBeenCalled());
+    abort.mockRestore();
+    work.release();
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    expect(downloadPdf).not.toHaveBeenCalled();
+  });
+});
