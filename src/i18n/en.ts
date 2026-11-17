@@ -312,7 +312,7 @@ export const en: Messages = {
     unsupported: 'These characters cannot be drawn and become a question mark: {chars}',
     hint: 'Choose a tool and click or drag on the page: Text places a text box (click, type, and click next to it to finish); Highlight, Rectangle and Line you draw by dragging. With Select you pick up an annotation to move it, or a corner to resize it; Delete removes it and the arrow keys nudge it (in larger steps with Shift). Double-click text to edit it. Change color, font size and thickness next to the tools. Annotations are drawn into the page itself when you download; the original stays as it is. They belong to their page: rotate or move it in Pages and they go with it.',
     shortcuts:
-      'Shortcuts: V select, T text, H highlight, R rectangle, L line, Escape back to select.',
+      'Shortcuts: V select, T text, H highlight, R rectangle, L line, Escape back to select, + − zoom, 0 = fit.',
     suffix: 'edited',
   },
   redact: {
@@ -322,7 +322,7 @@ export const en: Messages = {
     boxOf: 'Redaction box',
     pageHelp: 'With Redaction box chosen, Enter places a redaction box here.',
     hint: 'With Redaction box (R) you drag boxes over everything that has to go. Adjust them with Select (move, drag a corner, Delete removes). Nothing changes in your file until you download. Then every page with a box becomes an image with the box in black: whatever was underneath, including hidden text, is no longer in the file and cannot be recovered. The other pages stay as they are. The result is a new file: bookmarks, forms and attachments are not carried over, and pages you removed are really gone. After making it, the app checks for itself that the pages with a box have no text left; if that fails, nothing is downloaded. Use Preview to see what the result looks like. The boxes also apply when you download from Pages, Merge, Split or Convert.',
-    shortcuts: 'Shortcuts: V select, R redaction box, Escape back to select.',
+    shortcuts: 'Shortcuts: V select, R redaction box, Escape back to select, + − zoom, 0 = fit.',
     options: 'Redaction',
     resolution: 'Resolution of pages with a box',
     dpi150: '150 dpi (smaller file)',
@@ -682,7 +682,7 @@ export const en: Messages = {
       zoomOut: 'Zoom out',
       zoomIn: 'Zoom in',
       fit: 'Fit',
-      keys: 'Keys: ← → turn pages, + − zoom, 0 = fit.',
+      keys: 'Keys: ← → ↑ ↓, Page Up and Page Down turn pages, Home and End to the first or last page, + − zoom, 0 = fit.',
       legend: { a: 'only in A', b: 'only in B', same: 'the same' },
       stat: {
         diff: 'Difference: {page}% of the page · {ink}% of the ink · {px} px',
@@ -839,10 +839,9 @@ export const en: Messages = {
         'Off: such a page is skipped, for example a list of sources. On: the whole page is read.',
       item: 'Zone {n}',
       remove: 'Remove zone {n}',
-      undo: 'Undo',
       clearAll: 'Remove all zones',
       drawHint:
-        'Drag a zone over the text; then drag a zone, or its edges and corners. Ctrl+Z undoes.',
+        'Drag a zone over the text; then drag a zone, or its edges and corners. Ctrl+Z undoes, Ctrl+Y redoes.',
     },
     settings: {
       title: 'Text clean-up',
@@ -999,7 +998,7 @@ export const en: Messages = {
       zoomIn: 'Zoom in',
       fitPage: 'Whole page',
       fitWidth: 'Full width',
-      keys: 'Browse: ← → or Home and End, or with the scroll wheel at the top or bottom edge.',
+      keys: 'Browse: ← → ↑ ↓, Page Up and Page Down, Home and End, or with the scroll wheel at the top or bottom edge. Zoom: + − and 0 = fit.',
       canvas: 'Page {n}',
       error: 'This page could not be drawn.',
     },
@@ -1165,7 +1164,7 @@ export const en: Messages = {
     remove: 'Delete',
     views: { label: 'View', review: 'Review', overview: 'Overview' },
     placeholder: 'Choose or drag PDFs on the left to start.',
-    keys: 'Keys: K keep · X delete · M to a new folder · 1–9 to a folder · ← → other file · ↑ ↓, Page Up, Page Down, Home and End turn pages. The scroll wheel turns pages at the top or bottom edge.',
+    keys: 'Keys: K keep · X delete · M to a new folder · 1–9 to a folder · ← → other file · ↑ ↓, Page Up, Page Down, Home and End turn pages · + − zoom, 0 = fit. The scroll wheel turns pages at the top or bottom edge.',
     overview: {
       keep: 'Keep ({n})',
       remove: 'Delete ({n})',

@@ -692,3 +692,25 @@ describe('TriageTool', () => {
     expect(screen.getByText(/a\.pdf · 3 pages/)).toBeTruthy();
   });
 });
+
+describe('TriageTool: zoomtoetsen zoals overal', () => {
+  it('+ − zoomen, 0 passend; niet bij een open venster', async () => {
+    setup();
+    choose(pdf('a.pdf'));
+    await settle();
+    await key('+');
+    expect(getTriageState().zoom).toBe(125);
+    await key('-');
+    await key('-');
+    expect(getTriageState().zoom).toBe(75);
+    await key('0');
+    expect(getTriageState().zoom).toBe(100);
+    // Een open venster: de toetsen doen niets.
+    const dialog = document.createElement('dialog');
+    dialog.setAttribute('open', '');
+    document.body.append(dialog);
+    await key('+');
+    expect(getTriageState().zoom).toBe(100);
+    dialog.remove();
+  });
+});

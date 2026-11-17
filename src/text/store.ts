@@ -138,8 +138,10 @@ export type TextState = {
   joins: Record<number, Join>;
   /** De gegevens voor de documentkop: uit de PDF, aan te passen; ze horen bij de PDF. */
   meta: Meta;
-  /** Eerdere vakken, voor Ongedaan (de laatste het eerst). */
+  /** Eerdere vakken, voor Ongedaan maken (de laatste het eerst). */
   undo: ZoneSnapshot[];
+  /** Wat net ongedaan is gemaakt, voor Opnieuw (de laatste het eerst); weg bij een nieuwe wijziging. */
+  redo: ZoneSnapshot[];
   /** Opties uit een bestand die deze tool niet kent; ze gaan mee bij opslaan. */
   extra: Extra;
   /** De instellingen van deze PDF zijn bij het openen uit de opslag teruggehaald. */
@@ -193,6 +195,7 @@ const INITIAL: TextState = {
   joins: {},
   meta: EMPTY_META,
   undo: [],
+  redo: [],
   extra: NO_EXTRA,
   restored: false,
   other: null,
@@ -289,6 +292,7 @@ function setSlot(slot: TextSlot, extra: Partial<TextState> = {}) {
     joins: {},
     meta: EMPTY_META,
     undo: [],
+    redo: [],
     extra: NO_EXTRA,
     restored: false,
     other: null,
@@ -444,6 +448,7 @@ function changeZones(next: ZoneSnapshot) {
   change({
     ...next,
     undo: [...state.undo, { zones: state.zones, pages: state.pages }].slice(-UNDO_LIMIT),
+    redo: [],
   });
 }
 
@@ -487,11 +492,32 @@ export function ownAllPages(): void {
   changeZones({ zones: state.zones, pages });
 }
 
+/** De stand van nu, in de vorm van `like` (met de keuzes per overgang als die erin zitten). */
+function snapshotLike(like: ZoneSnapshot): ZoneSnapshot {
+  const now: ZoneSnapshot = { zones: state.zones, pages: state.pages };
+  return like.joins ? { ...now, joins: state.joins } : now;
+}
+
 /** De vorige vakken terug. Alleen als de leesvakken aan staan, zoals in de extractor. */
 export function undoZones(): void {
   if (!state.useZones || state.undo.length === 0) return;
   const previous = state.undo[state.undo.length - 1]!;
-  change({ ...previous, undo: state.undo.slice(0, -1) });
+  change({
+    ...previous,
+    undo: state.undo.slice(0, -1),
+    redo: [...state.redo, snapshotLike(previous)].slice(-UNDO_LIMIT),
+  });
+}
+
+/** Wat net ongedaan is gemaakt, weer terug (Opnieuw). Ook alleen met de leesvakken aan. */
+export function redoZones(): void {
+  if (!state.useZones || state.redo.length === 0) return;
+  const next = state.redo[state.redo.length - 1]!;
+  change({
+    ...next,
+    redo: state.redo.slice(0, -1),
+    undo: [...state.undo, snapshotLike(next)].slice(-UNDO_LIMIT),
+  });
 }
 
 /**
@@ -513,6 +539,7 @@ export function importSettings(raw: unknown): boolean {
     undo: [...state.undo, { zones: state.zones, pages: state.pages, joins: state.joins }].slice(
       -UNDO_LIMIT,
     ),
+    redo: [],
   });
   return true;
 }

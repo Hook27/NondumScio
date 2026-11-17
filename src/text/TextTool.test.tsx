@@ -20,6 +20,7 @@ import {
   UNDO_LIMIT,
   clearBatchFiles,
   getTextState,
+  importSettings,
   moveBatchFile,
   moveBatchFileTo,
   removeBatchFile,
@@ -514,7 +515,7 @@ describe('PDF → Platte tekst: leesvakken', () => {
     draw(100, 700, 105, 600);
     draw(100, 700, 300, 696);
     expect(zoneList()).toEqual([]);
-    expect(button(p.zones.undo).disabled).toBe(true);
+    expect(button(messages.nl.pages.undo).disabled).toBe(true);
   });
 
   it('verplaatst een vak en versleept een rand', async () => {
@@ -568,11 +569,11 @@ describe('PDF → Platte tekst: leesvakken', () => {
     draw(...LEFT_BOX);
     draw(...RIGHT_BOX);
     expect(zoneList()).toEqual(['Vak 1', 'Vak 2']);
-    fireEvent.click(button(p.zones.undo));
+    fireEvent.click(button(messages.nl.pages.undo));
     expect(zoneList()).toEqual(['Vak 1']);
     fireEvent.keyDown(document.body, { key: 'z', ctrlKey: true });
     expect(screen.getByText(p.zones.empty)).toBeTruthy();
-    expect(button(p.zones.undo).disabled).toBe(true);
+    expect(button(messages.nl.pages.undo).disabled).toBe(true);
 
     draw(...LEFT_BOX);
     draw(...RIGHT_BOX);
@@ -585,7 +586,7 @@ describe('PDF → Platte tekst: leesvakken', () => {
     fireEvent.click(button(p.zones.clearAll));
     expect(screen.getByText(p.zones.empty)).toBeTruthy();
     // Het wissen kan ook terug.
-    fireEvent.click(button(p.zones.undo));
+    fireEvent.click(button(messages.nl.pages.undo));
     expect(zoneList()).toEqual(['Vak 1']);
   });
 
@@ -609,7 +610,7 @@ describe('PDF → Platte tekst: leesvakken', () => {
     fireEvent.keyDown(document.body, { key: 'z', ctrlKey: true });
     expect(getTextState().zones).toHaveLength(1);
     expect(document.querySelector('.plaintext-zones-layer')).toBeNull();
-    expect(button(p.zones.undo).disabled).toBe(true);
+    expect(button(messages.nl.pages.undo).disabled).toBe(true);
     // Ook de stand zelf maakt dan niets ongedaan, zoals in de extractor.
     act(() => undoZones());
     expect(getTextState().zones).toHaveLength(1);
@@ -1155,7 +1156,7 @@ describe('PDF → Platte tekst: vakken per pagina', () => {
       fireEvent.click(button(p.preview.next));
     }
     expect(Object.keys(getTextState().pages)).toEqual(['1', '2', '3']);
-    fireEvent.click(button(p.zones.undo));
+    fireEvent.click(button(messages.nl.pages.undo));
     expect(getTextState().pages).toEqual({});
     expect(check(p.zones.own).checked).toBe(false);
   });
@@ -1170,7 +1171,7 @@ describe('PDF → Platte tekst: vakken per pagina', () => {
     expect(getTextState().zones).toEqual([]);
     fireEvent.keyDown(document.body, { key: 'z', ctrlKey: true });
     expect(getTextState().pages).toEqual({ 1: [] });
-    fireEvent.click(button(p.zones.undo));
+    fireEvent.click(button(messages.nl.pages.undo));
     expect(getTextState().pages).toEqual({});
   });
 
@@ -1281,7 +1282,7 @@ describe('PDF → Platte tekst: instellingen bewaren', () => {
     expect(zoneList()).toEqual(['Vak 1']);
     expect(getTextState().meta.title).toBe('Titel van de eerste');
     expect(screen.getByText(/· instellingen hersteld$/)).toBeTruthy();
-    fireEvent.click(button(p.zones.undo));
+    fireEvent.click(button(messages.nl.pages.undo));
     expect(getTextState().zones).toEqual([]);
   });
 
@@ -1393,7 +1394,7 @@ describe('PDF → Platte tekst: instellingen bewaren', () => {
     const [data] = vi.mocked(downloadFile).mock.calls[0]!;
     expect(JSON.parse(new TextDecoder().decode(data as Uint8Array)).options.tables).toBe(true);
     // Ongedaan: de vakken van daarvoor terug.
-    fireEvent.click(button(p.zones.undo));
+    fireEvent.click(button(messages.nl.pages.undo));
     expect(getTextState().zones).toHaveLength(1);
     expect(getTextState().zones[0]).not.toEqual(zone);
   });
@@ -1444,13 +1445,13 @@ describe('PDF → Platte tekst: instellingen bewaren', () => {
     );
     expect(getTextState().joins).toEqual({ 3: 'break' });
     expect(getTextState().zones).toEqual([]);
-    fireEvent.click(button(p.zones.undo));
+    fireEvent.click(button(messages.nl.pages.undo));
     expect(getTextState().joins).toEqual({ 2: 'join' });
     expect(getTextState().zones).toHaveLength(1);
     // Een vak tekenen en weer ongedaan maken: de keuze per overgang van daarna blijft.
     draw(...LEFT_BOX);
     setJoin(3, 'break');
-    fireEvent.click(button(p.zones.undo));
+    fireEvent.click(button(messages.nl.pages.undo));
     expect(getTextState().zones).toHaveLength(1);
     expect(getTextState().joins).toEqual({ 2: 'join', 3: 'break' });
   });
@@ -2352,5 +2353,92 @@ describe('PDF → Platte tekst: opruimen', () => {
     expect(getTextState().slot.status).toBe('ready');
     setup();
     await waitFor(() => expect(vi.mocked(renderPage).mock.lastCall![3]!.aborted).toBe(false));
+  });
+});
+
+describe('PDF → Platte tekst: toetsen zoals overal', () => {
+  const key = (k: string, init: KeyboardEventInit = {}) =>
+    fireEvent.keyDown(document.body, { key: k, ...init });
+
+  it('↑ ↓ bladeren, + − zoomen, 0 passend', async () => {
+    await open('artikel.pdf');
+    key('ArrowDown');
+    expect(getTextState().page).toBe(2);
+    key('ArrowDown');
+    key('ArrowDown');
+    expect(getTextState().page).toBe(3);
+    key('ArrowUp');
+    expect(getTextState().page).toBe(2);
+    key('+');
+    expect(getTextState().zoom).toBe(125);
+    key('-');
+    key('-');
+    expect(getTextState().zoom).toBe(75);
+    key('0');
+    expect(getTextState().zoom).toBe(100);
+    // Een open venster: de toetsen doen niets.
+    const dialog = document.createElement('dialog');
+    dialog.setAttribute('open', '');
+    document.body.append(dialog);
+    key('ArrowDown');
+    key('+');
+    expect(getTextState()).toMatchObject({ page: 2, zoom: 100 });
+    dialog.remove();
+  });
+
+  it('instellingen laden wist wat nog opnieuw kon (en kan zelf ongedaan)', async () => {
+    await open('artikel.pdf');
+    fireEvent.click(check(p.zones.use));
+    await settle();
+    draw(...LEFT_BOX);
+    key('z', { ctrlKey: true });
+    expect(getTextState().redo).toHaveLength(1);
+    act(() => {
+      importSettings({ zones: { d: [{ x0: 0.1, y0: 0.1, x1: 0.5, y1: 0.5 }], p: {} } });
+    });
+    expect(getTextState().redo).toHaveLength(0);
+    expect(getTextState().undo.length).toBeGreaterThan(0);
+  });
+
+  it('Ongedaan maken en Opnieuw van "Instellingen laden" nemen de keuzes per overgang mee', async () => {
+    await open('artikel.pdf');
+    fireEvent.click(check(p.zones.use));
+    await settle();
+    expect(getTextState().joins).toEqual({});
+    act(() => {
+      importSettings({ zones: { d: [], p: {} }, joinOverride: { 1: 'break' } });
+    });
+    expect(getTextState().joins).toEqual({ 1: 'break' });
+    key('z', { ctrlKey: true });
+    expect(getTextState().joins).toEqual({});
+    key('y', { ctrlKey: true });
+    expect(getTextState().joins).toEqual({ 1: 'break' });
+  });
+
+  it('Ongedaan maken en Opnieuw: knoppen en Ctrl+Z, Ctrl+Y, Ctrl+Shift+Z', async () => {
+    await open('artikel.pdf');
+    fireEvent.click(check(p.zones.use));
+    await settle();
+    draw(...LEFT_BOX);
+    draw(...RIGHT_BOX);
+    expect(zoneList()).toEqual(['Vak 1', 'Vak 2']);
+    expect(button(messages.nl.pages.redo).disabled).toBe(true);
+    fireEvent.click(button(messages.nl.pages.undo));
+    expect(zoneList()).toEqual(['Vak 1']);
+    fireEvent.click(button(messages.nl.pages.redo));
+    expect(zoneList()).toEqual(['Vak 1', 'Vak 2']);
+    key('z', { ctrlKey: true });
+    key('z', { ctrlKey: true });
+    expect(screen.getByText(p.zones.empty)).toBeTruthy();
+    key('y', { ctrlKey: true });
+    expect(zoneList()).toEqual(['Vak 1']);
+    key('Z', { ctrlKey: true, shiftKey: true });
+    expect(zoneList()).toEqual(['Vak 1', 'Vak 2']);
+    // Na Opnieuw kan het ook weer ongedaan.
+    key('z', { ctrlKey: true });
+    expect(zoneList()).toEqual(['Vak 1']);
+    // Een nieuwe wijziging wist wat nog opnieuw kon.
+    fireEvent.click(button(p.zones.clearAll));
+    expect(button(messages.nl.pages.redo).disabled).toBe(true);
   });
 });

@@ -1,5 +1,6 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'preact/hooks';
 import { Dropzone } from '../components/Dropzone';
+import { useShortcuts } from '../lib/useShortcuts';
 import { IncomingNote } from '../components/IncomingNote';
 import { PaneHead } from '../components/WorkspaceParts';
 import { useI18n } from '../i18n/LanguageContext';
@@ -501,17 +502,23 @@ function VisualCanvas({ a, b }: { a: CompareDoc; b: CompareDoc }) {
     };
   }, [a, b, pageA, pageB, visual.mode, visual.threshold, visual.alpha, visual.zoom, available]);
 
-  // Toetsen: ← → bladeren, + − zoomen, 0 = passend (niet in een invoerveld, en niet met Ctrl).
-  useEffect(() => {
-    const target = document;
-    const onKey = (event: KeyboardEvent) => {
+  // Toetsen zoals overal (zie de bedieningsafspraak): ← → ↑ ↓ PgUp PgDn bladeren, Home End naar de
+  // eerste of laatste pagina, + − zoomen, 0 = passend; niet met Ctrl (en zie useShortcuts).
+  useShortcuts(
+    (event) => {
       if (event.ctrlKey || event.metaKey || event.altKey) return;
-      const tag = (event.target as HTMLElement | null)?.tagName?.toLowerCase();
-      if (tag === 'input' || tag === 'select' || tag === 'textarea') return;
       const now = getCompareState().visual;
+      const back = () => setVisual({ page: Math.max(1, Math.min(now.page, total) - 1) });
+      const forward = () => setVisual({ page: Math.min(total, now.page + 1) });
       const actions: Record<string, () => void> = {
-        ArrowLeft: () => setVisual({ page: Math.max(1, Math.min(now.page, total) - 1) }),
-        ArrowRight: () => setVisual({ page: Math.min(total, now.page + 1) }),
+        ArrowLeft: back,
+        ArrowUp: back,
+        PageUp: back,
+        ArrowRight: forward,
+        ArrowDown: forward,
+        PageDown: forward,
+        Home: () => setVisual({ page: 1 }),
+        End: () => setVisual({ page: Math.max(1, total) }),
         '+': () => setVisual({ zoom: stepZoom(now.zoom, 1) }),
         '=': () => setVisual({ zoom: stepZoom(now.zoom, 1) }),
         '-': () => setVisual({ zoom: stepZoom(now.zoom, -1) }),
@@ -522,10 +529,9 @@ function VisualCanvas({ a, b }: { a: CompareDoc; b: CompareDoc }) {
       if (!action) return;
       event.preventDefault();
       action();
-    };
-    target.addEventListener('keydown', onKey);
-    return () => target.removeEventListener('keydown', onKey);
-  }, [total]);
+    },
+    [total],
+  );
 
   const stat =
     drawn?.kind === 'diff'

@@ -1268,7 +1268,6 @@ test.describe('PDF → Platte tekst op een scherm met schaal 150 %', () => {
       p.views.preview,
       p.views.result,
       p.clear,
-      p.zones.undo,
       p.zones.clearAll,
       p.extract,
       p.preview.fitPage,
@@ -1296,5 +1295,35 @@ test.describe('PDF → Platte tekst op een scherm met schaal 150 %', () => {
     for (const name of [p.copy, p.download]) {
       expect(await lines(page.getByRole('button', { name, exact: true })), name).toBe(1);
     }
+  });
+});
+
+test.describe('PDF → Platte tekst: toetsen zoals overal', () => {
+  test.skip(({ isMobile }) => isMobile, 'Geavanceerd is er alleen op de computer');
+
+  test('↓ ↑ bladeren, + − 0 zoomen, Ctrl+Z en Ctrl+Y voor de vakken', async ({ page }) => {
+    await openArticle(page, 3);
+    const where = page.locator('.plaintext-bar .plaintext-nav__page');
+    const percent = page.locator('.plaintext-zoom__value');
+    await page.locator('body').click({ position: { x: 1, y: 1 } });
+    await page.keyboard.press('ArrowDown');
+    await expect(where).toContainText('2 / 3');
+    await page.keyboard.press('ArrowUp');
+    await expect(where).toContainText('1 / 3');
+    const fit = await percent.innerText();
+    await page.keyboard.press('+');
+    await expect(percent).not.toHaveText(fit);
+    await page.keyboard.press('0');
+    await expect(percent).toHaveText(fit);
+
+    const zones = page.getByRole('group', { name: p.zones.title });
+    await zones.getByRole('checkbox', { name: p.zones.use }).check();
+    await draw(page, LEFT_BOX);
+    await expect(zones.locator('.plaintext-zones__label')).toHaveText(['Vak 1']);
+    await page.locator('body').click({ position: { x: 1, y: 1 } });
+    await page.keyboard.press('Control+z');
+    await expect(zones.getByText(p.zones.empty)).toBeVisible();
+    await page.keyboard.press('Control+y');
+    await expect(zones.locator('.plaintext-zones__label')).toHaveText(['Vak 1']);
   });
 });
