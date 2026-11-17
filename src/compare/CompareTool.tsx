@@ -1,6 +1,7 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'preact/hooks';
 import { Dropzone } from '../components/Dropzone';
 import { useShortcuts } from '../lib/useShortcuts';
+import { CanvasBox, usePageSpace } from '../components/PageView';
 import { IncomingNote } from '../components/IncomingNote';
 import { PaneHead } from '../components/WorkspaceParts';
 import { useI18n } from '../i18n/LanguageContext';
@@ -429,7 +430,6 @@ function VisualCanvas({ a, b }: { a: CompareDoc; b: CompareDoc }) {
   const pageB = pageA + visual.offset;
   const wrap = useRef<HTMLDivElement>(null);
   // De breedte van het vak; zonder meting (zoals in een test) een redelijke schatting.
-  const [available, setAvailable] = useState(0);
   const [drawn, setDrawn] = useState<Drawn | null>(null);
   const [busy, setBusy] = useState(false);
   const rendered = useRef<Rendered | null>(null);
@@ -437,17 +437,9 @@ function VisualCanvas({ a, b }: { a: CompareDoc; b: CompareDoc }) {
   // Weg uit het beeld (of uit Vergelijken): wat nog getekend wordt, afbreken.
   useEffect(() => () => rendered.current?.stop.abort(), []);
 
-  // Bij "passend" hangt de tekenbreedte aan de breedte van het vak: opnieuw meten als die verandert.
-  useLayoutEffect(() => {
-    const element = wrap.current;
-    if (!element) return;
-    const measure = () => setAvailable(element.clientWidth - 32);
-    measure();
-    if (typeof ResizeObserver === 'undefined') return;
-    const observer = new ResizeObserver(measure);
-    observer.observe(element);
-    return () => observer.disconnect();
-  }, []);
+  // Bij "passend" hangt de tekenbreedte aan de breedte van het vak (met zijn opvulling eraf): opnieuw
+  // meten als die verandert (zie PageView: gedeeld met Platte tekst en Triage).
+  const available = usePageSpace(wrap).w - 32;
 
   useEffect(() => {
     let cancelled = false;
@@ -581,14 +573,16 @@ function VisualCanvas({ a, b }: { a: CompareDoc; b: CompareDoc }) {
         {drawn?.kind === 'diff' && (
           <CanvasBox
             canvas={drawn.canvas}
-            ratio={drawn.ratio}
+            className="compare-visual__canvas"
+            width={Math.round(drawn.canvas.width / drawn.ratio)}
             label={format(v.labels.diff, { a: pageA, b: pageB })}
           />
         )}
         {drawn?.kind === 'overlay' && (
           <CanvasBox
             canvas={drawn.canvas}
-            ratio={drawn.ratio}
+            className="compare-visual__canvas"
+            width={Math.round(drawn.canvas.width / drawn.ratio)}
             label={format(v.labels.overlay, { a: pageA, b: pageB })}
           />
         )}
@@ -598,7 +592,8 @@ function VisualCanvas({ a, b }: { a: CompareDoc; b: CompareDoc }) {
               <figcaption>{format(v.labels.a, { n: pageA })}</figcaption>
               <CanvasBox
                 canvas={drawn.a}
-                ratio={drawn.ratio}
+                className="compare-visual__canvas"
+                width={Math.round(drawn.a.width / drawn.ratio)}
                 label={format(v.labels.a, { n: pageA })}
               />
             </figure>
@@ -606,7 +601,8 @@ function VisualCanvas({ a, b }: { a: CompareDoc; b: CompareDoc }) {
               <figcaption>{format(v.labels.b, { n: pageB })}</figcaption>
               <CanvasBox
                 canvas={drawn.b}
-                ratio={drawn.ratio}
+                className="compare-visual__canvas"
+                width={Math.round(drawn.b.width / drawn.ratio)}
                 label={format(v.labels.b, { n: pageB })}
               />
             </figure>
@@ -643,26 +639,6 @@ function ModeToggle() {
  * Een getekend canvas in het scherm zetten, op zijn weergavebreedte (getekend is fijner, zie
  * `targetWidths`). Is het breder dan het vak, dan schuift het vak zelf.
  */
-function CanvasBox({
-  canvas,
-  ratio,
-  label,
-}: {
-  canvas: HTMLCanvasElement;
-  ratio: number;
-  label: string;
-}) {
-  const box = useRef<HTMLDivElement>(null);
-  useLayoutEffect(() => {
-    canvas.className = 'compare-visual__canvas';
-    canvas.style.width = `${Math.round(canvas.width / ratio)}px`;
-    canvas.setAttribute('role', 'img');
-    canvas.setAttribute('aria-label', label);
-    box.current?.replaceChildren(canvas);
-  }, [canvas, ratio, label]);
-  return <div ref={box} />;
-}
-
 /** Zolang A en B er niet allebei zijn: wat er nog nodig is (of dat er gelezen wordt). */
 function Waiting({ placeholder }: { placeholder: string }) {
   const { t } = useI18n();

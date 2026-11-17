@@ -1,15 +1,15 @@
 import type { ComponentChildren } from 'preact';
 import { useEffect, useLayoutEffect, useRef, useState } from 'preact/hooks';
-import {
-  ZOOM_STEPS,
-  closeVisual,
-  pageSize,
-  renderPage,
-  stepZoom,
-  targetWidths,
-} from '../compare/visual';
+import { ZOOM_STEPS, closeVisual, pageSize, stepZoom, targetWidths } from '../compare/visual';
 import { ConfirmDialog } from '../components/ConfirmDialog';
 import { useShortcuts } from '../lib/useShortcuts';
+import {
+  CanvasBox,
+  fitCssWidth,
+  useEdgeWheel,
+  usePageCanvas,
+  usePageSpace,
+} from '../components/PageView';
 import { Dropzone } from '../components/Dropzone';
 import { useI18n } from '../i18n/LanguageContext';
 import { format, plural } from '../i18n/format';
@@ -691,9 +691,6 @@ function Review() {
 /** Wat er van de pagina bekend is: het aantal pagina's en de maat, of waarom de PDF niet open kon. */
 type Info = { count: number; w: number; h: number } | { error: LoadErrorCode };
 
-/** De getekende pagina van nu, of een fout. */
-type Drawn = { canvas: HTMLCanvasElement } | { error: true };
-
 /** Eén PDF: bladeren en zoomen zoals bij PDF → Platte tekst. */
 function PageView({ entry }: { entry: TriageFile }) {
   const { t, language } = useI18n();
@@ -701,30 +698,9 @@ function PageView({ entry }: { entry: TriageFile }) {
   const { fit, zoom, shown } = useTriageState();
   const { file, page } = entry;
   const wrap = useRef<HTMLDivElement>(null);
-  const [space, setSpace] = useState({ w: 0, h: 0 });
+  // De ruimte in het vak (zie PageView: gedeeld met Platte tekst en Vergelijken).
+  const space = usePageSpace(wrap);
   const [info, setInfo] = useState<Info | null>(null);
-  const [drawn, setDrawn] = useState<Drawn | null>(null);
-
-  useLayoutEffect(() => {
-    const element = wrap.current;
-    if (!element) return;
-    const root = element.closest<HTMLElement>('[data-scroll-root]');
-    const measure = () => {
-      const top = root
-        ? element.getBoundingClientRect().top - root.getBoundingClientRect().top + root.scrollTop
-        : 0;
-      // Onderaan heeft het vak opvulling; "hele pagina" moet echt passen, anders schuift het
-      // scrollwiel eerst een stukje in plaats van door te bladeren.
-      const padding = root ? parseFloat(getComputedStyle(root).paddingBottom) || 0 : 0;
-      setSpace({ w: element.clientWidth, h: (root?.clientHeight ?? 0) - top - padding - 4 });
-    };
-    measure();
-    if (typeof ResizeObserver === 'undefined') return;
-    const observer = new ResizeObserver(measure);
-    observer.observe(element);
-    if (root) observer.observe(root);
-    return () => observer.disconnect();
-  }, []);
 
   // Het aantal pagina's en de maat van deze pagina; kan de PDF niet open, dan de reden.
   useEffect(() => {
@@ -746,56 +722,28 @@ function PageView({ entry }: { entry: TriageFile }) {
   }, [file, page, entry.id]);
 
   const size = info && 'count' in info ? info : null;
-  const availW = space.w > 0 ? space.w : 600;
-  const availH = space.h > 0 ? space.h : 800;
   const ratio = size ? size.w / size.h : 595 / 842;
-  const fitCss = fit === 'width' ? availW : Math.min(availW, availH * ratio);
+  const fitCss = fitCssWidth(space, fit, ratio);
   const widths = targetWidths(Math.floor(fitCss), zoom, window.devicePixelRatio);
-
-  // Tekenen; bij een andere pagina, breedte of PDF (of weggaan) breekt het af wat nog bezig is.
-  useEffect(() => {
-    if (!size) return;
-    const stop = new AbortController();
-    renderPage(file, page, widths.dev, stop.signal)
-      .then((canvas): Drawn => (canvas ? { canvas } : { error: true }))
-      .catch((): Drawn => ({ error: true }))
-      .then((next) => {
-        if (stop.signal.aborted) return;
-        setDrawn(next);
-        markShown(entry.id);
-      });
-    return () => stop.abort();
-  }, [file, page, widths.dev, size !== null, entry.id]);
+  // Tekenen (pas als de maat bekend is); bij een andere pagina, breedte of PDF (of weggaan) breekt
+  // het af wat nog bezig is. Daarna telt de pagina als "in beeld" (voor de besluittoetsen).
+  const drawn = usePageCanvas({
+    file,
+    page,
+    width: widths.dev,
+    enabled: size !== null,
+    onDrawn: () => markShown(entry.id),
+  });
 
   // Het scrollwiel bladert door aan de boven- of onderrand van het vak, zoals bij Platte tekst.
-  useEffect(() => {
-    const root = wrap.current?.closest<HTMLElement>('[data-scroll-root]');
-    if (!root) return;
-    let locked = false;
-    const onWheel = (event: WheelEvent) => {
-      if (event.ctrlKey) return;
-      const now = getTriageState();
-      const current = now.files[now.cur];
-      if (!current) return;
-      const total = now.pageCounts[current.id] ?? 1;
-      const atTop = root.scrollTop <= 0;
-      const atBottom = root.scrollTop + root.clientHeight >= root.scrollHeight - 1;
-      const to =
-        event.deltaY > 0 && atBottom && current.page < total
-          ? current.page + 1
-          : event.deltaY < 0 && atTop && current.page > 1
-            ? current.page - 1
-            : null;
-      if (to === null) return;
-      event.preventDefault();
-      if (locked) return;
-      locked = true;
-      setTimeout(() => (locked = false), 250);
-      setPage(to);
-    };
-    root.addEventListener('wheel', onWheel, { passive: false });
-    return () => root.removeEventListener('wheel', onWheel);
-  }, []);
+  useEdgeWheel(wrap, (direction) => {
+    const now = getTriageState();
+    const current = now.files[now.cur];
+    if (!current) return null;
+    const to = current.page + direction;
+    const total = now.pageCounts[current.id] ?? 1;
+    return to >= 1 && to <= total ? () => setPage(to) : null;
+  });
 
   const count = size?.count ?? 1;
   const lastZoom = ZOOM_STEPS[ZOOM_STEPS.length - 1]!;
@@ -906,7 +854,9 @@ function PageView({ entry }: { entry: TriageFile }) {
             {drawn && (
               <CanvasBox
                 canvas={drawn.canvas}
+                className="plaintext-preview__canvas"
                 width={widths.css}
+                height={widths.css / ratio}
                 label={format(v.canvas, { n: page })}
               />
             )}
@@ -918,26 +868,6 @@ function PageView({ entry }: { entry: TriageFile }) {
 }
 
 /** Een getekend canvas op zijn weergavebreedte (getekend is het fijner, zie `targetWidths`). */
-function CanvasBox({
-  canvas,
-  width,
-  label,
-}: {
-  canvas: HTMLCanvasElement;
-  width: number;
-  label: string;
-}) {
-  const box = useRef<HTMLDivElement>(null);
-  useLayoutEffect(() => {
-    canvas.className = 'plaintext-preview__canvas';
-    canvas.style.width = `${width}px`;
-    canvas.setAttribute('role', 'img');
-    canvas.setAttribute('aria-label', label);
-    box.current?.replaceChildren(canvas);
-  }, [canvas, width, label]);
-  return <div ref={box} />;
-}
-
 /** De woorden van de lijsten in de taal van de app. */
 const exportTexts = (t: Texts): ExportTexts => t.triage.export;
 

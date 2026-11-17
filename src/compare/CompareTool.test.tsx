@@ -12,7 +12,14 @@ import type { PageText, Piece } from './layout';
 import type { DocInfo } from './profile';
 import { readPdf } from './readPdf';
 import { resetCompareState } from './store';
-import { closeVisual, composeDiff, composeOverlay, renderPage } from './visual';
+import {
+  closeVisual,
+  composeDiff,
+  composeOverlay,
+  fitWidth,
+  renderPage,
+  targetWidths,
+} from './visual';
 
 /**
  * Een pagina met alinea's van elk twee regels (de woorden half om half, of de regels zoals
@@ -847,6 +854,25 @@ describe('beeld', () => {
       target: { value: 'x' },
     });
     await screen.findByText('A: pagina 1 · B: pagina 1');
+  });
+
+  it('passend: de breedte van het vak min zijn opvulling (32)', async () => {
+    Object.defineProperty(HTMLElement.prototype, 'clientWidth', {
+      configurable: true,
+      get(this: HTMLElement) {
+        return this.classList.contains('compare-visual__wrap') ? 1032 : 0;
+      },
+    });
+    try {
+      await openVisual('oud.pdf', 'nieuw.pdf');
+      await waitFor(() =>
+        expect(vi.mocked(renderPage).mock.lastCall![2]).toBe(
+          targetWidths(fitWidth(1000, false), 100, 1).dev,
+        ),
+      );
+    } finally {
+      delete (HTMLElement.prototype as { clientWidth?: number }).clientWidth;
+    }
   });
 
   it('zoomen tekent op een andere breedte; Passend gaat terug', async () => {

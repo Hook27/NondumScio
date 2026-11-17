@@ -714,3 +714,27 @@ describe('TriageTool: zoomtoetsen zoals overal', () => {
     dialog.remove();
   });
 });
+
+describe('TriageTool: de gedeelde paginaweergave', () => {
+  it('een PDF die niet opent, wordt ook niet getekend', async () => {
+    setup();
+    choose(pdf('geheim.pdf'));
+    await settle();
+    expect(vi.mocked(renderPage).mock.calls.some(([file]) => file.name === 'geheim.pdf')).toBe(
+      false,
+    );
+  });
+
+  it('het scrollwiel bladert aan de rand, en laat het scrollen met rust op de laatste pagina', async () => {
+    setup();
+    choose(pdf('c.pdf'));
+    await settle();
+    // jsdom meet niets: het vak staat altijd boven- en onderaan.
+    const root = document.querySelector('.workspace__view[data-scroll-root]')!;
+    expect(fireEvent.wheel(root, { deltaY: 50 })).toBe(false);
+    await waitFor(() => expect(getTriageState().files[0]!.page).toBe(2));
+    await pause(300);
+    expect(fireEvent.wheel(root, { deltaY: 50 })).toBe(true);
+    expect(getTriageState().files[0]!.page).toBe(2);
+  });
+});
