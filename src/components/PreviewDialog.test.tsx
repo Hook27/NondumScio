@@ -75,6 +75,23 @@ describe('PreviewDialog: een PDF bekijken', () => {
     await waitFor(() => expect(rendered).toEqual([1, 2, 3, 2]));
   });
 
+  it('bladert ook met ↑ ↓ en Home End, zoals overal', async () => {
+    const { pdf } = fakePdf();
+    vi.mocked(loadPdf).mockResolvedValue({ pdf: pdf as never, pageCount: 3 });
+    setup();
+    const dialog = screen.getByRole('dialog', { name: /260312 gemeente utrecht aan\.pdf/ });
+    expect(await screen.findByText('Pagina 1 van 3')).toBeTruthy();
+    // End en Home springen helemaal, niet één pagina.
+    fireEvent.keyDown(dialog, { key: 'End' });
+    expect(await screen.findByText('Pagina 3 van 3')).toBeTruthy();
+    fireEvent.keyDown(dialog, { key: 'Home' });
+    expect(await screen.findByText('Pagina 1 van 3')).toBeTruthy();
+    fireEvent.keyDown(dialog, { key: 'ArrowDown' });
+    expect(await screen.findByText('Pagina 2 van 3')).toBeTruthy();
+    fireEvent.keyDown(dialog, { key: 'ArrowUp' });
+    expect(await screen.findByText('Pagina 1 van 3')).toBeTruthy();
+  });
+
   it('sluit met Escape, met de knop en met een klik naast het venster; ruimt de PDF op', async () => {
     const { pdf } = fakePdf();
     vi.mocked(loadPdf).mockResolvedValue({ pdf: pdf as never, pageCount: 3 });

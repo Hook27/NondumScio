@@ -9,6 +9,7 @@ import {
   targetWidths,
 } from '../compare/visual';
 import { ConfirmDialog } from '../components/ConfirmDialog';
+import { useShortcuts } from '../lib/useShortcuts';
 import { Dropzone } from '../components/Dropzone';
 import { useI18n } from '../i18n/LanguageContext';
 import { format, plural } from '../i18n/format';
@@ -135,46 +136,41 @@ export function TriageTool() {
  * open is.
  */
 function useKeys() {
-  useEffect(() => {
-    const onKey = (event: KeyboardEvent) => {
-      const element = event.target as HTMLElement | null;
-      const tag = element?.tagName?.toLowerCase();
-      // Een vinkje (zoals "Ook submappen inlezen") is geen tekstveld: daar werken de toetsen gewoon.
-      const box = tag === 'input' && (element as HTMLInputElement).type === 'checkbox';
-      if ((tag === 'input' && !box) || tag === 'select' || tag === 'textarea') return;
-      if (event.ctrlKey || event.metaKey || event.altKey) return;
-      if (document.querySelector('dialog[open]')) return;
-      const now = getTriageState();
-      const current = now.files[now.cur];
-      if (now.view !== 'review' || !current) return;
-      const last = now.pageCounts[current.id] ?? 1;
-      const actions: Record<string, () => void> = {
-        k: () => decide('keep'),
-        x: () => decide('remove'),
-        m: () => askFolder({ kind: 'current' }),
-        ArrowLeft: () => navigate(-1),
-        ArrowRight: () => navigate(1),
-        ArrowUp: () => setPage(current.page - 1),
-        PageUp: () => setPage(current.page - 1),
-        ArrowDown: () => setPage(current.page + 1),
-        PageDown: () => setPage(current.page + 1),
-        Home: () => setPage(1),
-        End: () => setPage(last),
-      };
-      const key = event.key.length === 1 ? event.key.toLowerCase() : event.key;
-      const action = /^[1-9]$/.test(key) ? () => moveToNumber(Number(key)) : actions[key];
-      if (!action) return;
-      event.preventDefault();
-      // Beslissen alleen over een PDF die in beeld is, en niet met een ingedrukt gehouden toets
-      // (dan zou een hele reeks ongezien beslist worden). Bladeren mag wel herhalen.
-      const decides = key === 'k' || key === 'x' || key === 'm' || /^[1-9]$/.test(key);
-      if (decides && (event.repeat || now.shown !== current.id)) return;
-      action();
+  // Niet tijdens het typen (een vinkje telt niet) en niet bij een open venster: zie useShortcuts.
+  useShortcuts((event) => {
+    if (event.ctrlKey || event.metaKey || event.altKey) return;
+    const now = getTriageState();
+    const current = now.files[now.cur];
+    if (now.view !== 'review' || !current) return;
+    const last = now.pageCounts[current.id] ?? 1;
+    const actions: Record<string, () => void> = {
+      k: () => decide('keep'),
+      x: () => decide('remove'),
+      m: () => askFolder({ kind: 'current' }),
+      ArrowLeft: () => navigate(-1),
+      ArrowRight: () => navigate(1),
+      ArrowUp: () => setPage(current.page - 1),
+      PageUp: () => setPage(current.page - 1),
+      ArrowDown: () => setPage(current.page + 1),
+      PageDown: () => setPage(current.page + 1),
+      Home: () => setPage(1),
+      End: () => setPage(last),
+      // Zoomen zoals overal: + − en 0 terug naar passend.
+      '+': () => setZoom(stepZoom(now.zoom, 1)),
+      '=': () => setZoom(stepZoom(now.zoom, 1)),
+      '-': () => setZoom(stepZoom(now.zoom, -1)),
+      _: () => setZoom(stepZoom(now.zoom, -1)),
+      '0': () => setZoom(100),
     };
-    // Het doel onthouden: het opruimen kan lopen als de testomgeving `document` al weg heeft.
-    const target = document;
-    target.addEventListener('keydown', onKey);
-    return () => target.removeEventListener('keydown', onKey);
+    const key = event.key.length === 1 ? event.key.toLowerCase() : event.key;
+    const action = /^[1-9]$/.test(key) ? () => moveToNumber(Number(key)) : actions[key];
+    if (!action) return;
+    event.preventDefault();
+    // Beslissen alleen over een PDF die in beeld is, en niet met een ingedrukt gehouden toets
+    // (dan zou een hele reeks ongezien beslist worden). Bladeren mag wel herhalen.
+    const decides = key === 'k' || key === 'x' || key === 'm' || /^[1-9]$/.test(key);
+    if (decides && (event.repeat || now.shown !== current.id)) return;
+    action();
   }, []);
 }
 

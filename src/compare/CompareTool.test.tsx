@@ -885,6 +885,30 @@ describe('beeld', () => {
     expect(screen.getByText(format(v.page, { n: 1, total: 2 }))).toBeTruthy();
   });
 
+  it('toetsen zoals overal: ↑ ↓ PgUp PgDn Home End bladeren; niet bij een open venster', async () => {
+    await openVisual('scan.pdf', 'oud.pdf');
+    const key = (k: string) => fireEvent.keyDown(document.body, { key: k });
+    const at = (n: number) => screen.getByText(format(v.page, { n, total: 2 }));
+    key('ArrowDown');
+    expect(at(2)).toBeTruthy();
+    key('ArrowUp');
+    expect(at(1)).toBeTruthy();
+    key('PageDown');
+    expect(at(2)).toBeTruthy();
+    key('PageUp');
+    expect(at(1)).toBeTruthy();
+    key('End');
+    expect(at(2)).toBeTruthy();
+    key('Home');
+    expect(at(1)).toBeTruthy();
+    const dialog = document.createElement('dialog');
+    dialog.setAttribute('open', '');
+    document.body.append(dialog);
+    key('ArrowDown');
+    expect(at(1)).toBeTruthy();
+    dialog.remove();
+  });
+
   it('meldt het als een pagina niet getekend kon worden', async () => {
     vi.mocked(renderPage).mockRejectedValueOnce(new Error('kapot'));
     await openVisual('oud.pdf', 'nieuw.pdf').catch(() => undefined);

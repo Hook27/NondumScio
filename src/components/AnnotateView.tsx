@@ -1,7 +1,8 @@
 import { useEffect, useMemo, useRef, useState } from 'preact/hooks';
 import { SaveBusy, SaveStopped, useRedactionProgress } from './SaveBusy';
 import { useDocument } from '../document/DocumentContext';
-import { typingIn, useUndoShortcuts } from '../document/useUndoShortcuts';
+import { useUndoShortcuts } from '../document/useUndoShortcuts';
+import { useShortcuts } from '../lib/useShortcuts';
 import { useI18n } from '../i18n/LanguageContext';
 import { format, plural } from '../i18n/format';
 import { useStable } from '../lib/useStable';
@@ -358,32 +359,37 @@ export function AnnotateView({ mode = 'annotate' }: { mode?: 'annotate' | 'redac
       ? selected.strokeWidth
       : strokeWidth;
 
-  /* Sneltoetsen: gereedschap kiezen, annotatie verwijderen */
+  /* Sneltoetsen: gereedschap kiezen, annotatie verwijderen, zoomen (+ − 0, zoals overal) */
 
-  useEffect(() => {
-    const onKey = (event: KeyboardEvent) => {
-      if (event.ctrlKey || event.metaKey || event.altKey || typingIn(event.target)) return;
-      const key = event.key.toLowerCase();
-      const match = tools.find((entry) => entry.key === key);
-      if (match) {
-        setTool(match.id);
-        event.preventDefault();
-      } else if (event.key === 'Escape') {
-        setTool('select');
-        setSelectedId(null);
-      } else if (
-        (event.key === 'Delete' || event.key === 'Backspace') &&
-        selectedId !== null &&
-        !(event.target instanceof Element && event.target.closest('[data-annotation]'))
-      ) {
-        controller.remove(selectedId);
-        event.preventDefault();
-      }
+  useShortcuts((event) => {
+    if (event.ctrlKey || event.metaKey || event.altKey) return;
+    const key = event.key.toLowerCase();
+    const match = tools.find((entry) => entry.key === key);
+    const zoomTo: Record<string, (index: number) => number> = {
+      '+': (index) => Math.min(index + 1, ZOOMS.length - 1),
+      '=': (index) => Math.min(index + 1, ZOOMS.length - 1),
+      '-': (index) => Math.max(index - 1, 0),
+      _: (index) => Math.max(index - 1, 0),
+      '0': () => FIT,
     };
-    // Het doel onthouden: opruimen kan na het einde van een test vallen, als `document` al weg is.
-    const doc = document;
-    doc.addEventListener('keydown', onKey);
-    return () => doc.removeEventListener('keydown', onKey);
+    const zoom = zoomTo[event.key];
+    if (match) {
+      setTool(match.id);
+      event.preventDefault();
+    } else if (zoom) {
+      setZoomIndex(zoom);
+      event.preventDefault();
+    } else if (event.key === 'Escape') {
+      setTool('select');
+      setSelectedId(null);
+    } else if (
+      (event.key === 'Delete' || event.key === 'Backspace') &&
+      selectedId !== null &&
+      !(event.target instanceof Element && event.target.closest('[data-annotation]'))
+    ) {
+      controller.remove(selectedId);
+      event.preventDefault();
+    }
   });
 
   // Bij een ander gereedschap hoort geen halve bewerking meer.

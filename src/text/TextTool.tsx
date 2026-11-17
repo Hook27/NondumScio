@@ -12,6 +12,7 @@ import { useI18n } from '../i18n/LanguageContext';
 import { format, plural } from '../i18n/format';
 import { formatFileSize } from '../lib/format';
 import { HANDLES, type Handle } from '../lib/handles';
+import { useShortcuts } from '../lib/useShortcuts';
 import { downloadFile } from '../pdf/save';
 import {
   clampZone,
@@ -59,6 +60,7 @@ import {
   setZoom,
   textAtRisk,
   undoZones,
+  redoZones,
   useTextState,
   type BatchStatus,
   type Fit,
@@ -286,7 +288,7 @@ function ZoneSettings() {
   const { t } = useI18n();
   const z = t.plainText.zones;
   const state = useTextState();
-  const { useZones, undo, slot, page, readEmpty } = state;
+  const { useZones, undo, redo, slot, page, readEmpty } = state;
   const zones = editingZones(state);
   const own = ownPage(state);
   const ready = slot.status === 'ready';
@@ -341,14 +343,20 @@ function ZoneSettings() {
           </ol>
         ))}
       <div class="plaintext-zones__buttons">
-        <button
-          type="button"
-          class="button button--secondary"
+        <IconButton
+          icon="undo"
+          label={t.pages.undo}
+          tip={`${t.pages.undo} (Ctrl + Z)`}
           disabled={!useZones || undo.length === 0}
           onClick={undoZones}
-        >
-          {z.undo}
-        </button>
+        />
+        <IconButton
+          icon="redo"
+          label={t.pages.redo}
+          tip={`${t.pages.redo} (Ctrl + Y)`}
+          disabled={!useZones || redo.length === 0}
+          onClick={redoZones}
+        />
         <button
           type="button"
           class="button button--secondary"
@@ -1061,17 +1069,24 @@ function PageView({ doc }: { doc: TextDoc }) {
     return () => stop.abort();
   }, [doc, page, widths.dev]);
 
-  // Toetsen: ← → (en PageUp/PageDown) bladeren, Home en End naar de eerste of laatste pagina,
-  // Ctrl+Z maakt het laatste vak ongedaan. Niet in een invoerveld.
-  useEffect(() => {
-    const onKey = (event: KeyboardEvent) => {
-      const tag = (event.target as HTMLElement | null)?.tagName?.toLowerCase();
-      if (tag === 'input' || tag === 'select' || tag === 'textarea') return;
+  // Toetsen, zoals overal (zie de bedieningsafspraak): ← → ↑ ↓ en PageUp/PageDown bladeren, Home
+  // en End naar de eerste of laatste pagina, + − zoomen en 0 terug naar passend; Ctrl+Z maakt het
+  // laatste vak ongedaan, Ctrl+Y of Ctrl+Shift+Z doet het opnieuw.
+  useShortcuts(
+    (event) => {
       const now = getTextState();
-      if ((event.ctrlKey || event.metaKey) && !event.altKey && event.key.toLowerCase() === 'z') {
-        if (!now.useZones) return;
+      if ((event.ctrlKey || event.metaKey) && !event.altKey) {
+        const key = event.key.toLowerCase();
+        const action =
+          key === 'z' && !event.shiftKey
+            ? undoZones
+            : key === 'y' || (key === 'z' && event.shiftKey)
+              ? redoZones
+              : null;
+        // Met de leesvakken uit doet de stand zelf niets (zoals in de extractor).
+        if (!action) return;
         event.preventDefault();
-        undoZones();
+        action();
         return;
       }
       if (event.ctrlKey || event.metaKey || event.altKey) return;
@@ -1079,18 +1094,26 @@ function PageView({ doc }: { doc: TextDoc }) {
         Home: 1,
         End: doc.pageCount,
         ArrowLeft: now.page - 1,
+        ArrowUp: now.page - 1,
         PageUp: now.page - 1,
         ArrowRight: now.page + 1,
+        ArrowDown: now.page + 1,
         PageDown: now.page + 1,
       };
-      if (!(event.key in to)) return;
+      const zoom: Record<string, number> = {
+        '+': stepZoom(now.zoom, 1),
+        '=': stepZoom(now.zoom, 1),
+        '-': stepZoom(now.zoom, -1),
+        _: stepZoom(now.zoom, -1),
+        '0': 100,
+      };
+      if (event.key in to) setPage(to[event.key]!);
+      else if (event.key in zoom) setZoom(zoom[event.key]!);
+      else return;
       event.preventDefault();
-      setPage(to[event.key]!);
-    };
-    const target = document;
-    target.addEventListener('keydown', onKey);
-    return () => target.removeEventListener('keydown', onKey);
-  }, [doc]);
+    },
+    [doc],
+  );
 
   // Het scrollwiel bladert door aan de boven- of onderrand van het vak, zoals in de extractor.
   useEffect(() => {

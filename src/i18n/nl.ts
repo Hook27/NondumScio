@@ -320,7 +320,7 @@ export const nl = {
     unsupported: 'Deze tekens kunnen niet worden getekend en worden een vraagteken: {chars}',
     hint: 'Kies een gereedschap en klik of sleep op de pagina: Tekst plaatst een tekstvak (klik, typ, en klik ernaast om af te sluiten), Markeren, Rechthoek en Lijn teken je door te slepen. Met Selecteren pak je een annotatie op om hem te verplaatsen, of een hoekpunt om de grootte te wijzigen; Delete verwijdert hem en met de pijltjestoetsen schuif je (met Shift in grotere stappen). Dubbelklik op tekst om hem aan te passen. Kleur, lettergrootte en dikte pas je rechts van de gereedschappen aan. Annotaties worden bij het downloaden in de pagina zelf getekend; het origineel blijft zoals het is. Ze horen bij hun pagina: draai of verplaats je die bij Pagina’s, dan gaan ze mee.',
     shortcuts:
-      'Sneltoetsen: V selecteren, T tekst, H markeren, R rechthoek, L lijn, Escape terug naar selecteren.',
+      'Sneltoetsen: V selecteren, T tekst, H markeren, R rechthoek, L lijn, Escape terug naar selecteren, + − zoomen, 0 = passend.',
     suffix: 'bewerkt',
   },
   redact: {
@@ -330,7 +330,8 @@ export const nl = {
     boxOf: 'Redactievak',
     pageHelp: 'Met Redactievak gekozen plaatst Enter hier een redactievak.',
     hint: 'Zet met Redactievak (R) vakken over alles wat weg moet: sleep over de pagina. Pas ze aan met Selecteren (verplaatsen, een hoekpunt slepen, Delete verwijdert). Er verandert niets aan je bestand tot je downloadt. Dan wordt elke pagina met een vak een afbeelding, met het vak zwart erin: wat eronder stond, ook verborgen tekst, staat dan niet meer in het bestand en is niet terug te halen. De andere pagina’s blijven zoals ze zijn. Het resultaat is een nieuw bestand: bladwijzers, formulieren en bijlagen worden niet overgenomen, en pagina’s die je hebt weggehaald zijn ook echt weg. Na het maken controleert de app zelf dat er op de pagina’s met een vak geen tekst meer staat; lukt dat niet, dan wordt er niets gedownload. Bekijk vooraf met Voorbeeld hoe het resultaat eruitziet. De vakken gelden ook als je bij Pagina’s, Samenvoegen, Splitsen of Omzetten downloadt.',
-    shortcuts: 'Sneltoetsen: V selecteren, R redactievak, Escape terug naar selecteren.',
+    shortcuts:
+      'Sneltoetsen: V selecteren, R redactievak, Escape terug naar selecteren, + − zoomen, 0 = passend.',
     options: 'Redactie',
     resolution: 'Resolutie van pagina’s met een vak',
     dpi150: '150 dpi (kleiner bestand)',
@@ -694,7 +695,7 @@ export const nl = {
       zoomOut: 'Uitzoomen',
       zoomIn: 'Inzoomen',
       fit: 'Passend',
-      keys: 'Toetsen: ← → bladeren, + − zoomen, 0 = passend.',
+      keys: 'Toetsen: ← → ↑ ↓, Page Up en Page Down bladeren, Home en End naar de eerste of laatste pagina, + − zoomen, 0 = passend.',
       legend: { a: 'alleen in A', b: 'alleen in B', same: 'gelijk' },
       stat: {
         diff: 'Verschil: {page}% van de pagina · {ink}% van de inkt · {px} px',
@@ -852,10 +853,9 @@ export const nl = {
         'Uit: zo’n pagina wordt overgeslagen, bijvoorbeeld een bronnenlijst. Aan: de hele pagina wordt gelezen.',
       item: 'Vak {n}',
       remove: 'Vak {n} wissen',
-      undo: 'Ongedaan',
       clearAll: 'Alle vakken wissen',
       drawHint:
-        'Sleep een vak over de tekst; versleep daarna een vak, of zijn randen en hoeken. Ctrl+Z maakt ongedaan.',
+        'Sleep een vak over de tekst; versleep daarna een vak, of zijn randen en hoeken. Ctrl+Z maakt ongedaan, Ctrl+Y doet het opnieuw.',
     },
     settings: {
       title: 'Tekstopschoning',
@@ -1012,7 +1012,7 @@ export const nl = {
       zoomIn: 'Inzoomen',
       fitPage: 'Hele pagina',
       fitWidth: 'Hele breedte',
-      keys: 'Bladeren: ← → of Home en End, of met het scrollwiel aan de boven- of onderrand.',
+      keys: 'Bladeren: ← → ↑ ↓, Page Up en Page Down, Home en End, of met het scrollwiel aan de boven- of onderrand. Zoomen: + − en 0 = passend.',
       canvas: 'Pagina {n}',
       error: 'Deze pagina kon niet worden getekend.',
     },
@@ -1177,7 +1177,7 @@ export const nl = {
     remove: 'Verwijderen',
     views: { label: 'Weergave', review: 'Beoordelen', overview: 'Overzicht' },
     placeholder: 'Kies of sleep links PDF’s om te beginnen.',
-    keys: 'Toetsen: K bewaren · X verwijderen · M naar een nieuwe map · 1–9 naar een map · ← → ander bestand · ↑ ↓, Page Up, Page Down, Home en End bladeren. Het scrollwiel bladert aan de boven- of onderrand.',
+    keys: 'Toetsen: K bewaren · X verwijderen · M naar een nieuwe map · 1–9 naar een map · ← → ander bestand · ↑ ↓, Page Up, Page Down, Home en End bladeren · + − zoomen, 0 = passend. Het scrollwiel bladert aan de boven- of onderrand.',
     overview: {
       keep: 'Bewaren ({n})',
       remove: 'Verwijderen ({n})',

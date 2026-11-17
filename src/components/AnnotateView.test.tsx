@@ -813,3 +813,37 @@ describe('Bewerken en Redigeren: voortgang en Stoppen', () => {
     await waitFor(() => expect(downloadPdf).toHaveBeenCalledTimes(1));
   });
 });
+
+describe('Bewerken en Redigeren: toetsen zoals overal', () => {
+  const label = () => screen.getByRole('button', { name: /^Zoom \d+%/ }).textContent;
+
+  it('+ − zoomen, 0 terug naar passend', async () => {
+    await setup(1);
+    press('+');
+    expect(label()).toBe('125%');
+    press('-');
+    press('-');
+    expect(label()).toBe('75%');
+    press('0');
+    expect(label()).toBe('100%');
+  });
+
+  it('bij een open venster doen de toetsen niets (ook Delete niet)', async () => {
+    await setup(1);
+    press('r');
+    fireEvent.keyDown(pageNr(1), { key: 'Enter' });
+    expect(shapes()).toHaveLength(1);
+    // Een open venster: de toetsen doen niets.
+    const dialog = document.createElement('dialog');
+    dialog.setAttribute('open', '');
+    document.body.append(dialog);
+    press('Delete');
+    press('v');
+    press('+');
+    expect(shapes()).toHaveLength(1);
+    expect(label()).toBe('100%');
+    dialog.remove();
+    press('Delete');
+    expect(shapes()).toHaveLength(0);
+  });
+});

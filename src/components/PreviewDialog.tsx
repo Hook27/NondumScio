@@ -155,8 +155,11 @@ export function PreviewDialog({
         if (event.target === event.currentTarget) onClose();
       }}
       onKeyDown={(event) => {
-        if (event.key === 'ArrowRight' || event.key === 'PageDown') go(1);
-        else if (event.key === 'ArrowLeft' || event.key === 'PageUp') go(-1);
+        // Bladeren zoals overal: ← → ↑ ↓ PgUp PgDn, Home en End naar de eerste of laatste pagina.
+        if (['ArrowRight', 'ArrowDown', 'PageDown'].includes(event.key)) go(1);
+        else if (['ArrowLeft', 'ArrowUp', 'PageUp'].includes(event.key)) go(-1);
+        else if (event.key === 'Home') setPage(1);
+        else if (event.key === 'End') setPage(Math.max(1, count));
         else return;
         event.preventDefault();
       }}
