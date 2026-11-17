@@ -5,7 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { messages } from '../i18n';
 import { format } from '../i18n/format';
 import { LanguageProvider } from '../i18n/LanguageContext';
-import { makeFlaky } from '../lib/testFiles';
+import { held, makeFlaky } from '../lib/testFiles';
 import { PdfSaveError, buildPdf, downloadFile, downloadPdf } from '../pdf/save';
 import { DB_STORAGE_KEY, type RenameDb } from './database';
 import { openScanReader } from './readText';
@@ -669,7 +669,7 @@ describe('Slim hernoemen: samenvoegen', () => {
       }),
     );
     expect((await screen.findByRole('alert')).textContent).toBe(messages.nl.pages.errors.encrypted);
-    expect(vi.mocked(buildPdf).mock.calls[1]![2]).toEqual({});
+    expect(vi.mocked(buildPdf).mock.calls[1]![2]).toEqual({ signal: expect.anything() });
   });
 
   it('Wissen (ook bij Hernoemen) haalt de losse PDF’s en de eigen volgorde weg', async () => {
@@ -856,5 +856,29 @@ describe('Slim hernoemen: bekijken', () => {
     });
     fireEvent.click(within(dialog).getByRole('button', { name: messages.nl.preview.close }));
     expect(screen.queryByRole('dialog')).toBeNull();
+  });
+});
+
+describe('Slim hernoemen: weggaan tijdens het samenvoegen', () => {
+  it('er komt geen download meer, en het opslaan wordt afgebroken', async () => {
+    setup();
+    await open('gemeente.pdf', 'bank1.pdf');
+    fireEvent.click(screen.getByRole('button', { name: r.views.merge }));
+    fireEvent.click(screen.getByLabelText('260203 ing bank n afschrift.pdf samenvoegen'));
+    const work = held(new Uint8Array([1, 2, 3]));
+    vi.mocked(buildPdf).mockImplementationOnce(() => work.promise);
+    fireEvent.click(screen.getByRole('button', { name: r.merge.download }));
+    const dialog = screen.getByRole('dialog', { name: r.merge.saveTitle });
+    fireEvent.click(within(dialog).getByRole('button', { name: messages.nl.saveDialog.download }));
+    await waitFor(() => expect(buildPdf).toHaveBeenCalledTimes(1));
+    const abort = vi.spyOn(AbortController.prototype, 'abort');
+    cleanup();
+    // Preact ruimt een weggehaald scherm een tikje later op: wachten tot er afgebroken is.
+    await waitFor(() => expect(abort).toHaveBeenCalled());
+    abort.mockRestore();
+    expect(vi.mocked(buildPdf).mock.calls[0]![2]!.signal!.aborted).toBe(true);
+    work.release();
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    expect(downloadPdf).not.toHaveBeenCalled();
   });
 });

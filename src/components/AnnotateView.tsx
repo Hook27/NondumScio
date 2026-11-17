@@ -33,6 +33,7 @@ import { FileList } from './FilesParts';
 import { RadioGroup } from './ConvertParts';
 import { Icon, IconButton, type IconName } from './Icon';
 import { SaveDialog } from './SaveDialog';
+import { useSaveJob } from './useSaveJob';
 import { PaneHead, Split, useInfo } from './WorkspaceParts';
 import { DPI_CHOICES } from '../pdf/redactOptions';
 import type { RedactionReport } from '../pdf/redact';
@@ -127,7 +128,7 @@ export function AnnotateView({ mode = 'annotate' }: { mode?: 'annotate' | 'redac
     canRedo,
     add,
     adding,
-    markSaved,
+    beginSave,
     unsaved,
     bookmarks,
   } = useDocument();
@@ -157,9 +158,10 @@ export function AnnotateView({ mode = 'annotate' }: { mode?: 'annotate' | 'redac
   const [preview, setPreview] = useState(false);
   const [progress, setProgress] = useState<{ done: number; total: number } | null>(null);
   const [report, setReport] = useState<RedactionReport | null>(null);
-  // Het laden van de tekstherkenning (0 tot 1), en een manier om te stoppen.
+  // Het laden van de tekstherkenning (0 tot 1).
   const [ocrLoading, setOcrLoading] = useState<number | null>(null);
-  const stopper = useRef<AbortController | null>(null);
+  // Het opslaan: stopt bij Stoppen en als je het scherm verlaat.
+  const job = useSaveJob();
 
   // Het concept (wat je nu tekent, sleept of typt) staat ook in een ref, zodat twee handelingen
   // vlak na elkaar (zoals een klik naast het tekstveld, waarna het veld zijn focus verliest)
@@ -402,13 +404,12 @@ export function AnnotateView({ mode = 'annotate' }: { mode?: 'annotate' | 'redac
     setReport(null);
     setProgress(null);
     setOcrLoading(null);
-    const controller = new AbortController();
-    stopper.current = controller;
-    try {
+    const saved = beginSave();
+    const outcome = await job.run(async (signal) => {
       const files = new Map(
         (doc.status === 'ready' ? doc.sources : []).map((source) => [source.id, source.file]),
       );
-      const bytes = await buildPdf(await readSources(files, pages), pages, {
+      return buildPdf(await readSources(files, pages), pages, {
         annotations,
         // Bij meer bestanden komen de pagina's in een nieuw document: de bladwijzers gaan dan mee.
         ...(bookmarks.keep
@@ -422,21 +423,25 @@ export function AnnotateView({ mode = 'annotate' }: { mode?: 'annotate' | 'redac
           },
           onDone: setReport,
           onOcrStatus: setOcrLoading,
-          signal: controller.signal,
         },
+        signal,
       });
-      setProgress(null);
-      setOcrLoading(null);
-      downloadPdf(bytes, fileName);
-      markSaved();
-      setSave({ status: 'saved', fileName });
-    } catch (error) {
-      setProgress(null);
-      setOcrLoading(null);
-      setSave({ status: 'error', code: error instanceof PdfSaveError ? error.code : 'failed' });
-    } finally {
-      stopper.current = null;
+    });
+    setProgress(null);
+    setOcrLoading(null);
+    if (!outcome.ok) {
+      // Gestopt (of weggegaan: dan is dit scherm er niet meer en doet het niets).
+      const code = outcome.stopped
+        ? 'cancelled'
+        : outcome.error instanceof PdfSaveError
+          ? outcome.error.code
+          : 'failed';
+      setSave({ status: 'error', code });
+      return;
     }
+    downloadPdf(outcome.value, fileName);
+    saved();
+    setSave({ status: 'saved', fileName });
   };
 
   // Bij Bewerken tellen de annotaties, bij Redigeren de redactievakken. Dit loopt over alle pagina's
@@ -724,11 +729,7 @@ export function AnnotateView({ mode = 'annotate' }: { mode?: 'annotate' | 'redac
           </div>
           {redactMode && busy && (
             <div class="annotate__row">
-              <button
-                type="button"
-                class="button button--secondary"
-                onClick={() => stopper.current?.abort()}
-              >
+              <button type="button" class="button button--secondary" onClick={job.stop}>
                 {rt.stop}
               </button>
             </div>

@@ -35,6 +35,7 @@ import { Icon, IconButton, TipAnchor } from './Icon';
 import { OutlinePanel } from './OutlinePanel';
 import { SaveDialog } from './SaveDialog';
 import { useDragReorder } from './useDragReorder';
+import { useSaveJob } from './useSaveJob';
 import { PaneHead, Split, useInfo } from './WorkspaceParts';
 import { Thumbnail } from './Thumbnail';
 
@@ -65,9 +66,10 @@ export function PageEditor() {
     canUndo,
     canRedo,
     unsaved,
-    markSaved,
+    beginSave,
     bookmarks,
   } = useDocument();
+  const job = useSaveJob();
   // De naam van het eerste bestand is de basis voor voorgestelde bestandsnamen.
   const name = activeSources[0]?.name ?? '';
   const multiple = activeSources.length > 1;
@@ -198,12 +200,14 @@ export function PageEditor() {
   const saveAs = async (current: SaveRequest, fileName: string) => {
     setRequest(null);
     setSave({ status: 'saving' });
-    try {
+    // Bij uitpakken is het document zelf niet veranderd: "niet gedownload" blijft wat het was.
+    const saved = current.kind === 'save' ? beginSave() : null;
+    let untrimmed = 0;
+    const outcome = await job.run(async (signal) => {
       const files = new Map(
         (doc.status === 'ready' ? doc.sources : []).map((source) => [source.id, source.file]),
       );
-      let untrimmed = 0;
-      const bytes = await buildPdf(await readSources(files, current.pages), current.pages, {
+      return buildPdf(await readSources(files, current.pages), current.pages, {
         annotations,
         onReport: (report) => (untrimmed = report.untrimmed),
         // Bij meer bestanden komen de pagina's in een nieuw document: de bladwijzers gaan dan mee.
@@ -212,14 +216,19 @@ export function PageEditor() {
           : { dropBookmarks: true }),
         // Ook een uittreksel zonder vak hoort bij een document waarin geredigeerd is.
         redaction: { ...redaction, wholeDocument: hasRedactions(pages, annotations) },
+        signal,
       });
-      downloadPdf(bytes, fileName);
-      // Bij uitpakken is het document zelf niet veranderd: "niet gedownload" blijft wat het was.
-      if (current.kind === 'save') markSaved();
-      setSave({ status: 'saved', fileName, untrimmed });
-    } catch (error) {
+    });
+    // Weggegaan: niets meer doen (ook niet downloaden).
+    if (!outcome.ok && outcome.stopped) return;
+    if (!outcome.ok) {
+      const { error } = outcome;
       setSave({ status: 'error', code: error instanceof PdfSaveError ? error.code : 'failed' });
+      return;
     }
+    downloadPdf(outcome.value, fileName);
+    saved?.();
+    setSave({ status: 'saved', fileName, untrimmed });
   };
 
   /* Slepen: met de muis de hele miniatuur, op een aanraakscherm het greepje. */

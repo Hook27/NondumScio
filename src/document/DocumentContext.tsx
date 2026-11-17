@@ -131,8 +131,12 @@ type DocApi = {
    */
   outlineView: OutlineView;
   setOutlineView: (change: Partial<OutlineView>) => void;
-  /** Na een geslaagde download: de huidige stand geldt als bewaard. */
-  markSaved: () => void;
+  /**
+   * Bij het begin van een opslag: geeft een functie die na een geslaagde download deze stand als
+   * bewaard markeert (niet wat je tijdens het opslaan nog veranderde), en alleen als het nog
+   * hetzelfde document is.
+   */
+  beginSave: () => () => void;
 };
 
 const DocContext = createContext<DocApi | null>(null);
@@ -401,7 +405,14 @@ export function DocumentProvider({
     [],
   );
 
-  const markSaved = useCallback(() => setSaved(history.present), [history.present]);
+  const beginSave = useCallback(() => {
+    const snapshot = history.present;
+    // `latest` telt elke keer dat een document geopend of gesloten wordt.
+    const opened = latest.current;
+    return () => {
+      if (latest.current === opened) setSaved(snapshot);
+    };
+  }, [history.present]);
   const unsaved =
     doc.status === 'ready' &&
     saved !== null &&
@@ -450,7 +461,7 @@ export function DocumentProvider({
       redaction,
       setRedaction,
       unsaved,
-      markSaved,
+      beginSave,
       bookmarks,
       setBookmarksOn,
       setBookmarksKeep,
@@ -478,7 +489,7 @@ export function DocumentProvider({
     redaction,
     setRedaction,
     unsaved,
-    markSaved,
+    beginSave,
     bookmarks,
     setBookmarksOn,
     setBookmarksKeep,

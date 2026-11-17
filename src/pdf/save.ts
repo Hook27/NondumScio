@@ -44,6 +44,11 @@ export type BuildOptions = {
    */
   dropBookmarks?: boolean;
   /**
+   * Om af te breken (Stoppen, of de taak verlaten): na het samenstellen en vóór het redigeren
+   * wordt gekeken, en de redactie zelf stopt ook. Afgebroken = de belofte wordt afgewezen.
+   */
+  signal?: AbortSignal;
+  /**
    * Annotaties (tekst, markeringen, vormen), die in de pagina zelf worden getekend. Ze horen
    * bij een pagina van het plan (`PageItem.key`); die van pagina's die niet in het plan staan,
    * doen niet mee.
@@ -138,11 +143,12 @@ export async function buildPdf(
 ): Promise<Uint8Array> {
   const report: PartReport = { untrimmed: 0 };
   const bytes = await buildPlain(sources, pages, options, report);
+  options.signal?.throwIfAborted();
   const result = await applyRedactions(
     bytes,
     pages,
     options.annotations ?? [],
-    options.redaction,
+    withSignal(options.redaction, options.signal),
     options.redaction?.wholeDocument ?? false,
   );
   options.onReport?.(report);
@@ -206,6 +212,12 @@ async function buildPlain(
   }
 }
 
+/** De redactie, met het signaal om af te breken (een eigen signaal van de redactie gaat voor). */
+export function withSignal(run: RedactionRun | undefined, signal: AbortSignal | undefined) {
+  if (!signal || run?.signal) return run;
+  return { ...run, signal };
+}
+
 /**
  * Splitsen: maakt per deel een eigen PDF. Elk bronbestand wordt maar één keer ingelezen,
  * ook bij honderden delen. Titel en auteur komen uit het bestand van de eerste pagina van
@@ -226,6 +238,7 @@ export async function buildParts(
   redaction?: RedactionRun,
   onPart?: (bytes: Uint8Array, index: number, report: PartReport) => void,
   titles?: readonly string[],
+  signal?: AbortSignal,
 ): Promise<Uint8Array[]> {
   if (parts.length === 0 || parts.some((part) => part.length === 0)) {
     throw new PdfSaveError('failed');
@@ -238,12 +251,20 @@ export async function buildParts(
   const redacting = redaction?.wholeDocument ?? hasRedactions(parts.flat(), annotations);
   try {
     for (const [index, part] of parts.entries()) {
+      // Afgebroken (Stoppen, of de taak verlaten): geen volgend deel meer.
+      signal?.throwIfAborted();
       const report: PartReport = { untrimmed: 0 };
       const out = await assemble(lib, docs, part, annotations, report);
       const title = titles?.[index];
       if (title) out.setTitle(title);
       const bytes = await out.save();
-      const done = await applyRedactions(bytes, part, annotations, redaction, redacting);
+      const done = await applyRedactions(
+        bytes,
+        part,
+        annotations,
+        withSignal(redaction, signal),
+        redacting,
+      );
       if (onPart) onPart(done, index, report);
       else result.push(done);
       onProgress?.(index + 1, parts.length);

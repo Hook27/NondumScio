@@ -4,7 +4,7 @@ import type { PDFDocumentProxy } from 'pdfjs-dist';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { DocumentProvider } from '../document/DocumentContext';
 import { messages } from '../i18n';
-import { makeFlaky } from '../lib/testFiles';
+import { held, makeFlaky } from '../lib/testFiles';
 import { format } from '../i18n/format';
 import { LanguageProvider } from '../i18n/LanguageContext';
 import type { LoadedPdf } from '../pdf/loader';
@@ -479,5 +479,25 @@ describe('sluiten met wijzigingen die nog niet gedownload zijn', () => {
     fireEvent.click(closeButton());
     expect(dialog()).toBeNull();
     expect(screen.getByRole('heading', { level: 2, name: nl.document.openTitle })).toBeTruthy();
+  });
+});
+
+describe('Pagina’s: weggaan tijdens het opslaan', () => {
+  it('er komt geen download meer, en het opslaan wordt afgebroken', async () => {
+    await openEditor();
+    const work = held(new Uint8Array([1, 2, 3]));
+    vi.mocked(buildPdf).mockImplementationOnce(() => work.promise);
+    fireEvent.click(button(nl.pages.save));
+    confirmSave();
+    await waitFor(() => expect(buildPdf).toHaveBeenCalledTimes(1));
+    const abort = vi.spyOn(AbortController.prototype, 'abort');
+    cleanup();
+    // Preact ruimt een weggehaald scherm een tikje later op: wachten tot er afgebroken is.
+    await waitFor(() => expect(abort).toHaveBeenCalled());
+    abort.mockRestore();
+    expect(vi.mocked(buildPdf).mock.calls[0]![2]!.signal!.aborted).toBe(true);
+    work.release();
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    expect(downloadPdf).not.toHaveBeenCalled();
   });
 });

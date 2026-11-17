@@ -12,7 +12,7 @@ import {
 import { describe, expect, it } from 'vitest';
 import type { OutlineEntry } from '../outline/outline';
 import { initialPages, movePages, removePages, rotatePages } from '../pages/plan';
-import { PdfSaveError, buildParts, buildPdf, editedFileName } from './save';
+import { PdfSaveError, buildParts, buildPdf, editedFileName, withSignal } from './save';
 
 /** Test-PDF waarin elke pagina een eigen breedte heeft, zodat je hem terugkent: 300, 400, 500, … */
 async function samplePdf(
@@ -505,5 +505,49 @@ describe('editedFileName', () => {
     expect(editedFileName('scan zonder extensie', 'bewerkt')).toBe(
       'scan zonder extensie (bewerkt).pdf',
     );
+  });
+});
+
+describe('afbreken tijdens het opslaan', () => {
+  it('buildPdf: afgebroken = afgewezen, zonder resultaat', async () => {
+    const stop = new AbortController();
+    stop.abort();
+    await expect(
+      buildPdf(new Map([[1, await samplePdf(2)]]), initialPages(2, 1), { signal: stop.signal }),
+    ).rejects.toThrow();
+  });
+
+  it('buildParts: na het afbreken komt er geen volgend deel meer', async () => {
+    const stop = new AbortController();
+    const handed: number[] = [];
+    const plan = initialPages(3, 1);
+    await expect(
+      buildParts(
+        new Map([[1, await samplePdf(3)]]),
+        [plan.slice(0, 1), plan.slice(1, 2), plan.slice(2)],
+        undefined,
+        [],
+        undefined,
+        (_bytes, index) => {
+          handed.push(index);
+          // Na het eerste deel: Stoppen (of de taak verlaten).
+          stop.abort();
+        },
+        undefined,
+        stop.signal,
+      ),
+    ).rejects.toThrow();
+    expect(handed).toEqual([0]);
+  });
+});
+
+describe('withSignal', () => {
+  it('geeft het signaal door aan de redactie; een eigen signaal van de redactie gaat voor', () => {
+    const outer = new AbortController().signal;
+    const own = new AbortController().signal;
+    expect(withSignal(undefined, outer)).toEqual({ signal: outer });
+    expect(withSignal({ dpi: 150 }, outer)).toEqual({ dpi: 150, signal: outer });
+    expect(withSignal({ dpi: 150, signal: own }, outer)!.signal).toBe(own);
+    expect(withSignal({ dpi: 150 }, undefined)).toEqual({ dpi: 150 });
   });
 });

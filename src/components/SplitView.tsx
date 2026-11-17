@@ -22,6 +22,7 @@ import { FileList, FilesToolbar } from './FilesParts';
 import { Icon, IconButton } from './Icon';
 import { PreviewDialog } from './PreviewDialog';
 import { SaveDialog } from './SaveDialog';
+import { useSaveJob } from './useSaveJob';
 import {
   BookmarkNotes,
   BookmarkOptions,
@@ -68,6 +69,7 @@ export function SplitView() {
   const [paneView, setPaneView] = useState<PaneView>('parts');
   const [viewing, setViewing] = useState<number | null>(null);
   const [save, setSave] = useState<SaveState>({ status: 'idle' });
+  const job = useSaveJob();
   const [request, setRequest] = useState<Request | null>(null);
   const info = useInfo(
     <>
@@ -123,6 +125,7 @@ export function SplitView() {
    * krijgt elk deel een eigen titel.
    */
   const build = async (
+    signal: AbortSignal,
     wanted: number[][],
     onPart?: (bytes: Uint8Array, index: number, report: PartReport) => void,
     titles?: string[],
@@ -141,6 +144,7 @@ export function SplitView() {
       { ...redaction, wholeDocument: hasRedactions(pages, annotations) },
       onPart,
       titles,
+      signal,
     );
   };
 
@@ -156,11 +160,12 @@ export function SplitView() {
     const chosenIndices = marked.rows.flatMap((row, index) => (row.include ? [index] : []));
     const wanted = current.kind === 'zip' ? zipParts : [parts[current.index]!];
     setSave({ status: 'saving', done: 0, total: wanted.length });
-    try {
+    const outcome = await job.run(async (signal) => {
       if (current.kind === 'zip') {
         // Elk deel gaat meteen de ZIP in, zodat niet alle delen tegelijk in het geheugen staan.
         const zip = await zipWriter();
         await build(
+          signal,
           wanted,
           (bytes, i, report) => {
             try {
@@ -177,24 +182,30 @@ export function SplitView() {
           },
           titles,
         );
-        downloadFile(zip.finish(), fileName, 'application/zip');
-      } else {
-        const [pdf] = await build(wanted);
-        downloadPdf(pdf!, fileName);
+        return () => downloadFile(zip.finish(), fileName, 'application/zip');
       }
-      setSave({ status: 'saved', fileName });
-    } catch (error) {
+      const [pdf] = await build(signal, wanted);
+      return () => downloadPdf(pdf!, fileName);
+    });
+    // Weggegaan: niets meer doen (ook niet downloaden).
+    if (!outcome.ok && outcome.stopped) return;
+    if (!outcome.ok) {
+      const { error } = outcome;
       setSave({ status: 'error', code: error instanceof PdfSaveError ? error.code : 'failed' });
+      return;
     }
+    outcome.value();
+    setSave({ status: 'saved', fileName });
   };
 
   /** Op bladwijzers: een deel meteen downloaden, onder de naam uit de tabel (zoals het origineel). */
   const downloadRow = async (index: number) => {
     const row = marked.rows[index]!;
     setSave({ status: 'saving', done: 0, total: 1 });
-    try {
+    const outcome = await job.run(async (signal) => {
       let pdf: Uint8Array = new Uint8Array();
       await build(
+        signal,
         [row.positions],
         (bytes, _, report) => {
           pdf = bytes;
@@ -202,11 +213,17 @@ export function SplitView() {
         },
         [row.title],
       );
-      downloadPdf(pdf, row.fileName);
-      setSave({ status: 'saved', fileName: row.fileName });
-    } catch (error) {
+      return pdf;
+    });
+    // Weggegaan: niets meer doen (ook niet downloaden).
+    if (!outcome.ok && outcome.stopped) return;
+    if (!outcome.ok) {
+      const { error } = outcome;
       setSave({ status: 'error', code: error instanceof PdfSaveError ? error.code : 'failed' });
+      return;
     }
+    downloadPdf(outcome.value, row.fileName);
+    setSave({ status: 'saved', fileName: row.fileName });
   };
 
   const used = new Set(parts.flat());

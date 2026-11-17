@@ -9,6 +9,7 @@ import { LanguageProvider } from '../i18n/LanguageContext';
 import type { LoadedPdf } from '../pdf/loader';
 import { buildPdf, downloadPdf } from '../pdf/save';
 import { Workspace } from './Workspace';
+import { held } from '../lib/testFiles';
 import { giveAnnotatePagesWidth } from './testLayout';
 
 giveAnnotatePagesWidth();
@@ -358,6 +359,40 @@ describe('Bewerken: annoteren', () => {
     expect(button(nl.edit.zoomOut).disabled).toBe(true);
     fireEvent.click(screen.getByRole('button', { name: /^Zoom 25%/ }));
     expect(label()).toBe('100%');
+  });
+
+  it('weggaan tijdens het opslaan: er komt geen download meer', async () => {
+    const { switchTo } = await setup(2);
+    press('r');
+    fireEvent.keyDown(pageNr(2), { key: 'Enter' });
+    const work = held(new Uint8Array([37, 80, 68, 70]));
+    vi.mocked(buildPdf).mockImplementationOnce(() => work.promise);
+    fireEvent.click(button(nl.pages.save));
+    fireEvent.click(screen.getByRole('button', { name: nl.saveDialog.download }));
+    await waitFor(() => expect(buildPdf).toHaveBeenCalledTimes(1));
+    // Naar Redigeren (een ander scherm), terwijl het opslaan nog loopt.
+    await switchTo('redact');
+    await waitFor(() => expect(vi.mocked(buildPdf).mock.calls[0]![2]!.signal!.aborted).toBe(true));
+    work.release();
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    expect(downloadPdf).not.toHaveBeenCalled();
+  });
+
+  it('wat je tijdens het opslaan nog verandert, blijft "gewijzigd"', async () => {
+    await setup(2);
+    press('r');
+    fireEvent.keyDown(pageNr(2), { key: 'Enter' });
+    const work = held(new Uint8Array([37, 80, 68, 70]));
+    vi.mocked(buildPdf).mockImplementationOnce(() => work.promise);
+    fireEvent.click(button(nl.pages.save));
+    fireEvent.click(screen.getByRole('button', { name: nl.saveDialog.download }));
+    await waitFor(() => expect(buildPdf).toHaveBeenCalledTimes(1));
+    // Nog een vak, terwijl het opslaan loopt: dat zit niet in de download.
+    press('r');
+    fireEvent.keyDown(pageNr(1), { key: 'Enter' });
+    work.release();
+    await waitFor(() => expect(downloadPdf).toHaveBeenCalledTimes(1));
+    expect(screen.getByText(/Gewijzigd, nog niet gedownload/)).toBeTruthy();
   });
 
   it('downloadt met de annotaties en telt daarna als bewaard', async () => {

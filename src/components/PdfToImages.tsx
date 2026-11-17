@@ -13,6 +13,7 @@ import { RadioGroup } from './ConvertParts';
 import { FileList, FilesToolbar, ResultPane, useFilePicking } from './FilesParts';
 import { Icon } from './Icon';
 import { SaveDialog } from './SaveDialog';
+import { useSaveJob } from './useSaveJob';
 import { Split, useInfo } from './WorkspaceParts';
 
 type Quality = 'low' | 'good' | 'high';
@@ -42,6 +43,7 @@ export function PdfToImages({ head }: { head: ComponentChildren }) {
   const [quality, setQuality] = useState<Quality>('good');
   const [dpi, setDpi] = useState<Dpi>('150');
   const [save, setSave] = useState<SaveState>({ status: 'idle' });
+  const job = useSaveJob();
   const [asking, setAsking] = useState(false);
   const info = useInfo(
     <>
@@ -84,13 +86,15 @@ export function PdfToImages({ head }: { head: ComponentChildren }) {
   const make = async (fileName: string) => {
     setAsking(false);
     setSave({ status: 'saving', done: 0, total: pages.length });
-    try {
+    const outcome = await job.run(async (signal) => {
       // Bij meer pagina's gaat elke afbeelding meteen de ZIP in, zodat ze niet allemaal tegelijk
       // in het geheugen staan.
       const zip = pages.length > 1 ? await zipWriter() : null;
       let single: Uint8Array | null = null;
       let reduced = false;
       for (const [index, page] of pages.entries()) {
+        // Afgebroken (de taak verlaten): geen volgende pagina meer.
+        signal.throwIfAborted();
         const source = sourceOf(page);
         if (!source) throw new Error('Het bestand van deze pagina is niet meer open');
         const result = await renderPageImage(source.pdf, page.source + 1, page.rotation, {
@@ -107,13 +111,29 @@ export function PdfToImages({ head }: { head: ComponentChildren }) {
         // Tussen de pagina's krijgt de browser even lucht, zodat de pagina blijft reageren.
         await new Promise((resolve) => setTimeout(resolve, 0));
       }
-      if (zip) downloadFile(zip.finish(), fileName, 'application/zip');
-      else if (single) downloadFile(single, fileName, mime);
-      else throw new Error('Geen pagina om om te zetten');
-      setSave({ status: 'saved', fileName, reduced });
+      if (!zip && !single) throw new Error('Geen pagina om om te zetten');
+      const result = single;
+      return {
+        reduced,
+        download: () =>
+          zip
+            ? downloadFile(zip.finish(), fileName, 'application/zip')
+            : downloadFile(result!, fileName, mime),
+      };
+    });
+    // Weggegaan: niets meer doen (ook niet downloaden).
+    if (!outcome.ok && outcome.stopped) return;
+    if (!outcome.ok) {
+      setSave({ status: 'error', tooLarge: outcome.error instanceof ZipTooLargeError });
+      return;
+    }
+    try {
+      outcome.value.download();
     } catch (error) {
       setSave({ status: 'error', tooLarge: error instanceof ZipTooLargeError });
+      return;
     }
+    setSave({ status: 'saved', fileName, reduced: outcome.value.reduced });
   };
 
   return (

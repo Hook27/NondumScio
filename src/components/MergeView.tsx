@@ -21,6 +21,7 @@ import {
 } from './FilesParts';
 import { Icon } from './Icon';
 import { SaveDialog } from './SaveDialog';
+import { useSaveJob } from './useSaveJob';
 import { Split, useInfo } from './WorkspaceParts';
 
 type SaveState =
@@ -44,7 +45,7 @@ export function MergeView() {
     undo,
     redo,
     unsaved,
-    markSaved,
+    beginSave,
     bookmarks,
     setBookmarksOn,
     setBookmarksKeep,
@@ -52,6 +53,7 @@ export function MergeView() {
   const { t } = useI18n();
   const [asking, setAsking] = useState(false);
   const [save, setSave] = useState<SaveState>({ status: 'idle' });
+  const job = useSaveJob();
   useUndoShortcuts(undo, redo);
   const { picking, pickingSource, showPicker } = useFilePicking();
   const info = useInfo(
@@ -71,13 +73,15 @@ export function MergeView() {
   const saveAs = async (fileName: string) => {
     setAsking(false);
     setSave({ status: 'saving' });
-    try {
+    const saved = beginSave();
+    const outcome = await job.run(async (signal) => {
       const files = new Map(
         (doc.status === 'ready' ? doc.sources : []).map((source) => [source.id, source.file]),
       );
       const options = {
         annotations,
         redaction,
+        signal,
         ...(bookmarks.keep
           ? { outlines: await outlinesOf(activeSources) }
           : { dropBookmarks: true }),
@@ -90,13 +94,18 @@ export function MergeView() {
             }
           : {}),
       };
-      const bytes = await buildPdf(await readSources(files, pages), pages, options);
-      downloadPdf(bytes, fileName);
-      markSaved();
-      setSave({ status: 'saved', fileName });
-    } catch (error) {
+      return buildPdf(await readSources(files, pages), pages, options);
+    });
+    // Weggegaan: niets meer doen (ook niet downloaden).
+    if (!outcome.ok && outcome.stopped) return;
+    if (!outcome.ok) {
+      const { error } = outcome;
       setSave({ status: 'error', code: error instanceof PdfSaveError ? error.code : 'failed' });
+      return;
     }
+    downloadPdf(outcome.value, fileName);
+    saved();
+    setSave({ status: 'saved', fileName });
   };
 
   return (
