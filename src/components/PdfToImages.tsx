@@ -1,4 +1,5 @@
 import type { ComponentChildren } from 'preact';
+import { SaveBusy, SaveStopped } from './SaveBusy';
 import { useState } from 'preact/hooks';
 import { useDocument } from '../document/DocumentContext';
 import { useUndoShortcuts } from '../document/useUndoShortcuts';
@@ -25,6 +26,7 @@ const QUALITY: Record<Quality, number> = { low: 0.7, good: 0.85, high: 0.95 };
 type SaveState =
   | { status: 'idle' }
   | { status: 'saving'; done: number; total: number }
+  | { status: 'stopped' }
   | { status: 'saved'; fileName: string; reduced: boolean }
   | { status: 'error'; tooLarge: boolean };
 
@@ -121,8 +123,11 @@ export function PdfToImages({ head }: { head: ComponentChildren }) {
             : downloadFile(result!, fileName, mime),
       };
     });
-    // Weggegaan: niets meer doen (ook niet downloaden).
-    if (!outcome.ok && outcome.stopped) return;
+    // Gestopt (of weggegaan: dan is dit scherm er niet meer en doet dit niets). Niets downloaden.
+    if (!outcome.ok && outcome.stopped) {
+      setSave({ status: 'stopped' });
+      return;
+    }
     if (!outcome.ok) {
       setSave({ status: 'error', tooLarge: outcome.error instanceof ZipTooLargeError });
       return;
@@ -196,9 +201,7 @@ export function PdfToImages({ head }: { head: ComponentChildren }) {
 
           <div class="tools-status">
             <p class="page-editor__status" aria-live="polite">
-              {busy
-                ? format(t.convert.progress, { done: save.done, total: save.total })
-                : [countText, unsaved && t.pages.unsaved].filter(Boolean).join(' · ')}
+              {[countText, unsaved && t.pages.unsaved].filter(Boolean).join(' · ')}
             </p>
             {info.button}
           </div>
@@ -209,6 +212,13 @@ export function PdfToImages({ head }: { head: ComponentChildren }) {
           {hasRedactions(pages, annotations) && (
             <p class="page-editor__status">{t.convert.redactionsApplied}</p>
           )}
+          {save.status === 'saving' && (
+            <SaveBusy
+              text={format(t.convert.progress, { done: save.done, total: save.total })}
+              onStop={job.stop}
+            />
+          )}
+          {save.status === 'stopped' && <SaveStopped />}
           {save.status === 'saved' && (
             <>
               <p class="page-editor__saved" role="status">

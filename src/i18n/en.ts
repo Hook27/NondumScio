@@ -65,6 +65,9 @@ export const en: Messages = {
     redo: 'Redo',
     save: 'Download PDF',
     saving: 'Saving…',
+    stop: 'Stop',
+    stopping: 'Stopping…',
+    stopped: 'Stopped. Nothing was downloaded.',
     saved: 'Saved as {name}.',
     untrimmedOne:
       '1 page could not be slimmed down; the file may contain data from pages left out.',

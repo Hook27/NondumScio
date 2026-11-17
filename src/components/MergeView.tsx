@@ -1,4 +1,5 @@
 import { useState } from 'preact/hooks';
+import { SaveBusy, SaveStopped, useRedactionProgress } from './SaveBusy';
 import { useDocument } from '../document/DocumentContext';
 import { useUndoShortcuts } from '../document/useUndoShortcuts';
 import { useI18n } from '../i18n/LanguageContext';
@@ -27,6 +28,7 @@ import { Split, useInfo } from './WorkspaceParts';
 type SaveState =
   | { status: 'idle' }
   | { status: 'saving' }
+  | { status: 'stopped' }
   | { status: 'saved'; fileName: string }
   | { status: 'error'; code: SaveErrorCode };
 
@@ -54,6 +56,7 @@ export function MergeView() {
   const [asking, setAsking] = useState(false);
   const [save, setSave] = useState<SaveState>({ status: 'idle' });
   const job = useSaveJob();
+  const redactionProgress = useRedactionProgress();
   useUndoShortcuts(undo, redo);
   const { picking, pickingSource, showPicker } = useFilePicking();
   const info = useInfo(
@@ -73,6 +76,7 @@ export function MergeView() {
   const saveAs = async (fileName: string) => {
     setAsking(false);
     setSave({ status: 'saving' });
+    const progress = redactionProgress.start();
     const saved = beginSave();
     const outcome = await job.run(async (signal) => {
       const files = new Map(
@@ -80,7 +84,7 @@ export function MergeView() {
       );
       const options = {
         annotations,
-        redaction,
+        redaction: { ...redaction, ...progress },
         signal,
         ...(bookmarks.keep
           ? { outlines: await outlinesOf(activeSources) }
@@ -96,8 +100,11 @@ export function MergeView() {
       };
       return buildPdf(await readSources(files, pages), pages, options);
     });
-    // Weggegaan: niets meer doen (ook niet downloaden).
-    if (!outcome.ok && outcome.stopped) return;
+    // Gestopt (of weggegaan: dan is dit scherm er niet meer en doet dit niets). Niets downloaden.
+    if (!outcome.ok && outcome.stopped) {
+      setSave({ status: 'stopped' });
+      return;
+    }
     if (!outcome.ok) {
       const { error } = outcome;
       setSave({ status: 'error', code: error instanceof PdfSaveError ? error.code : 'failed' });
@@ -148,6 +155,10 @@ export function MergeView() {
             {info.button}
           </div>
           {info.panel}
+          {save.status === 'saving' && (
+            <SaveBusy text={redactionProgress.text ?? t.pages.saving} onStop={job.stop} />
+          )}
+          {save.status === 'stopped' && <SaveStopped />}
           {save.status === 'saved' && (
             <p class="page-editor__saved" role="status">
               {format(t.pages.saved, { name: save.fileName })}

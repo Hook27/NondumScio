@@ -882,3 +882,28 @@ describe('Slim hernoemen: weggaan tijdens het samenvoegen', () => {
     expect(downloadPdf).not.toHaveBeenCalled();
   });
 });
+
+describe('Slim hernoemen: Stoppen tijdens het samenvoegen', () => {
+  it('niets gedownload, met een gewone melding', async () => {
+    const nl = messages.nl;
+    setup();
+    await open('gemeente.pdf', 'bank1.pdf');
+    fireEvent.click(screen.getByRole('button', { name: r.views.merge }));
+    fireEvent.click(screen.getByLabelText('260203 ing bank n afschrift.pdf samenvoegen'));
+    const work = held(new Uint8Array([1, 2, 3]));
+    vi.mocked(buildPdf).mockImplementationOnce(() => work.promise);
+    fireEvent.click(screen.getByRole('button', { name: r.merge.download }));
+    const dialog = screen.getByRole('dialog', { name: r.merge.saveTitle });
+    fireEvent.click(within(dialog).getByRole('button', { name: nl.saveDialog.download }));
+    expect(await screen.findByText(r.merge.saving, { selector: 'p' })).toBeTruthy();
+    fireEvent.click(await screen.findByRole('button', { name: nl.pages.stop }));
+    expect(screen.getByText(nl.pages.stopping)).toBeTruthy();
+    work.release();
+    const stopped = await screen.findByText(nl.pages.stopped);
+    // Geen fout of waarschuwing: je koos er zelf voor.
+    expect(stopped.closest('[role="alert"]')).toBeNull();
+    expect(stopped.classList.contains('page-editor__status')).toBe(true);
+    expect(screen.queryByRole('button', { name: nl.pages.stop })).toBeNull();
+    expect(downloadPdf).not.toHaveBeenCalled();
+  });
+});

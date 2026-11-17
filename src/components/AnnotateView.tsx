@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'preact/hooks';
+import { SaveBusy, SaveStopped, useRedactionProgress } from './SaveBusy';
 import { useDocument } from '../document/DocumentContext';
 import { typingIn, useUndoShortcuts } from '../document/useUndoShortcuts';
 import { useI18n } from '../i18n/LanguageContext';
@@ -67,6 +68,7 @@ const NO_ANNOTATIONS: Annotation[] = [];
 type SaveState =
   | { status: 'idle' }
   | { status: 'saving' }
+  | { status: 'stopped' }
   | { status: 'saved'; fileName: string }
   | { status: 'error'; code: SaveErrorCode };
 
@@ -156,10 +158,9 @@ export function AnnotateView({ mode = 'annotate' }: { mode?: 'annotate' | 'redac
   const [save, setSave] = useState<SaveState>({ status: 'idle' });
   const [asking, setAsking] = useState(false);
   const [preview, setPreview] = useState(false);
-  const [progress, setProgress] = useState<{ done: number; total: number } | null>(null);
   const [report, setReport] = useState<RedactionReport | null>(null);
-  // Het laden van de tekstherkenning (0 tot 1).
-  const [ocrLoading, setOcrLoading] = useState<number | null>(null);
+  // De voortgang van het redigeren en het laden van de tekstherkenning (zie SaveBusy).
+  const redactionProgress = useRedactionProgress();
   // Het opslaan: stopt bij Stoppen en als je het scherm verlaat.
   const job = useSaveJob();
 
@@ -402,8 +403,7 @@ export function AnnotateView({ mode = 'annotate' }: { mode?: 'annotate' | 'redac
     setAsking(false);
     setSave({ status: 'saving' });
     setReport(null);
-    setProgress(null);
-    setOcrLoading(null);
+    const progress = redactionProgress.start();
     const saved = beginSave();
     const outcome = await job.run(async (signal) => {
       const files = new Map(
@@ -415,28 +415,18 @@ export function AnnotateView({ mode = 'annotate' }: { mode?: 'annotate' | 'redac
         ...(bookmarks.keep
           ? { outlines: await outlinesOf(activeSources) }
           : { dropBookmarks: true }),
-        redaction: {
-          ...redaction,
-          onProgress: (done, total) => {
-            setOcrLoading(null);
-            setProgress({ done, total });
-          },
-          onDone: setReport,
-          onOcrStatus: setOcrLoading,
-        },
+        redaction: { ...redaction, ...progress, onDone: setReport },
         signal,
       });
     });
-    setProgress(null);
-    setOcrLoading(null);
+    // Gestopt (of weggegaan: dan is dit scherm er niet meer en doet dit niets). Niets downloaden.
+    if (!outcome.ok && outcome.stopped) {
+      setSave({ status: 'stopped' });
+      return;
+    }
     if (!outcome.ok) {
-      // Gestopt (of weggegaan: dan is dit scherm er niet meer en doet het niets).
-      const code = outcome.stopped
-        ? 'cancelled'
-        : outcome.error instanceof PdfSaveError
-          ? outcome.error.code
-          : 'failed';
-      setSave({ status: 'error', code });
+      const { error } = outcome;
+      setSave({ status: 'error', code: error instanceof PdfSaveError ? error.code : 'failed' });
       return;
     }
     downloadPdf(outcome.value, fileName);
@@ -704,36 +694,27 @@ export function AnnotateView({ mode = 'annotate' }: { mode?: 'annotate' | 'redac
 
           <div class="tools-status">
             <p class="page-editor__status" aria-live="polite">
-              {ocrLoading !== null
-                ? format(rt.ocrLoading, { percent: Math.round(ocrLoading * 100) })
-                : progress
-                  ? format(rt.progress, progress)
-                  : [
-                      counts.used === 0
-                        ? redactMode
-                          ? rt.none
-                          : t.edit.none
-                        : redactMode
-                          ? plural(counts.used, rt.countOne, format(rt.count, { n: counts.used }))
-                          : plural(
-                              counts.used,
-                              t.edit.countOne,
-                              format(t.edit.count, { n: counts.used }),
-                            ),
-                      unsaved && t.pages.unsaved,
-                    ]
-                      .filter(Boolean)
-                      .join(' · ')}
+              {[
+                counts.used === 0
+                  ? redactMode
+                    ? rt.none
+                    : t.edit.none
+                  : redactMode
+                    ? plural(counts.used, rt.countOne, format(rt.count, { n: counts.used }))
+                    : plural(
+                        counts.used,
+                        t.edit.countOne,
+                        format(t.edit.count, { n: counts.used }),
+                      ),
+                unsaved && t.pages.unsaved,
+              ]
+                .filter(Boolean)
+                .join(' · ')}
             </p>
             {info.button}
           </div>
-          {redactMode && busy && (
-            <div class="annotate__row">
-              <button type="button" class="button button--secondary" onClick={job.stop}>
-                {rt.stop}
-              </button>
-            </div>
-          )}
+          {busy && <SaveBusy text={redactionProgress.text ?? t.pages.saving} onStop={job.stop} />}
+          {save.status === 'stopped' && <SaveStopped />}
           {info.panel}
           {redactMode && redactedPages > 0 && (
             <p class="page-editor__status">

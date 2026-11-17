@@ -501,3 +501,38 @@ describe('Pagina’s: weggaan tijdens het opslaan', () => {
     expect(downloadPdf).not.toHaveBeenCalled();
   });
 });
+
+describe('Pagina’s: voortgang en Stoppen', () => {
+  it('Stoppen tijdens het opslaan: niets gedownload, met een gewone melding', async () => {
+    await openEditor();
+    const work = held(new Uint8Array([1, 2, 3]));
+    vi.mocked(buildPdf).mockImplementationOnce(() => work.promise);
+    fireEvent.click(button(nl.pages.save));
+    confirmSave();
+    expect(await screen.findByText(nl.pages.saving, { selector: 'p' })).toBeTruthy();
+    fireEvent.click(await screen.findByRole('button', { name: nl.pages.stop }));
+    expect(screen.getByText(nl.pages.stopping)).toBeTruthy();
+    work.release();
+    const stopped = await screen.findByText(nl.pages.stopped);
+    // Geen fout of waarschuwing: je koos er zelf voor.
+    expect(stopped.closest('[role="alert"]')).toBeNull();
+    expect(stopped.classList.contains('page-editor__status')).toBe(true);
+    expect(screen.queryByRole('button', { name: nl.pages.stop })).toBeNull();
+    expect(vi.mocked(buildPdf).mock.calls[0]![2]!.signal!.aborted).toBe(true);
+    expect(downloadPdf).not.toHaveBeenCalled();
+  });
+
+  it('toont de voortgang van het redigeren', async () => {
+    await openEditor();
+    const work = held(new Uint8Array([1, 2, 3]));
+    vi.mocked(buildPdf).mockImplementationOnce(async (_sources, _pages, options) => {
+      options!.redaction!.onProgress!(1, 3);
+      return work.promise;
+    });
+    fireEvent.click(button(nl.pages.save));
+    confirmSave();
+    expect(await screen.findByText(format(nl.redact.progress, { done: 1, total: 3 }))).toBeTruthy();
+    work.release();
+    await waitFor(() => expect(downloadPdf).toHaveBeenCalledTimes(1));
+  });
+});

@@ -1,4 +1,5 @@
 import { hasRedactions } from '../annotations/model';
+import { SaveBusy, SaveStopped } from './SaveBusy';
 import { useState } from 'preact/hooks';
 import { useDocument } from '../document/DocumentContext';
 import { useUndoShortcuts } from '../document/useUndoShortcuts';
@@ -41,6 +42,7 @@ type PaneView = 'parts' | 'pages';
 type SaveState =
   | { status: 'idle' }
   | { status: 'saving'; done: number; total: number }
+  | { status: 'stopped' }
   | { status: 'saved'; fileName: string }
   | { status: 'error'; code: SaveErrorCode };
 
@@ -187,8 +189,11 @@ export function SplitView() {
       const [pdf] = await build(signal, wanted);
       return () => downloadPdf(pdf!, fileName);
     });
-    // Weggegaan: niets meer doen (ook niet downloaden).
-    if (!outcome.ok && outcome.stopped) return;
+    // Gestopt (of weggegaan: dan is dit scherm er niet meer en doet dit niets). Niets downloaden.
+    if (!outcome.ok && outcome.stopped) {
+      setSave({ status: 'stopped' });
+      return;
+    }
     if (!outcome.ok) {
       const { error } = outcome;
       setSave({ status: 'error', code: error instanceof PdfSaveError ? error.code : 'failed' });
@@ -215,8 +220,11 @@ export function SplitView() {
       );
       return pdf;
     });
-    // Weggegaan: niets meer doen (ook niet downloaden).
-    if (!outcome.ok && outcome.stopped) return;
+    // Gestopt (of weggegaan: dan is dit scherm er niet meer en doet dit niets). Niets downloaden.
+    if (!outcome.ok && outcome.stopped) {
+      setSave({ status: 'stopped' });
+      return;
+    }
     if (!outcome.ok) {
       const { error } = outcome;
       setSave({ status: 'error', code: error instanceof PdfSaveError ? error.code : 'failed' });
@@ -375,13 +383,18 @@ export function SplitView() {
 
           <div class="tools-status">
             <p class="page-editor__status" aria-live="polite">
-              {busy
-                ? format(t.split.progress, { done: save.done, total: save.total })
-                : plural(parts.length, t.split.countOne, t.split.countOther)}
+              {plural(parts.length, t.split.countOne, t.split.countOther)}
             </p>
             {info.button}
           </div>
           {info.panel}
+          {save.status === 'saving' && (
+            <SaveBusy
+              text={format(t.split.progress, { done: save.done, total: save.total })}
+              onStop={job.stop}
+            />
+          )}
+          {save.status === 'stopped' && <SaveStopped />}
           {save.status === 'saved' && (
             <p class="page-editor__saved" role="status">
               {format(t.pages.saved, { name: save.fileName })}

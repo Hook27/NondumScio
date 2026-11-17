@@ -1,6 +1,6 @@
 import { expect, test, type Page } from '@playwright/test';
 import { PDFDocument, StandardFonts } from 'pdf-lib';
-import { messages, openPdf } from './helpers';
+import { messages, openPdf, warningColor } from './helpers';
 
 const nl = messages.nl;
 
@@ -67,4 +67,30 @@ test('Pagina’s: weggaan tijdens het opslaan geeft geen download meer', async (
     .click();
   expect((await download).suggestedFilename()).toBe('rapport (bewerkt).pdf');
   expect(downloads).toEqual(['rapport (bewerkt).pdf']);
+});
+
+test('Pagina’s: Stoppen tijdens het opslaan, in de gewone kleur, zonder download', async ({
+  page,
+}) => {
+  await openPdf(page, '/#/pages', await report(), { lang: 'nl' });
+  const saving = await holdSaving(page);
+  const downloads: string[] = [];
+  page.on('download', (download) => downloads.push(download.suggestedFilename()));
+
+  await page.getByRole('button', { name: nl.pages.save, exact: true }).click();
+  await page
+    .getByRole('dialog')
+    .getByRole('button', { name: nl.saveDialog.download, exact: true })
+    .click();
+  await expect.poll(saving.waited).toBe(true);
+  await page.getByRole('button', { name: nl.pages.stop, exact: true }).click();
+  await expect(page.getByText(nl.pages.stopping)).toBeVisible();
+  saving.release();
+  const stopped = page.getByText(nl.pages.stopped);
+  await expect(stopped).toBeVisible();
+  expect(await stopped.evaluate((el) => getComputedStyle(el).color)).not.toBe(
+    await warningColor(page),
+  );
+  await page.waitForTimeout(1000);
+  expect(downloads).toEqual([]);
 });

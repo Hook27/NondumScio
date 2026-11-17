@@ -5,6 +5,7 @@ import type { PDFDocumentProxy } from 'pdfjs-dist';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { DocumentProvider } from '../document/DocumentContext';
 import { messages } from '../i18n';
+import { format } from '../i18n/format';
 import { LanguageProvider } from '../i18n/LanguageContext';
 import type { LoadedPdf } from '../pdf/loader';
 import { buildParts, downloadFile, downloadPdf } from '../pdf/save';
@@ -246,5 +247,25 @@ describe('Splitsen: weggaan tijdens het opslaan', () => {
     await new Promise((resolve) => setTimeout(resolve, 50));
     expect(downloadPdf).not.toHaveBeenCalled();
     expect(downloadFile).not.toHaveBeenCalled();
+  });
+});
+
+describe('Splitsen: voortgang en Stoppen', () => {
+  it('Stoppen tijdens het opslaan: niets gedownload, met een gewone melding', async () => {
+    await setup(4);
+    const work = held([new Uint8Array([1, 2, 3])]);
+    vi.mocked(buildParts).mockImplementationOnce(() => work.promise);
+    fireEvent.click(screen.getByRole('button', { name: 'Deel 2 downloaden' }));
+    fireEvent.click(screen.getByRole('button', { name: nl.saveDialog.download }));
+    expect(await screen.findByText(format(nl.split.progress, { done: 0, total: 1 }))).toBeTruthy();
+    fireEvent.click(await screen.findByRole('button', { name: nl.pages.stop }));
+    expect(screen.getByText(nl.pages.stopping)).toBeTruthy();
+    work.release();
+    const stopped = await screen.findByText(nl.pages.stopped);
+    // Geen fout of waarschuwing: je koos er zelf voor.
+    expect(stopped.closest('[role="alert"]')).toBeNull();
+    expect(stopped.classList.contains('page-editor__status')).toBe(true);
+    expect(screen.queryByRole('button', { name: nl.pages.stop })).toBeNull();
+    expect(downloadPdf).not.toHaveBeenCalled();
   });
 });

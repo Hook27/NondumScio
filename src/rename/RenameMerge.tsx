@@ -1,4 +1,5 @@
 import { useLayoutEffect, useRef, useState } from 'preact/hooks';
+import { SaveBusy, SaveStopped } from '../components/SaveBusy';
 import { ConfirmDialog } from '../components/ConfirmDialog';
 import { IconButton } from '../components/Icon';
 import { SaveDialog } from '../components/SaveDialog';
@@ -17,6 +18,7 @@ import { useSaveJob } from '../components/useSaveJob';
 type SaveState =
   | { status: 'idle' }
   | { status: 'saving' }
+  | { status: 'stopped' }
   | { status: 'saved'; fileName: string }
   | { status: 'error'; code: SaveErrorCode };
 
@@ -139,8 +141,11 @@ export function RenameMerge() {
         : {};
       return buildPdf(await readSources(files, pages), pages, { ...options, signal });
     });
-    // Weggegaan: niets meer doen (ook niet downloaden).
-    if (!outcome.ok && outcome.stopped) return;
+    // Gestopt (of weggegaan: dan is dit scherm er niet meer en doet dit niets). Niets downloaden.
+    if (!outcome.ok && outcome.stopped) {
+      setSave({ status: 'stopped' });
+      return;
+    }
     if (!outcome.ok) {
       const { error } = outcome;
       setSave({ status: 'error', code: error instanceof PdfSaveError ? error.code : 'failed' });
@@ -248,6 +253,8 @@ export function RenameMerge() {
             {notice}
           </p>
         )}
+        {save.status === 'saving' && <SaveBusy text={m.saving} onStop={job.stop} />}
+        {save.status === 'stopped' && <SaveStopped />}
         {save.status === 'saved' && (
           <p class="page-editor__saved" role="status">
             {format(t.pages.saved, { name: save.fileName })}
