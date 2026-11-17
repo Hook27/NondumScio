@@ -5,6 +5,7 @@ import { options, type VNode } from 'preact';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { DocumentProvider } from '../document/DocumentContext';
 import { messages } from '../i18n';
+import { format } from '../i18n/format';
 import { LanguageProvider } from '../i18n/LanguageContext';
 import type { LoadedPdf } from '../pdf/loader';
 import { buildPdf, downloadPdf } from '../pdf/save';
@@ -772,5 +773,43 @@ describe('"getekend" betekent echt getekend', () => {
     await waitFor(() => expect(page().getAttribute('data-rendered')).toBe('false'));
     release();
     await waitFor(() => expect(page().getAttribute('data-rendered')).toBe('true'));
+  });
+});
+
+describe('Bewerken en Redigeren: voortgang en Stoppen', () => {
+  it('ook Bewerken heeft Stoppen: niets gedownload, met een gewone melding', async () => {
+    await setup(2);
+    press('r');
+    fireEvent.keyDown(pageNr(2), { key: 'Enter' });
+    const work = held(new Uint8Array([37, 80, 68, 70]));
+    vi.mocked(buildPdf).mockImplementationOnce(() => work.promise);
+    fireEvent.click(button(nl.pages.save));
+    fireEvent.click(screen.getByRole('button', { name: nl.saveDialog.download }));
+    fireEvent.click(await screen.findByRole('button', { name: nl.pages.stop }));
+    expect(screen.getByText(nl.pages.stopping)).toBeTruthy();
+    work.release();
+    const stopped = await screen.findByText(nl.pages.stopped);
+    // Geen fout of waarschuwing: je koos er zelf voor.
+    expect(stopped.closest('[role="alert"]')).toBeNull();
+    expect(stopped.classList.contains('page-editor__status')).toBe(true);
+    expect(screen.queryByRole('button', { name: nl.pages.stop })).toBeNull();
+    expect(downloadPdf).not.toHaveBeenCalled();
+  });
+
+  it('Redigeren: de voortgang staat bij Stoppen', async () => {
+    await setup(2, 'redact');
+    fireEvent.click(button(nl.redact.redact));
+    fireEvent.keyDown(pageNr(1), { key: 'Enter' });
+    const work = held(new Uint8Array([37, 80, 68, 70]));
+    vi.mocked(buildPdf).mockImplementationOnce(async (_sources, _pages, options) => {
+      options!.redaction!.onProgress!(1, 2);
+      return work.promise;
+    });
+    fireEvent.click(button(nl.pages.save));
+    fireEvent.click(screen.getByRole('button', { name: nl.saveDialog.download }));
+    const progress = await screen.findByText(format(nl.redact.progress, { done: 1, total: 2 }));
+    expect(progress.closest('.save-busy')!.textContent).toContain(nl.pages.stop);
+    work.release();
+    await waitFor(() => expect(downloadPdf).toHaveBeenCalledTimes(1));
   });
 });

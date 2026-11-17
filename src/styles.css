@@ -4026,6 +4026,20 @@ rect.handle {
   margin-top: 0.25rem;
 }
 
+/* Tijdens het opslaan: wat er gebeurt en de knop Stoppen, op één regel (overal hetzelfde). */
+.save-busy {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+  margin-top: 0.25rem;
+}
+
+.save-busy .page-editor__status {
+  flex: 1 1 12rem;
+  margin: 0;
+}
+
 .swatch {
   width: 2.25rem;
   height: 2.25rem;

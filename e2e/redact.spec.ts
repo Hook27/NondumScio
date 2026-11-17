@@ -2,7 +2,7 @@ import AxeBuilder from '@axe-core/playwright';
 import { readFileSync } from 'node:fs';
 import { expect, test, type Page } from '@playwright/test';
 import { PDFDocument, PDFName, PDFRawStream, StandardFonts, rgb } from 'pdf-lib';
-import { downloadVia, messages, openPage, scrolled, touchDrag } from './helpers';
+import { downloadVia, messages, openPage, scrolled, touchDrag, warningColor } from './helpers';
 import {
   download,
   drag,
@@ -588,8 +588,13 @@ test.describe('redigeren: tekstherkenning (OCR)', () => {
     page.on('download', () => (gedownload = true));
     await page.getByRole('button', { name: nl.pages.save }).click();
     await page.getByRole('dialog').getByRole('button', { name: nl.saveDialog.download }).click();
-    await page.getByRole('button', { name: nl.redact.stop }).click();
-    await expect(page.getByText(nl.pages.errors.cancelled)).toBeVisible();
+    await page.getByRole('button', { name: nl.pages.stop }).click();
+    const stopped = page.getByText(nl.pages.stopped);
+    await expect(stopped).toBeVisible();
+    // Gewone tekst, geen waarschuwing: je koos er zelf voor.
+    expect(await stopped.evaluate((el) => getComputedStyle(el).color)).not.toBe(
+      await warningColor(page),
+    );
     expect(gedownload).toBe(false);
     // Daarna kan het gewoon opnieuw (zonder OCR).
     await ocrBox(page).uncheck();

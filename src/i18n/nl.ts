@@ -69,6 +69,9 @@ export const nl = {
     redo: 'Opnieuw',
     save: 'PDF downloaden',
     saving: 'Bezig met opslaan…',
+    stop: 'Stoppen',
+    stopping: 'Bezig met stoppen…',
+    stopped: 'Gestopt. Er is niets gedownload.',
     saved: 'Opgeslagen als {name}.',
     untrimmedOne:
       '1 pagina kon niet worden uitgedund; het bestand kan gegevens van weggelaten pagina’s bevatten.',

@@ -1,4 +1,5 @@
 import type { ComponentChildren } from 'preact';
+import { SaveBusy, SaveStopped } from './SaveBusy';
 import { useCallback, useEffect, useRef, useState } from 'preact/hooks';
 import { useUndoShortcuts } from '../document/useUndoShortcuts';
 import { useI18n } from '../i18n/LanguageContext';
@@ -162,6 +163,7 @@ type ImagesState = ReturnType<typeof useImagesToPdf>;
 type SaveState =
   | { status: 'idle' }
   | { status: 'saving' }
+  | { status: 'stopped' }
   | { status: 'saved'; fileName: string }
   | { status: 'error'; index?: number };
 
@@ -255,8 +257,11 @@ export function ImagesToPdf({ state, head }: { state: ImagesState; head: Compone
       }
       return imagesToPdf(inputs, { pageSize, margin });
     });
-    // Weggegaan: niets meer doen (ook niet downloaden).
-    if (!outcome.ok && outcome.stopped) return;
+    // Gestopt (of weggegaan: dan is dit scherm er niet meer en doet dit niets). Niets downloaden.
+    if (!outcome.ok && outcome.stopped) {
+      setSave({ status: 'stopped' });
+      return;
+    }
     if (!outcome.ok) {
       const { error } = outcome;
       setSave({
@@ -387,12 +392,12 @@ export function ImagesToPdf({ state, head }: { state: ImagesState; head: Compone
           </ListToolbar>
 
           <div class="tools-status">
-            <p class="page-editor__status" aria-live="polite">
-              {busy ? t.convert.making : ''}
-            </p>
+            <p class="page-editor__status" />
             {info.button}
           </div>
           {info.panel}
+          {save.status === 'saving' && <SaveBusy text={t.convert.making} onStop={job.stop} />}
+          {save.status === 'stopped' && <SaveStopped />}
           {save.status === 'saved' && (
             <p class="page-editor__saved" role="status">
               {format(t.pages.saved, { name: save.fileName })}

@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'preact/hooks';
+import { SaveBusy, SaveStopped, useRedactionProgress } from './SaveBusy';
 import { hasRedactions } from '../annotations/model';
 import { useDocument } from '../document/DocumentContext';
 import { useUndoShortcuts } from '../document/useUndoShortcuts';
@@ -42,6 +43,7 @@ import { Thumbnail } from './Thumbnail';
 type SaveState =
   | { status: 'idle' }
   | { status: 'saving' }
+  | { status: 'stopped' }
   /** `untrimmed`: hoeveel pagina's niet uitgedund konden worden (dan een waarschuwing). */
   | { status: 'saved'; fileName: string; untrimmed: number }
   | { status: 'error'; code: SaveErrorCode };
@@ -70,6 +72,7 @@ export function PageEditor() {
     bookmarks,
   } = useDocument();
   const job = useSaveJob();
+  const redactionProgress = useRedactionProgress();
   // De naam van het eerste bestand is de basis voor voorgestelde bestandsnamen.
   const name = activeSources[0]?.name ?? '';
   const multiple = activeSources.length > 1;
@@ -200,6 +203,7 @@ export function PageEditor() {
   const saveAs = async (current: SaveRequest, fileName: string) => {
     setRequest(null);
     setSave({ status: 'saving' });
+    const progress = redactionProgress.start();
     // Bij uitpakken is het document zelf niet veranderd: "niet gedownload" blijft wat het was.
     const saved = current.kind === 'save' ? beginSave() : null;
     let untrimmed = 0;
@@ -215,12 +219,19 @@ export function PageEditor() {
           ? { outlines: await outlinesOf(activeSources) }
           : { dropBookmarks: true }),
         // Ook een uittreksel zonder vak hoort bij een document waarin geredigeerd is.
-        redaction: { ...redaction, wholeDocument: hasRedactions(pages, annotations) },
+        redaction: {
+          ...redaction,
+          wholeDocument: hasRedactions(pages, annotations),
+          ...progress,
+        },
         signal,
       });
     });
-    // Weggegaan: niets meer doen (ook niet downloaden).
-    if (!outcome.ok && outcome.stopped) return;
+    // Gestopt (of weggegaan: dan is dit scherm er niet meer en doet dit niets). Niets downloaden.
+    if (!outcome.ok && outcome.stopped) {
+      setSave({ status: 'stopped' });
+      return;
+    }
     if (!outcome.ok) {
       const { error } = outcome;
       setSave({ status: 'error', code: error instanceof PdfSaveError ? error.code : 'failed' });
@@ -384,6 +395,10 @@ export function PageEditor() {
             {info.button}
           </div>
           {info.panel}
+          {save.status === 'saving' && (
+            <SaveBusy text={redactionProgress.text ?? t.pages.saving} onStop={job.stop} />
+          )}
+          {save.status === 'stopped' && <SaveStopped />}
           {save.status === 'saved' && (
             <p class="page-editor__saved" role="status">
               {format(t.pages.saved, { name: save.fileName })}

@@ -517,3 +517,48 @@ describe('Omzetten: weggaan tijdens het maken', () => {
     expect(downloadPdf).not.toHaveBeenCalled();
   });
 });
+
+describe('Omzetten: voortgang en Stoppen', () => {
+  it('PDF naar afbeeldingen: voortgang per pagina, Stoppen maakt geen volgende pagina meer', async () => {
+    setup();
+    await openPdfs(pdfFile('rapport.pdf', 3));
+    const work = held({ bytes: new TextEncoder().encode('pagina 1'), reduced: false });
+    vi.mocked(renderPageImage).mockImplementationOnce(() => work.promise);
+    fireEvent.click(button(format(nl.convert.downloadAll, { n: 3 })));
+    confirm();
+    expect(
+      await screen.findByText(format(nl.convert.progress, { done: 0, total: 3 })),
+    ).toBeTruthy();
+    // Stoppen terwijl de eerste pagina gemaakt wordt.
+    await waitFor(() => expect(renderPageImage).toHaveBeenCalledTimes(1));
+    fireEvent.click(await screen.findByRole('button', { name: nl.pages.stop }));
+    expect(screen.getByText(nl.pages.stopping)).toBeTruthy();
+    work.release();
+    const stopped = await screen.findByText(nl.pages.stopped);
+    // Geen fout of waarschuwing: je koos er zelf voor.
+    expect(stopped.closest('[role="alert"]')).toBeNull();
+    expect(stopped.classList.contains('page-editor__status')).toBe(true);
+    expect(screen.queryByRole('button', { name: nl.pages.stop })).toBeNull();
+    expect(renderPageImage).toHaveBeenCalledTimes(1);
+    expect(downloadFile).not.toHaveBeenCalled();
+  });
+
+  it('afbeeldingen naar PDF: Stoppen, niets gedownload', async () => {
+    setup();
+    await addImages(png('a.png'));
+    const work = held(new Uint8Array([37, 80, 68, 70]));
+    vi.mocked(imagesToPdf).mockImplementationOnce(() => work.promise);
+    fireEvent.click(button(nl.convert.make));
+    confirm();
+    expect(await screen.findByText(nl.convert.making, { selector: 'p' })).toBeTruthy();
+    fireEvent.click(await screen.findByRole('button', { name: nl.pages.stop }));
+    expect(screen.getByText(nl.pages.stopping)).toBeTruthy();
+    work.release();
+    const stopped = await screen.findByText(nl.pages.stopped);
+    // Geen fout of waarschuwing: je koos er zelf voor.
+    expect(stopped.closest('[role="alert"]')).toBeNull();
+    expect(stopped.classList.contains('page-editor__status')).toBe(true);
+    expect(screen.queryByRole('button', { name: nl.pages.stop })).toBeNull();
+    expect(downloadPdf).not.toHaveBeenCalled();
+  });
+});

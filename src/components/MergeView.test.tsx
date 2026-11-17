@@ -4,6 +4,7 @@ import type { PDFDocumentProxy } from 'pdfjs-dist';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { DocumentProvider } from '../document/DocumentContext';
 import { messages } from '../i18n';
+import { format } from '../i18n/format';
 import { LanguageProvider } from '../i18n/LanguageContext';
 import { PdfLoadError, type LoadedPdf } from '../pdf/loader';
 import { buildPdf, downloadPdf } from '../pdf/save';
@@ -278,7 +279,7 @@ describe('Samenvoegen', () => {
     expect(vi.mocked(buildPdf).mock.calls[0]![2]).toEqual({
       signal: expect.anything(),
       annotations: [],
-      redaction: { dpi: 300, stripMetadata: true, ocr: false },
+      redaction: expect.objectContaining({ dpi: 300, stripMetadata: true, ocr: false }),
       outlines: new Map([
         [1, []],
         [2, []],
@@ -297,7 +298,7 @@ describe('Samenvoegen', () => {
     expect(vi.mocked(buildPdf).mock.calls[0]![2]).toEqual({
       signal: expect.anything(),
       annotations: [],
-      redaction: { dpi: 300, stripMetadata: true, ocr: false },
+      redaction: expect.objectContaining({ dpi: 300, stripMetadata: true, ocr: false }),
       dropBookmarks: true,
     });
   });
@@ -325,7 +326,7 @@ describe('Samenvoegen', () => {
     expect(vi.mocked(buildPdf).mock.calls[0]![2]).toEqual({
       signal: expect.anything(),
       annotations: [],
-      redaction: { dpi: 300, stripMetadata: true, ocr: false },
+      redaction: expect.objectContaining({ dpi: 300, stripMetadata: true, ocr: false }),
       outlines: new Map([
         [1, []],
         [2, []],
@@ -376,5 +377,42 @@ describe('Samenvoegen: weggaan tijdens het opslaan', () => {
     work.release();
     await new Promise((resolve) => setTimeout(resolve, 50));
     expect(downloadPdf).not.toHaveBeenCalled();
+  });
+});
+
+describe('Samenvoegen: voortgang en Stoppen', () => {
+  it('Stoppen tijdens het opslaan: niets gedownload, met een gewone melding', async () => {
+    setup();
+    choose([pdfFile('offerte.pdf', 2), pdfFile('bijlage.pdf', 1)]);
+    await screen.findByRole('list', { name: nl.merge.files });
+    const work = held(new Uint8Array([1, 2, 3]));
+    vi.mocked(buildPdf).mockImplementationOnce(() => work.promise);
+    fireEvent.click(button(nl.merge.download));
+    fireEvent.click(screen.getByRole('button', { name: nl.saveDialog.download }));
+    fireEvent.click(await screen.findByRole('button', { name: nl.pages.stop }));
+    expect(screen.getByText(nl.pages.stopping)).toBeTruthy();
+    work.release();
+    const stopped = await screen.findByText(nl.pages.stopped);
+    // Geen fout of waarschuwing: je koos er zelf voor.
+    expect(stopped.closest('[role="alert"]')).toBeNull();
+    expect(stopped.classList.contains('page-editor__status')).toBe(true);
+    expect(screen.queryByRole('button', { name: nl.pages.stop })).toBeNull();
+    expect(downloadPdf).not.toHaveBeenCalled();
+  });
+
+  it('toont de voortgang van het redigeren', async () => {
+    setup();
+    choose([pdfFile('offerte.pdf', 2), pdfFile('bijlage.pdf', 1)]);
+    await screen.findByRole('list', { name: nl.merge.files });
+    const work = held(new Uint8Array([1, 2, 3]));
+    vi.mocked(buildPdf).mockImplementationOnce(async (_sources, _pages, options) => {
+      options!.redaction!.onOcrStatus!(0.5);
+      return work.promise;
+    });
+    fireEvent.click(button(nl.merge.download));
+    fireEvent.click(screen.getByRole('button', { name: nl.saveDialog.download }));
+    expect(await screen.findByText(format(nl.redact.ocrLoading, { percent: 50 }))).toBeTruthy();
+    work.release();
+    await waitFor(() => expect(downloadPdf).toHaveBeenCalledTimes(1));
   });
 });
