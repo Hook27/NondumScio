@@ -2,11 +2,18 @@ import { Fragment, type ComponentChildren } from 'preact';
 import { useEffect, useLayoutEffect, useRef, useState } from 'preact/hooks';
 import { GAP_FACTOR } from '../compare/layout';
 import { copyText } from '../compare/report';
-import { ZOOM_STEPS, closeVisual, renderPage, stepZoom, targetWidths } from '../compare/visual';
+import { ZOOM_STEPS, closeVisual, stepZoom, targetWidths } from '../compare/visual';
 import { ConfirmDialog } from '../components/ConfirmDialog';
 import { Dropzone } from '../components/Dropzone';
 import { IconButton } from '../components/Icon';
 import { IncomingNote } from '../components/IncomingNote';
+import {
+  CanvasBox,
+  fitCssWidth,
+  useEdgeWheel,
+  usePageCanvas,
+  usePageSpace,
+} from '../components/PageView';
 import { useDragReorder } from '../components/useDragReorder';
 import { useI18n } from '../i18n/LanguageContext';
 import { format, plural } from '../i18n/format';
@@ -1017,8 +1024,6 @@ function Preview() {
 }
 
 /** De getekende pagina van nu, of een fout. */
-type Drawn = { canvas: HTMLCanvasElement } | { error: true };
-
 function PageView({ doc }: { doc: TextDoc }) {
   const { t } = useI18n();
   const v = t.plainText.preview;
@@ -1027,47 +1032,13 @@ function PageView({ doc }: { doc: TextDoc }) {
   const printed = doc.printed[page] ?? null;
   const size = doc.pages[page - 1] ?? { w: 595, h: 842 };
   const wrap = useRef<HTMLDivElement>(null);
-  // De ruimte in het vak; zonder meting (zoals in een test) een redelijke schatting.
-  const [space, setSpace] = useState({ w: 0, h: 0 });
-  const [drawn, setDrawn] = useState<Drawn | null>(null);
+  // De ruimte in het vak (zie PageView: gedeeld met Triage en Vergelijken).
+  const space = usePageSpace(wrap);
 
-  useLayoutEffect(() => {
-    const element = wrap.current;
-    if (!element) return;
-    const root = element.closest<HTMLElement>('[data-scroll-root]');
-    const measure = () => {
-      const top = root
-        ? element.getBoundingClientRect().top - root.getBoundingClientRect().top + root.scrollTop
-        : 0;
-      // Onderaan heeft het vak opvulling; "hele pagina" moet echt passen, zonder schuifruimte, anders
-      // schuift het scrollwiel eerst een stukje in plaats van door te bladeren.
-      const padding = root ? parseFloat(getComputedStyle(root).paddingBottom) || 0 : 0;
-      setSpace({ w: element.clientWidth, h: (root?.clientHeight ?? 0) - top - padding - 4 });
-    };
-    measure();
-    if (typeof ResizeObserver === 'undefined') return;
-    const observer = new ResizeObserver(measure);
-    observer.observe(element);
-    if (root) observer.observe(root);
-    return () => observer.disconnect();
-  }, []);
-
-  const availW = space.w > 0 ? space.w : 600;
-  const availH = space.h > 0 ? space.h : 800;
-  const fitCss = fit === 'width' ? availW : Math.min(availW, (availH * size.w) / size.h);
+  const fitCss = fitCssWidth(space, fit, size.w / size.h);
   const widths = targetWidths(Math.floor(fitCss), zoom, window.devicePixelRatio);
-
   // Tekenen; bij een andere pagina of breedte (of weggaan) breekt het af wat nog bezig is.
-  useEffect(() => {
-    const stop = new AbortController();
-    renderPage(doc.file, page, widths.dev, stop.signal)
-      .then((canvas): Drawn => (canvas ? { canvas } : { error: true }))
-      .catch((): Drawn => ({ error: true }))
-      .then((next) => {
-        if (!stop.signal.aborted) setDrawn(next);
-      });
-    return () => stop.abort();
-  }, [doc, page, widths.dev]);
+  const drawn = usePageCanvas({ file: doc.file, page, width: widths.dev });
 
   // Toetsen, zoals overal (zie de bedieningsafspraak): ← → ↑ ↓ en PageUp/PageDown bladeren, Home
   // en End naar de eerste of laatste pagina, + − zoomen en 0 terug naar passend; Ctrl+Z maakt het
@@ -1116,31 +1087,10 @@ function PageView({ doc }: { doc: TextDoc }) {
   );
 
   // Het scrollwiel bladert door aan de boven- of onderrand van het vak, zoals in de extractor.
-  useEffect(() => {
-    const root = wrap.current?.closest<HTMLElement>('[data-scroll-root]');
-    if (!root) return;
-    let locked = false;
-    const onWheel = (event: WheelEvent) => {
-      if (event.ctrlKey) return;
-      const now = getTextState().page;
-      const atTop = root.scrollTop <= 0;
-      const atBottom = root.scrollTop + root.clientHeight >= root.scrollHeight - 1;
-      const to =
-        event.deltaY > 0 && atBottom && now < doc.pageCount
-          ? now + 1
-          : event.deltaY < 0 && atTop && now > 1
-            ? now - 1
-            : null;
-      if (to === null) return;
-      event.preventDefault();
-      if (locked) return;
-      locked = true;
-      setTimeout(() => (locked = false), 250);
-      setPage(to);
-    };
-    root.addEventListener('wheel', onWheel, { passive: false });
-    return () => root.removeEventListener('wheel', onWheel);
-  }, [doc]);
+  useEdgeWheel(wrap, (direction) => {
+    const to = getTextState().page + direction;
+    return to >= 1 && to <= doc.pageCount ? () => setPage(to) : null;
+  });
 
   const lastZoom = ZOOM_STEPS[ZOOM_STEPS.length - 1]!;
   const percent = Math.round((widths.css / size.w) * 100);
@@ -1240,6 +1190,7 @@ function PageView({ doc }: { doc: TextDoc }) {
             {drawn && (
               <CanvasBox
                 canvas={drawn.canvas}
+                className="plaintext-preview__canvas"
                 width={widths.css}
                 height={(widths.css * size.h) / size.w}
                 label={format(v.canvas, { n: page })}
@@ -1259,29 +1210,6 @@ function PageView({ doc }: { doc: TextDoc }) {
  * hoog liet het voorbeeld overlopen. Dan kreeg het een eigen schuifbalk, werd het smaller, tekende
  * het opnieuw, en zo heen en weer (audit F19, op een scherm met schaal 150 %).
  */
-function CanvasBox({
-  canvas,
-  width,
-  height,
-  label,
-}: {
-  canvas: HTMLCanvasElement;
-  width: number;
-  height: number;
-  label: string;
-}) {
-  const box = useRef<HTMLDivElement>(null);
-  useLayoutEffect(() => {
-    canvas.className = 'plaintext-preview__canvas';
-    canvas.style.width = `${width}px`;
-    canvas.style.height = `${height}px`;
-    canvas.setAttribute('role', 'img');
-    canvas.setAttribute('aria-label', label);
-    box.current?.replaceChildren(canvas);
-  }, [canvas, width, height, label]);
-  return <div ref={box} />;
-}
-
 /** Wat je met de muis doet: een nieuw vak tekenen, een vak verplaatsen of een rand verslepen. */
 type Action =
   | { kind: 'draw'; index: number; x: number; y: number }

@@ -2442,3 +2442,16 @@ describe('PDF → Platte tekst: toetsen zoals overal', () => {
     expect(button(messages.nl.pages.redo).disabled).toBe(true);
   });
 });
+
+describe('PDF → Platte tekst: het scrollwiel', () => {
+  it('bladert aan de rand, en laat het scrollen met rust op de laatste pagina', async () => {
+    await open('kort.pdf');
+    // jsdom meet niets: het vak staat altijd boven- en onderaan.
+    const root = document.querySelector('.workspace__view[data-scroll-root]')!;
+    expect(fireEvent.wheel(root, { deltaY: 50 })).toBe(false);
+    expect(getTextState().page).toBe(2);
+    await act(() => new Promise((resolve) => setTimeout(resolve, 300)));
+    expect(fireEvent.wheel(root, { deltaY: 50 })).toBe(true);
+    expect(getTextState().page).toBe(2);
+  });
+});
