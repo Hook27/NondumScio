@@ -13,6 +13,7 @@ import { BROKEN_PDF, messages, openPage, SLOW, warningColor, type Theme } from '
 
 const nl = messages.nl;
 const c = nl.compare;
+const pb = nl.pageBar;
 
 /**
  * Een huurovereenkomst: per pagina een kop, alinea's (elk over twee regels, met een witregel
@@ -603,10 +604,10 @@ test.describe('PDF’s vergelijken: beeld', () => {
       // Tijdens het vervangen door een nieuw getekend canvas is er heel even geen maat.
       const width = async () => (await canvas.boundingBox())?.width ?? Number.NaN;
       const before = await width();
-      await page.getByRole('button', { name: v.zoomIn }).click();
+      await page.getByRole('button', { name: pb.zoomIn }).click();
       await expect(page.getByText('125%')).toBeVisible();
       await expect.poll(width, SLOW).toBeGreaterThan(before * 1.2);
-      await page.getByRole('button', { name: v.fit }).click();
+      await page.getByRole('button', { name: pb.fitWidth }).click();
       await expect.poll(width, SLOW).toBeLessThan(before + 2);
     });
   }

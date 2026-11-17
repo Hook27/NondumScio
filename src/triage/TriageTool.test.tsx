@@ -46,7 +46,7 @@ vi.mock('../pdf/save', async (importOriginal) => ({
 }));
 
 const tr = messages.nl.triage;
-const pv = messages.nl.plainText.preview;
+const pb = messages.nl.pageBar;
 const pdf = (name: string) => new File([`%PDF-1.7 ${name}`], name, { type: 'application/pdf' });
 
 function setup() {
@@ -93,7 +93,7 @@ const fd = tr.folderDialog;
 const nameField = () => screen.getByLabelText(fd.label) as HTMLInputElement;
 const folderButton = (name: string) =>
   within(screen.getByRole('group', { name: tr.moveTo })).getByRole('button', { name });
-const pageText = () => document.querySelector('.plaintext-bar .plaintext-nav__page')?.textContent;
+const pageText = () => document.querySelector('.plaintext-bar .page-nav__page')?.textContent;
 
 beforeEach(() => {
   vi.mocked(downloadFile).mockClear();
@@ -271,13 +271,13 @@ describe('TriageTool', () => {
     setup();
     choose(pdf('a.pdf'));
     await settle();
-    fireEvent.click(screen.getByRole('button', { name: pv.last }));
+    fireEvent.click(screen.getByRole('button', { name: pb.last }));
     expect(names()[0]![2]).toBe(3);
-    fireEvent.click(screen.getByRole('button', { name: pv.previous }));
+    fireEvent.click(screen.getByRole('button', { name: pb.previous }));
     expect(names()[0]![2]).toBe(2);
-    fireEvent.click(screen.getByRole('button', { name: pv.first }));
+    fireEvent.click(screen.getByRole('button', { name: pb.first }));
     expect(names()[0]![2]).toBe(1);
-    fireEvent.click(screen.getByRole('button', { name: pv.next }));
+    fireEvent.click(screen.getByRole('button', { name: pb.next }));
     expect(names()[0]![2]).toBe(2);
   });
 
@@ -285,17 +285,25 @@ describe('TriageTool', () => {
     setup();
     choose(pdf('a.pdf'));
     await settle();
-    fireEvent.click(screen.getByRole('button', { name: pv.zoomIn }));
+    // In de balk ook de naam, het aantal pagina's en de grootte.
+    const meta = document.querySelector<HTMLElement>('.triage-meta')!;
+    expect(meta.hidden).toBe(false);
+    expect(meta.textContent).toMatch(/^a\.pdf · \d+ pagina/);
+    const pressed = (name: string) =>
+      screen.getByRole('button', { name }).getAttribute('aria-pressed');
+    fireEvent.click(screen.getByRole('button', { name: pb.zoomIn }));
     expect(getTriageState().zoom).toBe(125);
-    fireEvent.click(screen.getByRole('button', { name: pv.zoomOut }));
-    fireEvent.click(screen.getByRole('button', { name: pv.zoomOut }));
+    // Ingezoomd: geen van de passend-knoppen staat nog aan.
+    expect([pressed(pb.fitPage), pressed(pb.fitWidth)]).toEqual(['false', 'false']);
+    fireEvent.click(screen.getByRole('button', { name: pb.zoomOut }));
+    fireEvent.click(screen.getByRole('button', { name: pb.zoomOut }));
     expect(getTriageState().zoom).toBe(75);
-    fireEvent.click(screen.getByRole('button', { name: pv.fitPage }));
+    fireEvent.click(screen.getByRole('button', { name: pb.fitPage }));
     expect(getTriageState()).toMatchObject({ fit: 'page', zoom: 100 });
-    expect(screen.getByRole('button', { name: pv.fitPage }).getAttribute('aria-pressed')).toBe(
+    expect(screen.getByRole('button', { name: pb.fitPage }).getAttribute('aria-pressed')).toBe(
       'true',
     );
-    fireEvent.click(screen.getByRole('button', { name: pv.fitWidth }));
+    fireEvent.click(screen.getByRole('button', { name: pb.fitWidth }));
     expect(getTriageState()).toMatchObject({ fit: 'width', zoom: 100 });
   });
 

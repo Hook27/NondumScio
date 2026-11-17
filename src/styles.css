@@ -1231,33 +1231,6 @@ rect.handle {
   font-style: italic;
 }
 
-/* Het beeld: bladeren, de verschuiving van B en de zoom. */
-.compare-visual__nav,
-.compare-visual__zoom {
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
-  margin: 0 0 0.75rem;
-}
-
-.compare-visual__nav span {
-  flex: 1;
-  text-align: center;
-  font-variant-numeric: tabular-nums;
-}
-
-.compare-visual__nav .button,
-.compare-visual__zoom .button {
-  min-width: 2.5rem;
-  padding-inline: 0.6rem;
-}
-
-.compare-visual__zoom-value {
-  min-width: 3.5rem;
-  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
-  text-align: center;
-}
-
 .compare-visual__offset {
   display: flex;
   align-items: center;
@@ -1783,7 +1756,8 @@ rect.handle {
   border-top: 1px solid var(--border);
 }
 
-.plaintext-nav__page {
+.plaintext-nav__page,
+.page-nav__page {
   min-width: 4.5rem;
   font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
   font-size: 0.9rem;
@@ -1885,30 +1859,44 @@ rect.handle {
 
 .plaintext-zones__buttons .button,
 .plaintext-nav .button,
-.plaintext-zoom .button {
+.zoom-bar__fit {
   flex: 0 0 auto;
   padding: 0.35rem 0.7rem;
   white-space: nowrap;
 }
 
-/* Bladeren (in de kop van het vak) en zoomen. */
+/* Bladeren en zoomen: overal dezelfde balk (PageNav, ZoomBar; bedieningsafspraak V5 en V6). */
 .plaintext-nav,
-.plaintext-zoom {
+.page-nav,
+.zoom-bar {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
   gap: 0.35rem;
 }
 
-.plaintext-zoom__value {
+.zoom-bar__value {
   min-width: 3.2rem;
   font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 0.9rem;
   text-align: center;
 }
 
-.plaintext-zoom .button[aria-pressed='true'] {
+/* Passend staat aan: gevuld blauw, zoals elke schakelaar die aan staat. */
+.zoom-bar__fit[aria-pressed='true'] {
+  background: var(--accent);
   border-color: var(--accent);
-  box-shadow: inset 0 0 0 1px var(--accent);
+  color: var(--accent-contrast);
+}
+
+/* Vergelijken: bladeren en zoom boven het beeld, zoals bij Platte tekst. */
+.compare-visual__bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem 1rem;
+  margin: 0 0 0.75rem;
 }
 
 /* Het voorbeeld: de pagina, met de leesvakken erover. Breder dan het vak: dan schuift het. */
@@ -2716,13 +2704,6 @@ rect.handle {
   margin: 0;
   font-size: 1rem;
   overflow-wrap: anywhere;
-}
-
-.preview-dialog__pages {
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
-  font-variant-numeric: tabular-nums;
 }
 
 .preview-dialog__page {
@@ -4052,11 +4033,6 @@ rect.handle {
 .swatch[aria-pressed='true'] {
   outline: 3px solid var(--accent);
   outline-offset: 2px;
-}
-
-.annotate__zoom {
-  min-width: 4.2rem;
-  font-variant-numeric: tabular-nums;
 }
 
 /* Bladwijzers van de geopende bestanden, ingeklapt onder de bestandslijst. */

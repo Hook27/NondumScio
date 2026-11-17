@@ -2,6 +2,7 @@ import type { ComponentChildren } from 'preact';
 import { useEffect, useLayoutEffect, useRef, useState } from 'preact/hooks';
 import { ZOOM_STEPS, closeVisual, pageSize, stepZoom, targetWidths } from '../compare/visual';
 import { ConfirmDialog } from '../components/ConfirmDialog';
+import { PageNav, ZoomBar } from '../components/PageBars';
 import { useShortcuts } from '../lib/useShortcuts';
 import {
   CanvasBox,
@@ -759,81 +760,22 @@ function PageView({ entry }: { entry: TriageFile }) {
   return (
     <>
       <Bar>
-        <div class="plaintext-nav" role="group" aria-label={v.nav} title={t.triage.keys}>
-          <button
-            type="button"
-            class="button button--secondary"
-            aria-label={v.first}
-            disabled={page <= 1}
-            onClick={() => setPage(1)}
-          >
-            ‹‹
-          </button>
-          <button
-            type="button"
-            class="button button--secondary"
-            aria-label={v.previous}
-            disabled={page <= 1}
-            onClick={() => setPage(page - 1)}
-          >
-            ‹
-          </button>
-          <span class="plaintext-nav__page">
-            <span aria-hidden="true">{`${page} / ${count}`}</span>
-            <span class="visually-hidden">{format(v.page, { n: page, total: count })}</span>
-          </span>
-          <button
-            type="button"
-            class="button button--secondary"
-            aria-label={v.next}
-            disabled={page >= count}
-            onClick={() => setPage(page + 1)}
-          >
-            ›
-          </button>
-          <button
-            type="button"
-            class="button button--secondary"
-            aria-label={v.last}
-            disabled={page >= count}
-            onClick={() => setPage(count)}
-          >
-            ››
-          </button>
-        </div>
-        <div class="plaintext-zoom" role="group" aria-label={v.zoom}>
-          <button
-            type="button"
-            class="button button--secondary"
-            aria-label={v.zoomOut}
-            disabled={zoom <= ZOOM_STEPS[0]}
-            onClick={() => setZoom(stepZoom(zoom, -1))}
-          >
-            −
-          </button>
-          <output class="plaintext-zoom__value">{`${percent}%`}</output>
-          <button
-            type="button"
-            class="button button--secondary"
-            aria-label={v.zoomIn}
-            disabled={zoom >= lastZoom}
-            onClick={() => setZoom(stepZoom(zoom, 1))}
-          >
-            +
-          </button>
-          {FITS.map((option) => (
-            <button
-              key={option}
-              type="button"
-              class="button button--secondary"
-              aria-pressed={fit === option && zoom === 100}
-              onClick={() => setFit(option)}
-            >
-              {option === 'page' ? v.fitPage : v.fitWidth}
-            </button>
-          ))}
-        </div>
-        {/* In de balk zelf: op een klein scherm kost een eigen regel te veel ruimte. */}
+        <PageNav page={page} count={count} onPage={setPage} title={t.triage.keys}>
+          <span aria-hidden="true">{`${page} / ${count}`}</span>
+          <span class="visually-hidden">{format(v.page, { n: page, total: count })}</span>
+        </PageNav>
+        <ZoomBar
+          percent={percent}
+          canZoomOut={zoom > ZOOM_STEPS[0]}
+          canZoomIn={zoom < lastZoom}
+          onZoomOut={() => setZoom(stepZoom(zoom, -1))}
+          onZoomIn={() => setZoom(stepZoom(zoom, 1))}
+          fits={FITS.map((option) => ({
+            label: option === 'page' ? t.pageBar.fitPage : t.pageBar.fitWidth,
+            active: fit === option && zoom === 100,
+            onClick: () => setFit(option),
+          }))}
+        />
         <p class="triage-meta" data-tip={labelOf(entry)}>
           {meta}
         </p>

@@ -7,6 +7,7 @@ import { ConfirmDialog } from '../components/ConfirmDialog';
 import { Dropzone } from '../components/Dropzone';
 import { IconButton } from '../components/Icon';
 import { IncomingNote } from '../components/IncomingNote';
+import { PageNav, ZoomBar } from '../components/PageBars';
 import {
   CanvasBox,
   fitCssWidth,
@@ -1097,87 +1098,29 @@ function PageView({ doc }: { doc: TextDoc }) {
   return (
     <>
       <Bar>
-        <div class="plaintext-nav" role="group" aria-label={v.nav} title={v.keys}>
-          <button
-            type="button"
-            class="button button--secondary"
-            aria-label={v.first}
-            disabled={page <= 1}
-            onClick={() => setPage(1)}
-          >
-            ‹‹
-          </button>
-          <button
-            type="button"
-            class="button button--secondary"
-            aria-label={v.previous}
-            disabled={page <= 1}
-            onClick={() => setPage(page - 1)}
-          >
-            ‹
-          </button>
-          <span class="plaintext-nav__page">
-            <span aria-hidden="true">
-              {`${page} / ${doc.pageCount}`}
-              {printed && <span class="plaintext-nav__printed">{` · ${printed}`}</span>}
-            </span>
-            <span class="visually-hidden">
-              {printed
-                ? format(v.pageDoc, { n: page, total: doc.pageCount, p: printed })
-                : format(v.page, { n: page, total: doc.pageCount })}
-            </span>
+        <PageNav page={page} count={doc.pageCount} onPage={setPage} title={v.keys}>
+          <span aria-hidden="true">
+            {`${page} / ${doc.pageCount}`}
+            {printed && <span class="plaintext-nav__printed">{` · ${printed}`}</span>}
           </span>
-          <button
-            type="button"
-            class="button button--secondary"
-            aria-label={v.next}
-            disabled={page >= doc.pageCount}
-            onClick={() => setPage(page + 1)}
-          >
-            ›
-          </button>
-          <button
-            type="button"
-            class="button button--secondary"
-            aria-label={v.last}
-            disabled={page >= doc.pageCount}
-            onClick={() => setPage(doc.pageCount)}
-          >
-            ››
-          </button>
-        </div>
-        <div class="plaintext-zoom" role="group" aria-label={v.zoom}>
-          <button
-            type="button"
-            class="button button--secondary"
-            aria-label={v.zoomOut}
-            disabled={zoom <= ZOOM_STEPS[0]}
-            onClick={() => setZoom(stepZoom(zoom, -1))}
-          >
-            −
-          </button>
-          <output class="plaintext-zoom__value">{`${percent}%`}</output>
-          <button
-            type="button"
-            class="button button--secondary"
-            aria-label={v.zoomIn}
-            disabled={zoom >= lastZoom}
-            onClick={() => setZoom(stepZoom(zoom, 1))}
-          >
-            +
-          </button>
-          {FITS.map((option) => (
-            <button
-              key={option}
-              type="button"
-              class="button button--secondary"
-              aria-pressed={fit === option && zoom === 100}
-              onClick={() => setFit(option)}
-            >
-              {option === 'page' ? v.fitPage : v.fitWidth}
-            </button>
-          ))}
-        </div>
+          <span class="visually-hidden">
+            {printed
+              ? format(v.pageDoc, { n: page, total: doc.pageCount, p: printed })
+              : format(v.page, { n: page, total: doc.pageCount })}
+          </span>
+        </PageNav>
+        <ZoomBar
+          percent={percent}
+          canZoomOut={zoom > ZOOM_STEPS[0]}
+          canZoomIn={zoom < lastZoom}
+          onZoomOut={() => setZoom(stepZoom(zoom, -1))}
+          onZoomIn={() => setZoom(stepZoom(zoom, 1))}
+          fits={FITS.map((option) => ({
+            label: option === 'page' ? t.pageBar.fitPage : t.pageBar.fitWidth,
+            active: fit === option && zoom === 100,
+            onClick: () => setFit(option),
+          }))}
+        />
       </Bar>
       <div class="plaintext-preview" ref={wrap}>
         {drawn && 'error' in drawn ? (

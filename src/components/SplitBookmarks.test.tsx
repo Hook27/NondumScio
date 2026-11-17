@@ -522,7 +522,7 @@ describe('Splitsen op bladwijzers', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Bekijk deel 4' }));
     const dialog = screen.getByRole('dialog', { name: '04 - Paragraaf 1.2.pdf' });
     expect(within(dialog).getByText('Pagina 1 van 3 (blz. 6)')).toBeTruthy();
-    fireEvent.click(within(dialog).getByRole('button', { name: nl.preview.next }));
+    fireEvent.click(within(dialog).getByRole('button', { name: nl.pageBar.next }));
     expect(await within(dialog).findByText('Pagina 2 van 3 (blz. 7)')).toBeTruthy();
     fireEvent.keyDown(dialog, { key: 'ArrowRight' });
     expect(await within(dialog).findByText('Pagina 3 van 3 (blz. 8)')).toBeTruthy();

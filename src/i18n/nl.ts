@@ -45,6 +45,19 @@ export const nl = {
       app: '{name} kon niet worden geopend: een onderdeel van de app kon niet worden geladen. Misschien is er een nieuwe versie; herlaad de pagina.',
     },
   },
+  /** Bladeren en zoomen: overal dezelfde balk (bedieningsafspraak V5 en V6). */
+  pageBar: {
+    nav: 'Bladeren',
+    first: 'Eerste pagina',
+    previous: 'Vorige pagina',
+    next: 'Volgende pagina',
+    last: 'Laatste pagina',
+    zoom: 'Zoom',
+    zoomOut: 'Uitzoomen',
+    zoomIn: 'Inzoomen',
+    fitPage: 'Hele pagina',
+    fitWidth: 'Hele breedte',
+  },
   pages: {
     toolbar: 'Paginabewerkingen',
     hint: 'Klik op een pagina om hem te kiezen; met het vinkje rechtsboven (of Ctrl en Shift) kies je er meer. Sleep om te verplaatsen (op een telefoon aan het greepje ⠿), of gebruik Alt + pijltjes.',
@@ -288,10 +301,6 @@ export const nl = {
     highlight: 'Markeren',
     rect: 'Rechthoek',
     line: 'Lijn',
-    zoom: 'Zoomen',
-    zoomIn: 'Inzoomen',
-    zoomOut: 'Uitzoomen',
-    zoomReset: 'Zoom {percent}%, terug naar paginabreedte',
     options: 'Opties',
     color: 'Kleur',
     colors: {
@@ -444,8 +453,6 @@ export const nl = {
   },
   /** Het venster om een PDF of een deel te bekijken (Slim hernoemen, Splitsen). */
   preview: {
-    previous: 'Vorige pagina',
-    next: 'Volgende pagina',
     page: 'Pagina {n} van {total}',
     close: 'Sluiten',
     error: 'Deze PDF kon niet worden getoond.',
@@ -678,8 +685,6 @@ export const nl = {
     visual: {
       title: 'Beeld',
       placeholder: 'Kies twee PDF’s om hun pagina’s als beeld te vergelijken.',
-      previous: 'Vorige pagina',
-      next: 'Volgende pagina',
       page: 'Pagina {n} van {total}',
       noPages: 'Nog geen pagina’s',
       pages: 'A: pagina {a} · B: pagina {b}',
@@ -691,10 +696,6 @@ export const nl = {
       thresholdHint: 'Hoe groot een verschil in helderheid moet zijn om mee te tellen.',
       alpha: 'B over A',
       alphaHint: 'Hoeveel van B je over A ziet.',
-      zoom: 'Zoom',
-      zoomOut: 'Uitzoomen',
-      zoomIn: 'Inzoomen',
-      fit: 'Passend',
       keys: 'Toetsen: ← → ↑ ↓, Page Up en Page Down bladeren, Home en End naar de eerste of laatste pagina, + − zoomen, 0 = passend.',
       legend: { a: 'alleen in A', b: 'alleen in B', same: 'gelijk' },
       stat: {
@@ -1002,16 +1003,6 @@ export const nl = {
     preview: {
       page: 'Pagina {n} van {total}',
       pageDoc: 'Pagina {n} van {total}, documentpagina {p}',
-      nav: 'Bladeren',
-      first: 'Eerste pagina',
-      previous: 'Vorige pagina',
-      next: 'Volgende pagina',
-      last: 'Laatste pagina',
-      zoom: 'Vergroten of verkleinen',
-      zoomOut: 'Uitzoomen',
-      zoomIn: 'Inzoomen',
-      fitPage: 'Hele pagina',
-      fitWidth: 'Hele breedte',
       keys: 'Bladeren: ← → ↑ ↓, Page Up en Page Down, Home en End, of met het scrollwiel aan de boven- of onderrand. Zoomen: + − en 0 = passend.',
       canvas: 'Pagina {n}',
       error: 'Deze pagina kon niet worden getekend.',

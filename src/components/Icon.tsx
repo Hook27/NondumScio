@@ -35,6 +35,10 @@ const PATHS = {
     'M10.5 8v5',
   ],
   zoomOut: ['M10.5 4a6.5 6.5 0 1 0 0 13 6.5 6.5 0 0 0 0-13z', 'M20 20l-4.5-4.5', 'M8 10.5h5'],
+  pageFirst: ['M6 5v14', 'M17 6l-6 6 6 6'],
+  pagePrevious: ['M15 6l-6 6 6 6'],
+  pageNext: ['M9 6l6 6-6 6'],
+  pageLast: ['M18 5v14', 'M7 6l6 6-6 6'],
 } as const;
 
 export type IconName = keyof typeof PATHS;

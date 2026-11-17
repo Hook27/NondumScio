@@ -37,14 +37,15 @@ describe('vertalingen', () => {
 
   it('zijn niet gewoon een kopie van het Nederlands', () => {
     const same = Object.keys(nl).filter((key) => nl[key] === en[key]);
-    // Alleen de naam van de app, de papierformaten, de resolutie, "ISO" (een soort datum bij
-    // Slim hernoemen), "Database", en bij PDF's vergelijken de samenvatting ("A: … · B: …"), het
-    // korte paginalabel ("p3"), de kop onder elkaar ("A · … → B · …") en bij het beeld "Overlay",
-    // "B over A", "Zoom", de maten ("A: … px · B: … px") en in het rapport de regel per document
+    // Alleen de naam van de app, "Zoom" bij de zoombalk, de papierformaten, de resolutie, "ISO"
+    // (een soort datum bij Slim hernoemen), "Database", en bij PDF's vergelijken de samenvatting
+    // ("A: … · B: …"), het korte paginalabel ("p3"), de kop onder elkaar ("A · … → B · …") en bij
+    // het beeld "Overlay", "B over A", de maten ("A: … px · B: … px") en in het rapport de regel per document
     // ("A: naam (pagina's, grootte)") zijn in beide talen gelijk, net als bij PDF → Platte tekst
     // de kop van het vak met de PDF ("PDF"), en bij Splitsen op bladwijzers de kolom "#".
     expect(same).toEqual([
       'appName',
+      'pageBar.zoom',
       'split.table.number',
       'convert.a4',
       'convert.letter',
@@ -54,7 +55,6 @@ describe('vertalingen', () => {
       'rename.db.title',
       'compare.visual.modes.overlay',
       'compare.visual.alpha',
-      'compare.visual.zoom',
       'compare.visual.stat.side',
       'compare.report.doc',
       'compare.unifiedHead',
