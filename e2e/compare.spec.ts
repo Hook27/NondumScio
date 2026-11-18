@@ -560,8 +560,9 @@ test.describe('PDF’s vergelijken: beeld', () => {
     await expect(stat).toHaveText(/^Verschil: /, SLOW);
     // Ingezoomd is het beeld hoger dan het vak: helemaal naar beneden schuiven.
     const zoomIn = page.getByRole('button', { name: pb.zoomIn });
-    for (let i = 0; i < 3; i++) await zoomIn.click();
-    await expect(page.locator('.zoom-bar__value')).toHaveText('200%');
+    const value = page.locator('.zoom-bar__value');
+    // Tot 200% (vanaf passend zijn dat een paar stappen, afhankelijk van de breedte van het vak).
+    while ((await value.textContent()) !== '200%') await zoomIn.click();
     await expect(stat).toHaveText(/^Verschil: /, SLOW);
     const view = page.locator('.workspace__view');
     await view.evaluate((element) => element.scrollTo(0, element.scrollHeight));
@@ -572,7 +573,10 @@ test.describe('PDF’s vergelijken: beeld', () => {
     expect(bar.y).toBeGreaterThanOrEqual(top);
     expect(bar.y).toBeLessThan(top + 150);
     await page.getByRole('button', { name: pb.fitWidth }).click();
-    await expect(page.locator('.zoom-bar__value')).toHaveText('100%');
+    await expect(page.getByRole('button', { name: pb.fitWidth })).toHaveAttribute(
+      'aria-pressed',
+      'true',
+    );
   });
 
   for (const theme of ['light', 'dark'] as Theme[]) {
@@ -630,9 +634,16 @@ test.describe('PDF’s vergelijken: beeld', () => {
       // Tijdens het vervangen door een nieuw getekend canvas is er heel even geen maat.
       const width = async () => (await canvas.boundingBox())?.width ?? Number.NaN;
       const before = await width();
+      const value = page.locator('.zoom-bar__value');
+      const fit = (await value.textContent())!;
       await page.getByRole('button', { name: pb.zoomIn }).click();
-      await expect(page.getByText('125%')).toBeVisible();
-      await expect.poll(width, SLOW).toBeGreaterThan(before * 1.2);
+      await expect(value).not.toHaveText(fit);
+      // Een vaste stap van de echte maat: een A4 (595 punten) is dan 595 × 96/72 × stap breed.
+      const step = parseInt((await value.textContent())!, 10);
+      expect(step).toBeGreaterThan(parseInt(fit, 10));
+      await expect
+        .poll(async () => Math.round(await width()), SLOW)
+        .toBe(Math.round((595 * 96 * step) / 72 / 100));
       await page.getByRole('button', { name: pb.fitWidth }).click();
       await expect.poll(width, SLOW).toBeLessThan(before + 2);
     });

@@ -67,10 +67,10 @@ export type AnnotateController = {
 const PLACEHOLDER: Size = { width: 595, height: 842 };
 
 /** De uitleg per pagina nodig om grootte en draaiing te weten; per bestand en pagina bewaard. */
-type PageInfo = { base: Size; rotate: number };
+export type PageInfo = { base: Size; rotate: number };
 const infoCache = new WeakMap<PDFDocumentProxy, Map<number, PageInfo>>();
 
-async function pageInfo(pdf: PDFDocumentProxy, pageNumber: number): Promise<PageInfo> {
+export async function pageInfo(pdf: PDFDocumentProxy, pageNumber: number): Promise<PageInfo> {
   const cache = infoCache.get(pdf) ?? new Map<number, PageInfo>();
   infoCache.set(pdf, cache);
   const known = cache.get(pageNumber);
@@ -105,7 +105,7 @@ export const AnnotatePage = memo(function AnnotatePage({
   item,
   position,
   fitWidth,
-  zoom,
+  scale: fixedScale,
   annotations,
   candidates = NO_CANDIDATES,
   draft,
@@ -115,9 +115,10 @@ export const AnnotatePage = memo(function AnnotatePage({
   item: PageItem;
   /** De plek in het resultaat, vanaf 1. */
   position: number;
-  /** De breedte (in beeldpunten) waarop de pagina bij zoom 1 past. */
+  /** De breedte (in beeldpunten) waarop de pagina past (passend, of een kolom van het overzicht). */
   fitWidth: number;
-  zoom: number;
+  /** Bij een vaste zoomstap: beeldpunten per punt (de echte maat, zie lib/zoom). Zonder: passend. */
+  scale?: number;
   /** De vastgelegde annotaties van deze pagina. */
   annotations: Annotation[];
   /** De treffers van het zoeken op deze pagina (nog geen vakken). */
@@ -148,7 +149,7 @@ export const AnnotatePage = memo(function AnnotatePage({
   const extra = item.rotation;
   const shown = displaySize(base, extra);
   // Beeldpunten per punt op de pagina.
-  const scale = fitWidth > 0 ? (fitWidth / shown.width) * zoom : zoom;
+  const scale = fixedScale ?? (fitWidth > 0 ? fitWidth / shown.width : 1);
   const width = shown.width * scale;
   const height = shown.height * scale;
 

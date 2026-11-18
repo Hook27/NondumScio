@@ -6,6 +6,7 @@ import type { PageText } from './layout';
 import type { DocInfo } from './profile';
 import { readPdf } from './readPdf';
 import { closeVisual } from './visual';
+import type { Zoom } from '../lib/zoom';
 
 /** Welk document: A (het origineel) of B (de nieuwe versie). */
 export type Side = 'a' | 'b';
@@ -27,8 +28,8 @@ export type VisualState = {
   threshold: number;
   /** Bij de overlay: hoeveel van B je over A ziet (0 tot 1). */
   alpha: number;
-  /** In procenten van "passend in het vak". */
-  zoom: number;
+  /** Passend (`null`) of een vaste stap, in procenten van de echte maat (zie `lib/zoom`). */
+  zoom: Zoom;
 };
 
 /** Hoe de verschillen te zien zijn: A en B naast elkaar, of onder elkaar in één kolom. */
@@ -91,7 +92,7 @@ const INITIAL: CompareState = {
   onlyDiff: true,
   view: 'split',
   tab: 'text',
-  visual: { page: 1, offset: 0, mode: 'diff', threshold: 30, alpha: 0.5, zoom: 100 },
+  visual: { page: 1, offset: 0, mode: 'diff', threshold: 30, alpha: 0.5, zoom: null },
 };
 
 /**
@@ -226,7 +227,7 @@ export function clearCompare(): void {
   setSlots(EMPTY, EMPTY, {
     tooMany: false,
     tab: 'text',
-    visual: { ...state.visual, page: 1, offset: 0, zoom: 100 },
+    visual: { ...state.visual, page: 1, offset: 0, zoom: null },
   });
 }
 

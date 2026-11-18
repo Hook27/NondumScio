@@ -1,6 +1,7 @@
 import type { ComponentChildren } from 'preact';
 import { useEffect, useLayoutEffect, useRef, useState } from 'preact/hooks';
-import { ZOOM_STEPS, closeVisual, pageSize, stepZoom, targetWidths } from '../compare/visual';
+import { closeVisual, drawWidths, pageSize } from '../compare/visual';
+import { ZOOM_KEYS, nextZoom, realPercent, realWidth } from '../lib/zoom';
 import { ConfirmDialog } from '../components/ConfirmDialog';
 import { PageNav, ZoomBar } from '../components/PageBars';
 import { useShortcuts } from '../lib/useShortcuts';
@@ -156,12 +157,7 @@ function useKeys() {
       PageDown: () => setPage(current.page + 1),
       Home: () => setPage(1),
       End: () => setPage(last),
-      // Zoomen zoals overal: + − en 0 terug naar passend.
-      '+': () => setZoom(stepZoom(now.zoom, 1)),
-      '=': () => setZoom(stepZoom(now.zoom, 1)),
-      '-': () => setZoom(stepZoom(now.zoom, -1)),
-      _: () => setZoom(stepZoom(now.zoom, -1)),
-      '0': () => setZoom(100),
+      // Zoomen (+ − 0): bij de pagina zelf, zie PageView.
     };
     const key = event.key.length === 1 ? event.key.toLowerCase() : event.key;
     const action = /^[1-9]$/.test(key) ? () => moveToNumber(Number(key)) : actions[key];
@@ -725,7 +721,30 @@ function PageView({ entry }: { entry: TriageFile }) {
   const size = info && 'count' in info ? info : null;
   const ratio = size ? size.w / size.h : 595 / 842;
   const fitCss = fitCssWidth(space, fit, ratio);
-  const widths = targetWidths(Math.floor(fitCss), zoom, window.devicePixelRatio);
+  // Passend: zo groot als het vak toelaat; anders een vaste stap van de echte maat (zie lib/zoom).
+  const points = size?.w ?? 595;
+  const widths = drawWidths(
+    zoom === null ? Math.floor(fitCss) : realWidth(points, zoom),
+    window.devicePixelRatio,
+  );
+  // Wat je ziet, in procenten van de echte maat: voor de zoombalk, en + − gaan van hieruit verder.
+  const shownZoom = zoom ?? realPercent(widths.css, points);
+  const zoomOut = nextZoom(shownZoom, -1);
+  const zoomIn = nextZoom(shownZoom, 1);
+
+  // Zoomen zoals overal: + − en 0 terug naar passend (alleen hier: dan is er een pagina in beeld).
+  useShortcuts(
+    (event) => {
+      if (event.ctrlKey || event.metaKey || event.altKey) return;
+      if (event.key === '0') setZoom(null);
+      else if (event.key in ZOOM_KEYS) {
+        const next = ZOOM_KEYS[event.key]! > 0 ? zoomIn : zoomOut;
+        if (next !== null) setZoom(next);
+      } else return;
+      event.preventDefault();
+    },
+    [zoomIn, zoomOut],
+  );
   // Tekenen (pas als de maat bekend is); bij een andere pagina, breedte of PDF (of weggaan) breekt
   // het af wat nog bezig is. Daarna telt de pagina als "in beeld" (voor de besluittoetsen).
   const drawn = usePageCanvas({
@@ -747,8 +766,6 @@ function PageView({ entry }: { entry: TriageFile }) {
   });
 
   const count = size?.count ?? 1;
-  const lastZoom = ZOOM_STEPS[ZOOM_STEPS.length - 1]!;
-  const percent = size ? Math.round((widths.css / size.w) * 100) : 100;
   const meta = [
     entry.name,
     entry.dirs && entry.dirs.length > 0 && entry.dirs.join('/'),
@@ -765,14 +782,14 @@ function PageView({ entry }: { entry: TriageFile }) {
           <span class="visually-hidden">{format(v.page, { n: page, total: count })}</span>
         </PageNav>
         <ZoomBar
-          percent={percent}
-          canZoomOut={zoom > ZOOM_STEPS[0]}
-          canZoomIn={zoom < lastZoom}
-          onZoomOut={() => setZoom(stepZoom(zoom, -1))}
-          onZoomIn={() => setZoom(stepZoom(zoom, 1))}
+          percent={Math.round(shownZoom)}
+          canZoomOut={zoomOut !== null}
+          canZoomIn={zoomIn !== null}
+          onZoomOut={() => setZoom(zoomOut)}
+          onZoomIn={() => setZoom(zoomIn)}
           fits={FITS.map((option) => ({
             label: option === 'page' ? t.pageBar.fitPage : t.pageBar.fitWidth,
-            active: fit === option && zoom === 100,
+            active: fit === option && zoom === null,
             onClick: () => setFit(option),
           }))}
         />

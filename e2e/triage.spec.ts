@@ -149,9 +149,12 @@ test.describe('Archief / Triage', () => {
     await expect(canvas(page, 1)).toBeVisible(SLOW);
     const before = (await canvas(page, 1).boundingBox())!.width;
     await page.getByRole('button', { name: pb.zoomIn }).click();
+    // Een vaste stap van de echte maat (een A4 van 595 punten: 595 × 96/72 × stap breed).
+    const step = parseInt((await page.locator('.zoom-bar__value').textContent())!, 10);
     await expect
-      .poll(async () => (await canvas(page, 1).boundingBox())?.width ?? 0)
-      .toBeGreaterThan(before * 1.2);
+      .poll(async () => Math.round((await canvas(page, 1).boundingBox())?.width ?? 0))
+      .toBe(Math.round((595 * 96 * step) / 72 / 100));
+    expect(Math.round((595 * 96 * step) / 72 / 100)).toBeGreaterThan(before);
     await page.getByRole('button', { name: pb.fitPage }).click();
     await page.getByRole('button', { name: pb.next }).click();
     await expect(canvas(page, 2)).toBeVisible(SLOW);

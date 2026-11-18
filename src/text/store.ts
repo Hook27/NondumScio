@@ -41,6 +41,7 @@ import {
 } from './settings';
 import { EMPTY_META, metaFromInfo, upgradeDate, type HeadTexts, type Meta } from './header';
 import { printedPages, type ConcordanceTexts, type Join, type Printed } from './pages';
+import type { Zoom } from '../lib/zoom';
 
 /** Een gelezen PDF. */
 export type TextDoc = {
@@ -152,8 +153,8 @@ export type TextState = {
   /** De pagina in het voorbeeld (vanaf 1). */
   page: number;
   fit: Fit;
-  /** In procenten van passend. */
-  zoom: number;
+  /** Passend (`null`) of een vaste stap, in procenten van de echte maat (zie `lib/zoom`). */
+  zoom: Zoom;
   /** De tekst na "Tekst extraheren". */
   result: Extraction | null;
   /**
@@ -202,7 +203,7 @@ const INITIAL: TextState = {
   view: 'preview',
   page: 1,
   fit: 'page',
-  zoom: 100,
+  zoom: null,
   result: null,
   edited: null,
   keptText: null,
@@ -299,7 +300,7 @@ function setSlot(slot: TextSlot, extra: Partial<TextState> = {}) {
     view: 'preview',
     page: 1,
     fit: 'page',
-    zoom: 100,
+    zoom: null,
     result: null,
     edited: null,
     stale: false,
@@ -588,10 +589,10 @@ export function setPage(page: number): void {
 
 /** Passend maken: de hele pagina of de breedte. */
 export function setFit(fit: Fit): void {
-  setState({ fit, zoom: 100 });
+  setState({ fit, zoom: null });
 }
 
-export function setZoom(zoom: number): void {
+export function setZoom(zoom: Zoom): void {
   setState({ zoom });
 }
 

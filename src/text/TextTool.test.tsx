@@ -81,6 +81,8 @@ const LETTER_TEXT =
 /** Wat er per bestand "gelezen" wordt: de pagina's (of een fout). */
 const DOCS: Record<string, PageText[] | Error> = {
   'brief.pdf': [page(1, LETTER)],
+  // Amerikaans Letter-formaat: 612 × 792 punten (een A4 is 595 × 842).
+  'letter.pdf': [{ ...page(1, LETTER), w: 612, h: 792 }],
   'artikel.pdf': [columns(1), columns(2), columns(3)],
   'scan.pdf': [empty(1), page(2, [['Alleen hier staat een hele zin met tekst.']]), empty(3)],
   'kort.pdf': [page(1, [['Kort.']]), page(2, [['Een pagina met genoeg tekst erop.']])],
@@ -457,6 +459,31 @@ describe('PDF → Platte tekst: voorbeeld', () => {
     expect(pressed(pb.fitPage)).toBe('false');
     fireEvent.click(button(pb.fitPage));
     expect(zoom()).toBe(fitted);
+  });
+
+  it('100% is de echte maat: een A4 is dan 793 beeldpunten breed (96/72 per punt)', async () => {
+    await open('brief.pdf');
+    const width = () =>
+      document.querySelector<HTMLElement>('.plaintext-preview__page')!.style.width;
+    // Passend is hier 71%; twee keer groter: 75%, dan 100%.
+    fireEvent.click(button(pb.zoomIn));
+    fireEvent.click(button(pb.zoomIn));
+    expect(document.querySelector('.zoom-bar__value')!.textContent).toBe('100%');
+    expect(width()).toBe('793px');
+    fireEvent.click(button(pb.zoomIn));
+    expect(width()).toBe('992px');
+  });
+
+  it('de echte maat hangt aan de pagina: een Letter (612 punten) is bij 100% 816 breed', async () => {
+    await open('letter.pdf');
+    const width = () =>
+      document.querySelector<HTMLElement>('.plaintext-preview__page')!.style.width;
+    // Hele pagina is hier 600 breed: 600 / 816 = 74%.
+    expect(document.querySelector('.zoom-bar__value')!.textContent).toBe('74%');
+    fireEvent.click(button(pb.zoomIn));
+    fireEvent.click(button(pb.zoomIn));
+    expect(document.querySelector('.zoom-bar__value')!.textContent).toBe('100%');
+    expect(width()).toBe('816px');
   });
 
   it('het getekende beeld is precies zo hoog als de pagina (niet een afgeronde pixel meer)', async () => {
@@ -2370,20 +2397,23 @@ describe('PDF → Platte tekst: toetsen zoals overal', () => {
     expect(getTextState().page).toBe(3);
     key('ArrowUp');
     expect(getTextState().page).toBe(2);
+    // Passend (hele pagina, zonder meting 565 breed) is 71% van de echte maat van een A4: + gaat
+    // naar de stap erboven, − daarna twee stappen terug, 0 weer passend.
+    expect(document.querySelector('.zoom-bar__value')!.textContent).toBe('71%');
     key('+');
-    expect(getTextState().zoom).toBe(125);
-    key('-');
-    key('-');
     expect(getTextState().zoom).toBe(75);
+    key('-');
+    key('-');
+    expect(getTextState().zoom).toBe(50);
     key('0');
-    expect(getTextState().zoom).toBe(100);
+    expect(getTextState().zoom).toBeNull();
     // Een open venster: de toetsen doen niets.
     const dialog = document.createElement('dialog');
     dialog.setAttribute('open', '');
     document.body.append(dialog);
     key('ArrowDown');
     key('+');
-    expect(getTextState()).toMatchObject({ page: 2, zoom: 100 });
+    expect(getTextState()).toMatchObject({ page: 2, zoom: null });
     dialog.remove();
   });
 

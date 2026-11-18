@@ -111,7 +111,7 @@ describe('TriageTool', () => {
   it('begint leeg: uitleg, alleen Lijst maken te kiezen, nog geen lijst', () => {
     setup();
     // Zoals pdf-triage.html: de pagina op de breedte van het vak.
-    expect(getTriageState()).toMatchObject({ fit: 'width', zoom: 100 });
+    expect(getTriageState()).toMatchObject({ fit: 'width', zoom: null });
     expect(screen.getByText(tr.placeholder)).toBeTruthy();
     expect(screen.getByRole('button', { name: tr.modes.list }).getAttribute('aria-pressed')).toBe(
       'true',
@@ -291,20 +291,22 @@ describe('TriageTool', () => {
     expect(meta.textContent).toMatch(/^a\.pdf · \d+ pagina/);
     const pressed = (name: string) =>
       screen.getByRole('button', { name }).getAttribute('aria-pressed');
+    // Hele breedte is hier (zonder meting 600 breed) 76% van de echte maat van een A4.
+    expect(document.querySelector('.zoom-bar__value')!.textContent).toBe('76%');
     fireEvent.click(screen.getByRole('button', { name: pb.zoomIn }));
-    expect(getTriageState().zoom).toBe(125);
+    expect(getTriageState().zoom).toBe(100);
     // Ingezoomd: geen van de passend-knoppen staat nog aan.
     expect([pressed(pb.fitPage), pressed(pb.fitWidth)]).toEqual(['false', 'false']);
     fireEvent.click(screen.getByRole('button', { name: pb.zoomOut }));
     fireEvent.click(screen.getByRole('button', { name: pb.zoomOut }));
-    expect(getTriageState().zoom).toBe(75);
+    expect(getTriageState().zoom).toBe(67);
     fireEvent.click(screen.getByRole('button', { name: pb.fitPage }));
-    expect(getTriageState()).toMatchObject({ fit: 'page', zoom: 100 });
+    expect(getTriageState()).toMatchObject({ fit: 'page', zoom: null });
     expect(screen.getByRole('button', { name: pb.fitPage }).getAttribute('aria-pressed')).toBe(
       'true',
     );
     fireEvent.click(screen.getByRole('button', { name: pb.fitWidth }));
-    expect(getTriageState()).toMatchObject({ fit: 'width', zoom: 100 });
+    expect(getTriageState()).toMatchObject({ fit: 'width', zoom: null });
   });
 
   it('toetsen doen niets met Ctrl, in een venster of in het overzicht', async () => {
@@ -706,19 +708,20 @@ describe('TriageTool: zoomtoetsen zoals overal', () => {
     setup();
     choose(pdf('a.pdf'));
     await settle();
+    // Hele breedte is hier 76%: + naar 100, twee keer − naar 75 en 67, 0 weer passend.
     await key('+');
-    expect(getTriageState().zoom).toBe(125);
-    await key('-');
-    await key('-');
-    expect(getTriageState().zoom).toBe(75);
-    await key('0');
     expect(getTriageState().zoom).toBe(100);
+    await key('-');
+    await key('-');
+    expect(getTriageState().zoom).toBe(67);
+    await key('0');
+    expect(getTriageState().zoom).toBeNull();
     // Een open venster: de toetsen doen niets.
     const dialog = document.createElement('dialog');
     dialog.setAttribute('open', '');
     document.body.append(dialog);
     await key('+');
-    expect(getTriageState().zoom).toBe(100);
+    expect(getTriageState().zoom).toBeNull();
     dialog.remove();
   });
 });

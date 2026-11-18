@@ -16,9 +16,9 @@ import {
   closeVisual,
   composeDiff,
   composeOverlay,
+  drawWidths,
   fitWidth,
   renderPage,
-  targetWidths,
 } from './visual';
 
 /**
@@ -111,6 +111,8 @@ const DOCS: Record<string, PageText[] | Error> = {
   'afbreek-b.pdf': [page(1, [['Dit is een vergelijking', 'van twee teksten.']])],
   'kolommen.pdf': [twoColumns()],
   'geheim.pdf': new PdfLoadError('password'),
+  // Amerikaans Letter-formaat: 612 punten breed (een A4 is 595).
+  'letter.pdf': [{ ...page(1, [...SAME, 'De huur is 500 euro per maand.']), w: 612, h: 792 }],
   'kapot.pdf': new Error('kapot'),
   'weg.pdf': new PdfLoadError('unreadable'),
 };
@@ -881,7 +883,7 @@ describe('beeld', () => {
       await openVisual('oud.pdf', 'nieuw.pdf');
       await waitFor(() =>
         expect(vi.mocked(renderPage).mock.lastCall![2]).toBe(
-          targetWidths(fitWidth(1000, false), 100, 1).dev,
+          drawWidths(fitWidth(1000, false), 1).dev,
         ),
       );
     } finally {
@@ -889,22 +891,40 @@ describe('beeld', () => {
     }
   });
 
-  it('zoomen tekent op een andere breedte; Passend gaat terug', async () => {
+  it('zoomen in vaste stappen van de echte maat; Hele breedte gaat terug', async () => {
+    const value = () => document.querySelector('.zoom-bar__value')!.textContent;
     await openVisual('oud.pdf', 'nieuw.pdf');
+    // Het vak is (zonder meting) 940 breed: een A4 (595 punten, 793 bij 100%) staat dan op 118%.
     expect(button(pb.fitWidth).getAttribute('aria-pressed')).toBe('true');
+    expect(value()).toBe('118%');
     fireEvent.click(button(pb.zoomIn));
-    expect(screen.getByText('125%')).toBeTruthy();
+    expect(value()).toBe('125%');
     expect(button(pb.fitWidth).getAttribute('aria-pressed')).toBe('false');
-    await waitFor(() => expect(vi.mocked(renderPage).mock.lastCall![2]).toBe(1175));
+    // 125% van de echte maat: 595 × 96/72 × 1,25 = 992 beeldpunten.
+    await waitFor(() => expect(vi.mocked(renderPage).mock.lastCall![2]).toBe(992));
     fireEvent.click(button(pb.fitWidth));
-    expect(screen.getByText('100%')).toBeTruthy();
-    for (let i = 0; i < 3; i++) fireEvent.click(button(pb.zoomOut));
-    expect(screen.getByText('50%')).toBeTruthy();
+    expect(value()).toBe('118%');
+    // Kleiner: de stappen onder passend, tot 25% en niet verder.
+    const seen: string[] = [];
+    for (let i = 0; i < 6; i++) {
+      fireEvent.click(button(pb.zoomOut));
+      seen.push(value()!);
+    }
+    expect(seen).toEqual(['100%', '75%', '67%', '50%', '33%', '25%']);
     expect(button(pb.zoomOut).hasAttribute('disabled')).toBe(true);
-    // Tot 400% en niet verder.
-    for (let i = 0; i < 7; i++) fireEvent.click(button(pb.zoomIn));
-    expect(screen.getByText('400%')).toBeTruthy();
+    // Groter: tot 400% en niet verder.
+    for (let i = 0; i < 10; i++) fireEvent.click(button(pb.zoomIn));
+    expect(value()).toBe('400%');
     expect(button(pb.zoomIn).hasAttribute('disabled')).toBe(true);
+  });
+
+  it('de echte maat is die van pagina A: een Letter (612 punten) op 125% is 1020 breed', async () => {
+    await openVisual('letter.pdf', 'oud.pdf');
+    // Het vak is 940 breed: 940 / 816 = 115%.
+    expect(document.querySelector('.zoom-bar__value')!.textContent).toBe('115%');
+    fireEvent.click(button(pb.zoomIn));
+    expect(document.querySelector('.zoom-bar__value')!.textContent).toBe('125%');
+    await waitFor(() => expect(vi.mocked(renderPage).mock.lastCall![2]).toBe(1020));
   });
 
   it('toetsen: ← → bladeren, + − zoomen, 0 passend; niet in een invoerveld en niet met Ctrl', async () => {
@@ -917,6 +937,7 @@ describe('beeld', () => {
     expect(screen.getByText(format(v.page, { n: 2, total: 2 }))).toBeTruthy();
     key('ArrowLeft');
     expect(screen.getByText(format(v.page, { n: 1, total: 2 }))).toBeTruthy();
+    // Passend is hier 118%: + naar 125, twee keer − naar 100 en 75, 0 weer passend.
     key('+');
     expect(screen.getByText('125%')).toBeTruthy();
     key('=', document.body, { ctrlKey: true });
@@ -925,7 +946,7 @@ describe('beeld', () => {
     key('-');
     expect(screen.getByText('75%')).toBeTruthy();
     key('0');
-    expect(screen.getByText('100%')).toBeTruthy();
+    expect(screen.getByText('118%')).toBeTruthy();
     key('ArrowRight', screen.getByRole('spinbutton', { name: v.offset }));
     expect(screen.getByText(format(v.page, { n: 1, total: 2 }))).toBeTruthy();
   });
@@ -981,7 +1002,7 @@ describe('beeld', () => {
     // De weergave blijft staan, zoals de instellingen bij de tekst.
     choose('a', 'scan.pdf', 'oud.pdf');
     await screen.findByText(format(v.page, { n: 1, total: 2 }));
-    expect(document.querySelector('.zoom-bar__value')!.textContent).toBe('100%');
+    expect(button(pb.fitWidth).getAttribute('aria-pressed')).toBe('true');
     expect(mode(v.modes.overlay).getAttribute('aria-pressed')).toBe('true');
   });
 
