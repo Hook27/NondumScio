@@ -2445,11 +2445,19 @@ rect.handle {
   user-select: none;
 }
 
+/* Met het toetsenbord op de pagina (Enter voegt een vak toe): de focusrand binnen de pagina. */
+.plaintext-zones-layer:focus-visible {
+  outline-offset: -3px;
+}
+
 .plaintext-zone {
   position: absolute;
   border: 2px solid var(--accent);
   background: color-mix(in srgb, var(--accent) 12%, transparent);
   cursor: move;
+  /* Een vinger op een vak of greepje versleept het, en scrolt dus niet de pagina. Elders op de
+     pagina scrolt een vinger wel (de laag zelf laat dat toe). */
+  touch-action: none;
 }
 
 /* Eigen vakken van een pagina: oranje, zodat je ziet dat de standaardvakken hier niet gelden. */

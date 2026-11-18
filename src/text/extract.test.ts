@@ -369,8 +369,26 @@ describe('vakken verschuiven en vergroten', () => {
     expect(resizeZone(zone, 'se', 0.6, 0.5)).toEqual({ x0: 0.2, y0: 0.2, x1: 0.6, y1: 0.5 });
     expect(resizeZone(zone, 's', 0.99, 0.5)).toEqual({ x0: 0.2, y0: 0.2, x1: 0.5, y1: 0.5 });
     expect(resizeZone(zone, 'w', 0.1, 0.99)).toEqual({ x0: 0.1, y0: 0.2, x1: 0.5, y1: 0.4 });
-    // Voorbij de andere kant: het vak klapt om en blijft recht.
-    expect(resizeZone(zone, 'e', 0.1, 0)).toEqual({ x0: 0.1, y0: 0.2, x1: 0.2, y1: 0.4 });
+    // Voorbij de andere kant: de rand stopt bij de overkant (het vak klapt niet om).
+    expect(resizeZone(zone, 'e', 0.1, 0)).toEqual({ x0: 0.2, y0: 0.2, x1: 0.2, y1: 0.4 });
+  });
+
+  it('niet kleiner dan de minimummaat: de versleepte kant stopt daar', () => {
+    const zone = { x0: 0.2, y0: 0.2, x1: 0.5, y1: 0.4 };
+    // Minimaal 0,05 breed en 0,02 hoog.
+    expect(resizeZone(zone, 'e', 0.21, 0, 0.05, 0.02).x1).toBeCloseTo(0.25, 10);
+    expect(resizeZone(zone, 'w', 0.9, 0, 0.05, 0.02).x0).toBeCloseTo(0.45, 10);
+    expect(resizeZone(zone, 's', 0, 0.1, 0.05, 0.02).y1).toBeCloseTo(0.22, 10);
+    expect(resizeZone(zone, 'n', 0, 0.39, 0.05, 0.02).y0).toBeCloseTo(0.38, 10);
+    // Een hoek: beide maten tegelijk; de andere kanten blijven staan.
+    expect(resizeZone(zone, 'se', 0.2, 0.2, 0.05, 0.02)).toEqual({
+      x0: 0.2,
+      y0: 0.2,
+      x1: 0.25,
+      y1: 0.22,
+    });
+    // Groot genoeg: gewoon waar je loslaat.
+    expect(resizeZone(zone, 'e', 0.3, 0, 0.05, 0.02).x1).toBe(0.3);
   });
 });
 

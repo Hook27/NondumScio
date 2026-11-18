@@ -6,7 +6,7 @@ import {
   type PageText,
   type Piece,
 } from '../compare/layout';
-import { dragEdges, type Handle } from '../lib/handles';
+import type { Handle } from '../lib/handles';
 import { DUTCH_HEAD, EMPTY_META, withHead, type HeadTexts, type Meta } from './header';
 import { DUTCH_CONCORDANCE, assemble, printedPages, type Assembly } from './pages';
 
@@ -210,9 +210,26 @@ export function clampZone(zone: Zone): Zone {
   };
 }
 
-/** Een vak met een versleepte kant of hoek naar (`x`, `y`), als deel van de pagina. */
-export function resizeZone(zone: Zone, handle: Handle, x: number, y: number): Zone {
-  return clampZone(dragEdges(zone, handle, x, y));
+/**
+ * Een vak met een versleepte kant of hoek naar (`x`, `y`), als deel van de pagina. Het wordt niet
+ * smaller dan `minW` en niet lager dan `minH` (ook delen van de pagina): de versleepte kant stopt
+ * dan, in plaats van voorbij de overkant te schieten (zo kan een vak niet onzichtbaar worden).
+ */
+export function resizeZone(
+  zone: Zone,
+  handle: Handle,
+  x: number,
+  y: number,
+  minW = 0,
+  minH = 0,
+): Zone {
+  const clamp = (v: number) => Math.max(0, Math.min(1, v));
+  const next = { ...zone };
+  if (handle.includes('w')) next.x0 = Math.min(clamp(x), zone.x1 - minW);
+  if (handle.includes('e')) next.x1 = Math.max(clamp(x), zone.x0 + minW);
+  if (handle.includes('n')) next.y0 = Math.min(clamp(y), zone.y1 - minH);
+  if (handle.includes('s')) next.y1 = Math.max(clamp(y), zone.y0 + minH);
+  return next;
 }
 
 /** Een vak verschoven over (`dx`, `dy`), zonder dat het buiten de pagina komt. */

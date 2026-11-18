@@ -369,6 +369,14 @@ function ZoneSettings() {
         <button
           type="button"
           class="button button--secondary"
+          disabled={!useZones || !ready}
+          onClick={addZone}
+        >
+          {z.add}
+        </button>
+        <button
+          type="button"
+          class="button button--secondary"
           disabled={!useZones || zones.length === 0}
           onClick={clearZones}
         >
@@ -398,6 +406,11 @@ function ZoneSettings() {
         {z.readEmptyHint}
       </p>
       {useZones && <p class="compare-settings__hint">{z.drawHint}</p>}
+      {useZones && (
+        <p id="plaintext-zones-keys" class="compare-settings__hint">
+          {z.keysHint}
+        </p>
+      )}
     </Block>
   );
 }
@@ -1144,7 +1157,15 @@ function PageView({ doc }: { doc: TextDoc }) {
                 label={format(v.canvas, { n: page })}
               />
             )}
-            {useZones && <ZoneLayer zones={editingZones(state)} own={ownPage(state)} />}
+            {useZones && (
+              <ZoneLayer
+                key={page}
+                zones={editingZones(state)}
+                own={ownPage(state)}
+                size={size}
+                page={page}
+              />
+            )}
           </div>
         )}
       </div>
@@ -1158,18 +1179,57 @@ function PageView({ doc }: { doc: TextDoc }) {
  * hoog liet het voorbeeld overlopen. Dan kreeg het een eigen schuifbalk, werd het smaller, tekende
  * het opnieuw, en zo heen en weer (audit F19, op een scherm met schaal 150 %).
  */
-/** Wat je met de muis doet: een nieuw vak tekenen, een vak verplaatsen of een rand verslepen. */
+/** Wat je met muis, pen of vinger doet: een nieuw vak tekenen, een vak verplaatsen of een rand verslepen. */
 type Action =
-  | { kind: 'draw'; index: number; x: number; y: number }
-  | { kind: 'move'; index: number; x: number; y: number; start: Zone }
-  | { kind: 'resize'; index: number; handle: Handle; start: Zone };
+  | { kind: 'draw'; pointer: number; index: number; x: number; y: number }
+  | { kind: 'move'; pointer: number; index: number; x: number; y: number; start: Zone }
+  | { kind: 'resize'; pointer: number; index: number; handle: Handle; start: Zone };
+
+/** Een nieuw vak met de knop of Enter: midden op de pagina, half zo breed en een vijfde zo hoog. */
+const NEW_ZONE: Zone = { x0: 0.25, y0: 0.4, x1: 0.75, y1: 0.6 };
+
+/** De pijltjes verschuiven een vak 1 punt, met Shift 10 (zoals in Bewerken). */
+const NUDGE = 1;
+const NUDGE_BIG = 10;
+
+/** Het vak met nummer `index` (vanaf 0) de focus geven, zodra het er staat. */
+function focusZone(index: number) {
+  requestAnimationFrame(() =>
+    document
+      .querySelector<HTMLElement>(`.plaintext-zones-layer [data-zone="${index}"]`)
+      ?.focus({ preventScroll: false }),
+  );
+}
+
+/** Een vak toevoegen (knop of Enter) en kiezen: dan verschuiven de pijltjes het meteen. */
+function addZone() {
+  const zones = editingZones(getTextState());
+  setZones([...zones, NEW_ZONE]);
+  focusZone(zones.length);
+}
 
 /**
  * De leesvakken over de pagina: genummerd, te verplaatsen en met acht handgrepen te vergroten of
- * te verkleinen. Een sleep op een lege plek tekent een nieuw vak. Tijdens het slepen staan de
- * vakken alleen hier; bij loslaten gaan ze naar de stand (en kan het terug met Ongedaan).
+ * te verkleinen, met muis, pen of vinger. Een sleep op een lege plek tekent een nieuw vak (met een
+ * vinger niet: die scrolt de pagina, zoals overal). Met het toetsenbord: Tab naar een vak, pijltjes
+ * verschuiven, Delete wist; Enter op de pagina voegt een vak toe. Tijdens het slepen staan de
+ * vakken alleen hier; bij loslaten gaan ze naar de stand (en kan het terug met Ongedaan). Escape
+ * breekt het slepen af. Bladeren tijdens het slepen ook: de laag hoort bij één pagina (`key`).
  */
-function ZoneLayer({ zones, own }: { zones: Zone[]; own: boolean }) {
+function ZoneLayer({
+  zones,
+  own,
+  size,
+  page,
+}: {
+  zones: Zone[];
+  own: boolean;
+  /** De maat van de pagina in punten (voor de stap van de pijltjes). */
+  size: { w: number; h: number };
+  page: number;
+}) {
+  const { t } = useI18n();
+  const z = t.plainText.zones;
   const layer = useRef<HTMLDivElement>(null);
   const action = useRef<Action | null>(null);
   const [live, setLive] = useState<Zone[] | null>(null);
@@ -1177,7 +1237,7 @@ function ZoneLayer({ zones, own }: { zones: Zone[]; own: boolean }) {
   latest.current = { zones, live };
   const shown = live ?? zones;
 
-  const point = (event: MouseEvent) => {
+  const point = (event: PointerEvent) => {
     const rect = layer.current!.getBoundingClientRect();
     return {
       x: (event.clientX - rect.left) / (rect.width || 1),
@@ -1186,74 +1246,150 @@ function ZoneLayer({ zones, own }: { zones: Zone[]; own: boolean }) {
     };
   };
 
+  /** Slepen afbreken: het vak weer zoals het was, zonder stap bij Ongedaan. */
+  const cancel = () => {
+    const now = action.current;
+    if (!now) return;
+    action.current = null;
+    layer.current?.releasePointerCapture?.(now.pointer);
+    setLive(null);
+  };
+
+  // Escape tijdens het slepen breekt het af (vóór de andere toetsen: in de opvangfase).
   useEffect(() => {
-    const onMove = (event: MouseEvent) => {
-      const now = action.current;
-      if (!now) return;
-      const { x, y } = point(event);
-      const next = [...(latest.current.live ?? latest.current.zones)];
-      if (now.kind === 'draw') next[now.index] = clampZone({ x0: now.x, y0: now.y, x1: x, y1: y });
-      else if (now.kind === 'move') next[now.index] = moveZone(now.start, x - now.x, y - now.y);
-      else next[now.index] = resizeZone(now.start, now.handle, x, y);
-      setLive(next);
+    const win = window;
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key !== 'Escape' || !action.current) return;
+      event.preventDefault();
+      event.stopPropagation();
+      cancel();
     };
-    const onUp = (event: MouseEvent) => {
-      const now = action.current;
-      if (!now) return;
-      action.current = null;
-      const next = latest.current.live;
-      setLive(null);
-      if (!next) return;
-      const zone = next[now.index]!;
-      const { rect } = point(event);
-      // Te klein getekend: geen vak (en geen stap om ongedaan te maken).
-      if (
-        now.kind === 'draw' &&
-        ((zone.x1 - zone.x0) * rect.width < MIN_ZONE_PX ||
-          (zone.y1 - zone.y0) * rect.height < MIN_ZONE_PX)
-      )
-        return;
-      const before = latest.current.zones[now.index];
-      if (before && JSON.stringify(before) === JSON.stringify(zone)) return;
-      setZones(next);
-    };
-    // Op het hele venster: ook als de muis tijdens het slepen buiten de pagina komt.
-    const target = window;
-    target.addEventListener('mousemove', onMove);
-    target.addEventListener('mouseup', onUp);
-    return () => {
-      target.removeEventListener('mousemove', onMove);
-      target.removeEventListener('mouseup', onUp);
-    };
+    win.addEventListener('keydown', onKey, true);
+    return () => win.removeEventListener('keydown', onKey, true);
   }, []);
 
-  const onMouseDown = (event: MouseEvent) => {
-    if (event.button !== 0) return;
-    event.preventDefault();
-    const { x, y } = point(event);
+  const onPointerDown = (event: PointerEvent) => {
+    if (event.button !== 0 || action.current) return;
     const target = event.target as HTMLElement;
     const box = target.closest<HTMLElement>('[data-zone]');
-    const handle = target.closest<HTMLElement>('[data-handle]')?.dataset.handle as
-      Handle | undefined;
+    // Een vinger op een lege plek scrolt de pagina; een vak maak je dan met Vak toevoegen.
+    if (!box && event.pointerType === 'touch') return;
+    event.preventDefault();
+    // Ook buiten de pagina (of het venster) blijft het slepen bij deze laag.
+    layer.current?.setPointerCapture?.(event.pointerId);
+    const { x, y } = point(event);
+    const pointer = event.pointerId;
     if (box) {
       const index = Number(box.dataset.zone);
       const start = zones[index]!;
+      const handle = target.closest<HTMLElement>('[data-handle]')?.dataset.handle as
+        Handle | undefined;
+      box.focus({ preventScroll: true });
       action.current = handle
-        ? { kind: 'resize', index, handle, start }
-        : { kind: 'move', index, x, y, start };
+        ? { kind: 'resize', pointer, index, handle, start }
+        : { kind: 'move', pointer, index, x, y, start };
       return;
     }
-    action.current = { kind: 'draw', index: zones.length, x, y };
+    action.current = { kind: 'draw', pointer, index: zones.length, x, y };
     setLive([...zones, { x0: x, y0: y, x1: x, y1: y }]);
   };
 
+  const onPointerMove = (event: PointerEvent) => {
+    const now = action.current;
+    if (!now || event.pointerId !== now.pointer) return;
+    const { x, y, rect } = point(event);
+    const next = [...(latest.current.live ?? latest.current.zones)];
+    if (now.kind === 'draw') next[now.index] = clampZone({ x0: now.x, y0: now.y, x1: x, y1: y });
+    else if (now.kind === 'move') next[now.index] = moveZone(now.start, x - now.x, y - now.y);
+    else {
+      // Niet kleiner dan 8 beeldpunten: dan zou het vak (bijna) onzichtbaar worden.
+      const minW = MIN_ZONE_PX / (rect.width || 1);
+      const minH = MIN_ZONE_PX / (rect.height || 1);
+      next[now.index] = resizeZone(now.start, now.handle, x, y, minW, minH);
+    }
+    setLive(next);
+  };
+
+  const onPointerUp = (event: PointerEvent) => {
+    const now = action.current;
+    if (!now || event.pointerId !== now.pointer) return;
+    action.current = null;
+    layer.current?.releasePointerCapture?.(now.pointer);
+    const next = latest.current.live;
+    setLive(null);
+    if (!next) return;
+    const zone = next[now.index]!;
+    const { rect } = point(event);
+    // Te klein getekend: geen vak (en geen stap om ongedaan te maken).
+    if (
+      now.kind === 'draw' &&
+      ((zone.x1 - zone.x0) * rect.width < MIN_ZONE_PX ||
+        (zone.y1 - zone.y0) * rect.height < MIN_ZONE_PX)
+    )
+      return;
+    const before = latest.current.zones[now.index];
+    if (before && JSON.stringify(before) === JSON.stringify(zone)) return;
+    setZones(next);
+  };
+
+  /** Toetsen op een vak: pijltjes verschuiven (met Shift verder), Delete of Backspace wist. */
+  const onZoneKey = (event: KeyboardEvent, index: number) => {
+    if (event.ctrlKey || event.metaKey || event.altKey) return;
+    const step = event.shiftKey ? NUDGE_BIG : NUDGE;
+    const arrows: Record<string, [number, number]> = {
+      ArrowLeft: [-step, 0],
+      ArrowRight: [step, 0],
+      ArrowUp: [0, -step],
+      ArrowDown: [0, step],
+    };
+    const arrow = arrows[event.key];
+    if (arrow) {
+      const zone = zones[index]!;
+      const moved = moveZone(zone, arrow[0] / size.w, arrow[1] / size.h);
+      // Steeds hetzelfde vak verschuiven is samen één stap bij Ongedaan.
+      if (JSON.stringify(moved) !== JSON.stringify(zone))
+        setZones(
+          zones.map((other, i) => (i === index ? moved : other)),
+          `nudge:${page}:${own}:${index}`,
+        );
+    } else if (event.key === 'Delete' || event.key === 'Backspace') {
+      removeZone(index);
+      // De focus naar het vak dat nu op deze plek staat (of het vorige), anders naar de pagina.
+      if (zones.length > 1) focusZone(Math.min(index, zones.length - 2));
+      else layer.current?.focus();
+    } else return;
+    // Niet ook bladeren (de pijltjes) of iets anders doen.
+    event.preventDefault();
+    event.stopPropagation();
+  };
+
   return (
-    <div class="plaintext-zones-layer" ref={layer} onMouseDown={onMouseDown} aria-hidden="true">
+    <div
+      class="plaintext-zones-layer"
+      ref={layer}
+      tabIndex={0}
+      role="group"
+      aria-label={format(z.layer, { n: page })}
+      aria-describedby="plaintext-zones-keys"
+      onPointerDown={onPointerDown}
+      onPointerMove={onPointerMove}
+      onPointerUp={onPointerUp}
+      onPointerCancel={cancel}
+      onKeyDown={(event) => {
+        if (event.target !== event.currentTarget || event.key !== 'Enter') return;
+        event.preventDefault();
+        addZone();
+      }}
+    >
       {shown.map((zone, i) => (
         <div
           key={i}
           class={`plaintext-zone${own ? ' plaintext-zone--own' : ''}`}
           data-zone={i}
+          tabIndex={0}
+          role="button"
+          aria-label={format(z.item, { n: i + 1 })}
+          onKeyDown={(event) => onZoneKey(event, i)}
           style={{
             left: `${zone.x0 * 100}%`,
             top: `${zone.y0 * 100}%`,
@@ -1261,12 +1397,15 @@ function ZoneLayer({ zones, own }: { zones: Zone[]; own: boolean }) {
             height: `${(zone.y1 - zone.y0) * 100}%`,
           }}
         >
-          <span class="plaintext-zone__num">{i + 1}</span>
+          <span class="plaintext-zone__num" aria-hidden="true">
+            {i + 1}
+          </span>
           {HANDLES.map((h) => (
             <span
               key={h}
               class={`handle handle--${h} plaintext-zone__handle plaintext-zone__handle--${h}`}
               data-handle={h}
+              aria-hidden="true"
             />
           ))}
         </div>
