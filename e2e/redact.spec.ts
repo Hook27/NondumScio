@@ -452,10 +452,14 @@ test.describe('redigeren: toegankelijkheid en telefoon', () => {
     await openRedact(page);
     await page.keyboard.press('r');
     await pages(page).first().scrollIntoViewIfNeeded();
-    const before = await scrolled(page);
+    // Waar de pagina op het scherm staat: die mag onder de vinger niet verschuiven. (De scrollstand
+    // zelf kan wel veranderen: komt er boven de pagina's iets bij, dan schuift de browser precies
+    // zoveel mee dat de pagina blijft staan.)
+    const onScreen = async () => (await pages(page).first().boundingBox())!.y;
+    const before = await onScreen();
     await touchDrag(page, await pointOn(page, 0, 100, 150), await pointOn(page, 0, 450, 350));
     await expect(boxes(page)).toHaveCount(1);
-    expect(await scrolled(page)).toEqual(before);
+    expect(await onScreen()).toBeCloseTo(before, 0);
     // Het vak ligt waar de vinger ging: van ongeveer (100, 150) tot (450, 350) op de pagina.
     const box = (await boxes(page).first().boundingBox())!;
     const start = await pointOn(page, 0, 100, 150);

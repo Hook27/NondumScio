@@ -52,6 +52,7 @@ export const nl = {
     previous: 'Vorige pagina',
     next: 'Volgende pagina',
     last: 'Laatste pagina',
+    page: 'Pagina {n} van {total}',
     zoom: 'Zoom',
     zoomOut: 'Uitzoomen',
     zoomIn: 'Inzoomen',

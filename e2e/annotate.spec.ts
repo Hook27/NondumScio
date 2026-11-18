@@ -2,6 +2,7 @@ import AxeBuilder from '@axe-core/playwright';
 import { readFileSync } from 'node:fs';
 import { expect, test, type Page } from '@playwright/test';
 import { PDFDocument, degrees, rgb } from 'pdf-lib';
+import { format } from '../src/i18n/format';
 import { pdfFile } from './fixtures';
 import { downloadVia, messages, openPage, touchDrag } from './helpers';
 
@@ -123,7 +124,8 @@ test.describe('annotaties: de weergave en het maken', () => {
     const before = (await pages(page).first().boundingBox())!;
     expect(before.width).toBeGreaterThan(300);
 
-    const toolbar = page.getByRole('toolbar', { name: nl.edit.toolbar });
+    // De zoombalk staat boven de pagina's, in de groep Zoom.
+    const toolbar = page.getByRole('group', { name: nl.pageBar.zoom });
     await toolbar.getByRole('button', { name: nl.pageBar.zoomIn }).click();
     await toolbar.getByRole('button', { name: nl.pageBar.zoomIn }).click();
     const bigger = (await pages(page).first().boundingBox())!;
@@ -137,9 +139,37 @@ test.describe('annotaties: de weergave en het maken', () => {
     expect((await pages(page).first().boundingBox())!.width / before.width).toBeCloseTo(0.75, 1);
   });
 
+  test('bladeren boven de pagina’s: de balk blijft staan en volgt het schuiven', async ({
+    page,
+    isMobile,
+  }) => {
+    test.skip(isMobile, 'Op een telefoon schuift de hele pagina; de balk staat dan bovenaan');
+    await openEdit(page, 4);
+    const nav = page.getByRole('group', { name: nl.pageBar.nav });
+    const position = nav.locator('.page-nav__page');
+    await expect(position).toHaveText(format(nl.pageBar.page, { n: 1, total: 4 }));
+    // Volgende: pagina 2 komt net onder de balk uit, niet erachter.
+    await nav.getByRole('button', { name: nl.pageBar.next }).click();
+    await expect(position).toHaveText(format(nl.pageBar.page, { n: 2, total: 4 }));
+    const bar = (await page.locator('.annotate__top').boundingBox())!;
+    const second = (await pages(page).nth(1).boundingBox())!;
+    expect(second.y).toBeGreaterThanOrEqual(bar.y + bar.height);
+    expect(second.y).toBeLessThan(bar.y + bar.height + 80);
+    // Zelf schuiven: de balk blijft bovenaan en toont de pagina die daar in beeld is.
+    const view = page.locator('.workspace__view');
+    await pages(page)
+      .nth(3)
+      .evaluate((element) => element.closest('li')!.scrollIntoView());
+    await expect(position).toHaveText(format(nl.pageBar.page, { n: 4, total: 4 }));
+    const top = (await view.boundingBox())!.y;
+    expect((await page.locator('.annotate__top').boundingBox())!.y).toBeLessThan(top + 10);
+    await view.evaluate((element) => element.scrollTo(0, 0));
+    await expect(position).toHaveText(format(nl.pageBar.page, { n: 1, total: 4 }));
+  });
+
   test('uitzoomen geeft een overzicht: 2, 3 of 4 pagina’s naast elkaar', async ({ page }) => {
     await openEdit(page, 4);
-    const toolbar = page.getByRole('toolbar', { name: nl.edit.toolbar });
+    const toolbar = page.getByRole('group', { name: nl.pageBar.zoom });
     const row = async () => {
       const boxes = await pages(page).evaluateAll((els) =>
         els.map((el) => Math.round(el.getBoundingClientRect().top + window.scrollY)),

@@ -49,6 +49,7 @@ export const en: Messages = {
     previous: 'Previous page',
     next: 'Next page',
     last: 'Last page',
+    page: 'Page {n} of {total}',
     zoom: 'Zoom',
     zoomOut: 'Zoom out',
     zoomIn: 'Zoom in',
