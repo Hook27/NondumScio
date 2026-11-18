@@ -1889,8 +1889,9 @@ rect.handle {
   color: var(--accent-contrast);
 }
 
-/* Vergelijken: bladeren en zoom boven het beeld, zoals bij Platte tekst. */
-.compare-visual__bar {
+/* Vergelijken en Bewerken: bladeren en zoom boven de pagina's, zoals bij Platte tekst. */
+.compare-visual__bar,
+.annotate__bar {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
@@ -3729,8 +3730,9 @@ rect.handle {
     background: var(--bg);
   }
 
-  /* Vergelijken: de kop en de blader- en zoombalk blijven samen boven het beeld staan. */
-  .workspace__view .compare-visual__top {
+  /* Vergelijken en Bewerken: de kop en de blader- en zoombalk blijven samen boven de pagina's staan. */
+  .workspace__view .compare-visual__top,
+  .workspace__view .annotate__top {
     /* flow-root: de witruimte onder de balk hoort bij het blok, ook als het beeld eronder schuift. */
     display: flow-root;
     position: sticky;
@@ -3739,8 +3741,14 @@ rect.handle {
     background: var(--bg);
   }
 
-  .workspace__view .compare-visual__top .pane-head {
+  .workspace__view .compare-visual__top .pane-head,
+  .workspace__view .annotate__top .pane-head {
     position: static;
+  }
+
+  /* Bij springen naar een pagina komt die net onder dat vaste blok uit (de hoogte meet AnnotateView). */
+  .workspace__view .annotate-pages__item {
+    scroll-margin-top: calc(var(--annotate-top, 4rem) + 0.5rem);
   }
 
   /* De kolomkoppen van de delen blijven onder de kop van het vak staan (zie `BookmarkTable`). */

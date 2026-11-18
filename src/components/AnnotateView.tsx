@@ -35,7 +35,7 @@ import { FileList } from './FilesParts';
 import { RadioGroup } from './ConvertParts';
 import { Icon, IconButton, type IconName } from './Icon';
 import { SaveDialog } from './SaveDialog';
-import { ZoomBar } from './PageBars';
+import { PageNav, ZoomBar } from './PageBars';
 import { useSaveJob } from './useSaveJob';
 import { PaneHead, Split, useInfo } from './WorkspaceParts';
 import { DPI_CHOICES } from '../pdf/redactOptions';
@@ -330,6 +330,62 @@ export function AnnotateView({ mode = 'annotate' }: { mode?: 'annotate' | 'redac
     flashTimer.current = setTimeout(() => setFlash(null), 1600);
   };
 
+  /* Bladeren: de bladerbalk toont de pagina die bovenaan in beeld staat; de knoppen schuiven erheen */
+
+  const top = useRef<HTMLDivElement>(null);
+  const [topPage, setTopPage] = useState(1);
+  const shownPage = Math.min(Math.max(1, topPage), Math.max(1, pages.length));
+  const goToPage = (n: number) => {
+    setTopPage(n);
+    const item = container.current?.children[n - 1] as HTMLElement | undefined;
+    item?.scrollIntoView?.({ block: 'start' });
+  };
+  useEffect(() => {
+    let frame = 0;
+    const measure = () => {
+      frame = 0;
+      const items = container.current?.children;
+      if (!items || items.length === 0) return;
+      // De lijn net onder het vaste blok boven de pagina's (op een telefoon: de bovenrand van het
+      // scherm). De eerste pagina die daar nog een flink stuk onder uitkomt, is "de pagina van nu".
+      const line = Math.max(top.current?.getBoundingClientRect().bottom ?? 0, 0) + 40;
+      let found = items.length;
+      for (let i = 0; i < items.length; i++) {
+        if (items[i]!.getBoundingClientRect().bottom > line) {
+          found = i + 1;
+          break;
+        }
+      }
+      setTopPage(found);
+    };
+    // Het doel onthouden: de opruimfunctie kan lopen als de testomgeving al weg is (cleanup.test).
+    const doc = document;
+    const win = window;
+    const onScroll = () => {
+      if (!frame) frame = win.requestAnimationFrame(measure);
+    };
+    // Welk vak ook schuift (het rechtervak, of op een telefoon de hele pagina).
+    doc.addEventListener('scroll', onScroll, { capture: true, passive: true });
+    win.addEventListener('resize', onScroll);
+    // De hoogte van het vaste blok, zodat springen naar een pagina daar net onder uitkomt (CSS).
+    const observer =
+      typeof ResizeObserver === 'undefined'
+        ? null
+        : new ResizeObserver(() =>
+            container.current?.style.setProperty(
+              '--annotate-top',
+              `${top.current?.offsetHeight ?? 0}px`,
+            ),
+          );
+    if (top.current) observer?.observe(top.current);
+    return () => {
+      doc.removeEventListener('scroll', onScroll, { capture: true });
+      win.removeEventListener('resize', onScroll);
+      observer?.disconnect();
+      if (frame) win.cancelAnimationFrame(frame);
+    };
+  }, []);
+
   /* Kleur, lettergrootte en dikte: voor het gereedschap, en voor wat geselecteerd is */
 
   const restyle = (change: Partial<Annotation>, mergeKey: string) => {
@@ -511,22 +567,6 @@ export function AnnotateView({ mode = 'annotate' }: { mode?: 'annotate' | 'redac
                 tip={`${t.pages.redo} (Ctrl + Y)`}
                 disabled={!canRedo}
                 onClick={redo}
-              />
-            </div>
-            <div class="toolbar__group">
-              <ZoomBar
-                percent={percent}
-                canZoomOut={zoomIndex > 0}
-                canZoomIn={zoomIndex < ZOOMS.length - 1}
-                onZoomOut={() => setZoomIndex(zoomIndex - 1)}
-                onZoomIn={() => setZoomIndex(zoomIndex + 1)}
-                fits={[
-                  {
-                    label: t.pageBar.fitWidth,
-                    active: zoomIndex === FIT,
-                    onClick: () => setZoomIndex(FIT),
-                  },
-                ]}
               />
             </div>
             <div class="toolbar__group toolbar__group--wide">
@@ -804,10 +844,32 @@ export function AnnotateView({ mode = 'annotate' }: { mode?: 'annotate' | 'redac
       }
       view={
         <>
-          <PaneHead
-            title={t.merge.result}
-            meta={plural(pages.length, t.document.pagesOne, t.document.pagesOther)}
-          />
+          {/* De kop en de blader- en zoombalk blijven samen boven de pagina's staan als je schuift. */}
+          <div ref={top} class="annotate__top">
+            <PaneHead
+              title={t.merge.result}
+              meta={plural(pages.length, t.document.pagesOne, t.document.pagesOther)}
+            />
+            <div class="annotate__bar">
+              <PageNav page={shownPage} count={Math.max(1, pages.length)} onPage={goToPage}>
+                {format(t.pageBar.page, { n: shownPage, total: pages.length })}
+              </PageNav>
+              <ZoomBar
+                percent={percent}
+                canZoomOut={zoomIndex > 0}
+                canZoomIn={zoomIndex < ZOOMS.length - 1}
+                onZoomOut={() => setZoomIndex(zoomIndex - 1)}
+                onZoomIn={() => setZoomIndex(zoomIndex + 1)}
+                fits={[
+                  {
+                    label: t.pageBar.fitWidth,
+                    active: zoomIndex === FIT,
+                    onClick: () => setZoomIndex(FIT),
+                  },
+                ]}
+              />
+            </div>
+          </div>
           <ol ref={container} class="annotate-pages" aria-label={t.edit.pages}>
             {pages.map((page, index) => {
               const source = sourceOf(page);

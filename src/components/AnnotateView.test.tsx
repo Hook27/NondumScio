@@ -852,3 +852,83 @@ describe('Bewerken en Redigeren: toetsen zoals overal', () => {
     expect(shapes()).toHaveLength(0);
   });
 });
+
+describe('Bewerken en Redigeren: bladeren en zoomen boven de pagina’s', () => {
+  const pb = nl.pageBar;
+  const top = () => document.querySelector<HTMLElement>('.annotate__top')!;
+  const position = () => top().querySelector('.page-nav__page')!.textContent;
+
+  it('de blader- en zoombalk staat boven de pagina’s, niet bij het gereedschap', async () => {
+    for (const [mode, toolbar] of [
+      ['edit', nl.edit.toolbar],
+      ['redact', nl.redact.toolbar],
+    ] as const) {
+      await setup(3, mode);
+      const tools = screen.getByRole('toolbar', { name: toolbar });
+      expect(within(tools).queryByRole('group', { name: pb.zoom })).toBeNull();
+      expect(within(top()).getByRole('heading', { name: nl.merge.result })).toBeTruthy();
+      expect(within(top()).getByRole('group', { name: pb.nav })).toBeTruthy();
+      expect(within(top()).getByRole('group', { name: pb.zoom })).toBeTruthy();
+      expect(position()).toBe(format(pb.page, { n: 1, total: 3 }));
+      cleanup();
+    }
+  });
+
+  it('de knoppen schuiven naar een pagina', async () => {
+    const scrolled: string[] = [];
+    const original = Element.prototype.scrollIntoView;
+    Element.prototype.scrollIntoView = function (this: Element) {
+      if (this.matches('.annotate-pages__item'))
+        scrolled.push(this.querySelector('.annotate-pages__caption')!.textContent!);
+    };
+    try {
+      await setup(3);
+      expect(button(pb.first).disabled).toBe(true);
+      expect(button(pb.previous).disabled).toBe(true);
+      fireEvent.click(button(pb.next));
+      expect(position()).toBe(format(pb.page, { n: 2, total: 3 }));
+      fireEvent.click(button(pb.last));
+      expect(position()).toBe(format(pb.page, { n: 3, total: 3 }));
+      expect(button(pb.next).disabled).toBe(true);
+      expect(button(pb.last).disabled).toBe(true);
+      fireEvent.click(button(pb.previous));
+      fireEvent.click(button(pb.first));
+      expect(position()).toBe(format(pb.page, { n: 1, total: 3 }));
+      expect(scrolled).toEqual(['Pagina 2', 'Pagina 3', 'Pagina 2', 'Pagina 1']);
+    } finally {
+      Element.prototype.scrollIntoView = original;
+    }
+  });
+
+  it('bij schuiven toont de balk de pagina die bovenaan in beeld staat', async () => {
+    await setup(3);
+    // Het vaste blok is 100 beeldpunten hoog; de pagina's zijn 480 hoog, met 20 ertussen.
+    let offset = 0;
+    const rect = (y: number, height: number) =>
+      ({ x: 0, y, top: y, bottom: y + height, left: 0, right: 600, width: 600, height }) as DOMRect;
+    const spy = vi.spyOn(Element.prototype, 'getBoundingClientRect').mockImplementation(function (
+      this: Element,
+    ) {
+      if (this.classList.contains('annotate__top')) return rect(0, 100);
+      const items = [...document.querySelectorAll('.annotate-pages__item')];
+      const index = items.indexOf(this);
+      return index >= 0 ? rect(120 + index * 500 - offset, 480) : rect(0, 0);
+    });
+    try {
+      const view = document.querySelector('.workspace__view')!;
+      const scrollTo = async (to: number, page: number) => {
+        offset = to;
+        fireEvent.scroll(view);
+        await waitFor(() => expect(position()).toBe(format(pb.page, { n: page, total: 3 })));
+      };
+      await scrollTo(700, 2);
+      // Van pagina 2 staat nog maar een randje (30 beeldpunten) onder het blok: dan is het 3.
+      await scrollTo(970, 3);
+      await scrollTo(0, 1);
+      // Helemaal voorbij de laatste pagina (alles boven het blok): de laatste.
+      await scrollTo(1500, 3);
+    } finally {
+      spy.mockRestore();
+    }
+  });
+});
