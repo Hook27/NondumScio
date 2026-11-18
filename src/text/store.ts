@@ -444,21 +444,35 @@ export const ownPage = (s: TextState = state): boolean => hasOwnZones(s, s.page)
 export const editingZones = (s: TextState = state): Zone[] =>
   ownPage(s) ? s.pages[s.page]! : s.zones;
 
-/** De vakken veranderen; wat er was, kan terug met Ongedaan. */
-function changeZones(next: ZoneSnapshot) {
-  change({
-    ...next,
-    undo: [...state.undo, { zones: state.zones, pages: state.pages }].slice(-UNDO_LIMIT),
-    redo: [],
-  });
+/**
+ * De laatste stap bij Ongedaan die nog mag groeien: pijltjes op hetzelfde vak zijn samen één stap
+ * (zoals in Bewerken). Alleen zolang die stap nog bovenop ligt; na Ongedaan of een andere wijziging
+ * begint een nieuwe.
+ */
+let growing: { key: string; top: TextState['undo'][number] } | null = null;
+
+/** De vakken veranderen; wat er was, kan terug met Ongedaan (met `merge`: zie `growing`). */
+function changeZones(next: ZoneSnapshot, merge?: string) {
+  const top = state.undo[state.undo.length - 1];
+  if (merge !== undefined && growing?.key === merge && top === growing.top) {
+    change({ ...next, redo: [] });
+    return;
+  }
+  const pushed = { zones: state.zones, pages: state.pages };
+  change({ ...next, undo: [...state.undo, pushed].slice(-UNDO_LIMIT), redo: [] });
+  growing = merge === undefined ? null : { key: merge, top: pushed };
 }
 
-/** Nieuwe vakken voor de set die je nu bewerkt: de eigen set van deze pagina, of de standaard. */
-export function setZones(zones: Zone[]): void {
+/**
+ * Nieuwe vakken voor de set die je nu bewerkt: de eigen set van deze pagina, of de standaard.
+ * Met `merge` wordt het samen met de vorige wijziging met dezelfde sleutel één stap bij Ongedaan.
+ */
+export function setZones(zones: Zone[], merge?: string): void {
   changeZones(
     ownPage()
       ? { zones: state.zones, pages: { ...state.pages, [state.page]: zones } }
       : { zones, pages: state.pages },
+    merge,
   );
 }
 

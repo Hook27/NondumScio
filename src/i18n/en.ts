@@ -842,8 +842,12 @@ export const en: Messages = {
       item: 'Zone {n}',
       remove: 'Remove zone {n}',
       clearAll: 'Remove all zones',
+      add: 'Add zone',
+      layer: 'Reading zones on page {n}',
       drawHint:
-        'Drag a zone over the text; then drag a zone, or its edges and corners. Ctrl+Z undoes, Ctrl+Y redoes.',
+        'Drag a zone over the text (with a finger: Add zone); then drag a zone, or its edges and corners. Ctrl+Z undoes, Ctrl+Y redoes.',
+      keysHint:
+        'With the keyboard: Tab to a zone, the arrow keys move it (further with Shift), Delete removes it. Enter on the page adds a zone.',
     },
     settings: {
       title: 'Text clean-up',

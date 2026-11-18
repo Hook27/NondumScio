@@ -4,7 +4,16 @@ import { expect, test, type Locator, type Page } from '@playwright/test';
 import { unzipSync } from 'fflate';
 import { PDFDocument, StandardFonts, degrees, rgb } from 'pdf-lib';
 import { format } from '../src/i18n/format';
-import { BROKEN_PDF, messages, openPage, SLOW, warningColor, type Theme } from './helpers';
+import {
+  BROKEN_PDF,
+  messages,
+  openPage,
+  scrolled,
+  SLOW,
+  touchDrag,
+  warningColor,
+  type Theme,
+} from './helpers';
 
 /**
  * PDF → Platte tekst (Geavanceerd, alleen op de computer): een PDF openen, leesvakken tekenen en de
@@ -1326,5 +1335,71 @@ test.describe('PDF → Platte tekst: toetsen zoals overal', () => {
     await expect(zones.getByText(p.zones.empty)).toBeVisible();
     await page.keyboard.press('Control+y');
     await expect(zones.locator('.plaintext-zones__label')).toHaveText(['Vak 1']);
+  });
+});
+
+test.describe('PDF → Platte tekst: leesvakken met vinger en toetsenbord', () => {
+  test.skip(({ isMobile }) => isMobile, 'Geavanceerd is er alleen op de computer');
+  test.use({ hasTouch: true });
+
+  const zonesOn = async (page: Page) => {
+    await openArticle(page, 2);
+    await page
+      .getByRole('group', { name: p.zones.title })
+      .getByRole('checkbox', { name: p.zones.use })
+      .check();
+  };
+
+  test('een vinger versleept een vak zonder te scrollen; op een lege plek tekent hij niets', async ({
+    page,
+  }) => {
+    await zonesOn(page);
+    await draw(page, LEFT_BOX);
+    const zone = page.locator('.plaintext-zone');
+    const before = (await zone.boundingBox())!;
+    const scroll = await scrolled(page);
+    const middle = { x: before.x + before.width / 2, y: before.y + before.height / 2 };
+    await touchDrag(page, middle, { x: middle.x + 40, y: middle.y + 30 });
+    const after = (await zone.boundingBox())!;
+    // Het vak volgt de vinger (de browser laat de eerste paar beeldpunten soms weg).
+    expect(Math.abs(after.x - (before.x + 40))).toBeLessThan(4);
+    expect(Math.abs(after.y - (before.y + 30))).toBeLessThan(4);
+    expect(await scrolled(page)).toEqual(scroll);
+    // Een greepje met de vinger: breder.
+    const grip = (await page.locator('.plaintext-zone__handle--e').boundingBox())!;
+    const from = { x: grip.x + grip.width / 2, y: grip.y + grip.height / 2 };
+    await touchDrag(page, from, { x: from.x + 50, y: from.y });
+    expect(Math.abs((await zone.boundingBox())!.width - (after.width + 50))).toBeLessThan(4);
+    // Op een lege plek van de pagina: geen nieuw vak.
+    const empty = await at(page, 300, 300);
+    await touchDrag(page, empty, { x: empty.x + 60, y: empty.y + 60 });
+    await expect(zone).toHaveCount(1);
+  });
+
+  test('toetsenbord: Vak toevoegen, pijltjes verschuiven (niet bladeren), Delete, Enter op de pagina', async ({
+    page,
+  }) => {
+    await zonesOn(page);
+    const add = page.getByRole('button', { name: p.zones.add });
+    await add.focus();
+    await page.keyboard.press('Enter');
+    const first = page.getByRole('button', { name: format(p.zones.item, { n: 1 }), exact: true });
+    await expect(first).toBeFocused();
+    const before = (await first.boundingBox())!;
+    const width = (await page.locator('.plaintext-preview__page').boundingBox())!.width;
+    for (let i = 0; i < 5; i++) await page.keyboard.press('ArrowRight');
+    await page.keyboard.press('Shift+ArrowDown');
+    const after = (await first.boundingBox())!;
+    // 5 punten naar rechts en 10 omlaag, op de schaal van het scherm.
+    expect(after.x - before.x).toBeCloseTo((5 * width) / 595, 0);
+    expect(after.y - before.y).toBeCloseTo((10 * width) / 595, 0);
+    await expect(page.locator('.plaintext-bar .page-nav__page')).toContainText('1 / 2');
+    await page.keyboard.press('Delete');
+    await expect(page.locator('.plaintext-zone')).toHaveCount(0);
+    const layer = page.getByRole('group', { name: format(p.zones.layer, { n: 1 }) });
+    await expect(layer).toBeFocused();
+    await page.keyboard.press('Enter');
+    await expect(page.locator('.plaintext-zone')).toHaveCount(1);
+    await expect(first).toBeFocused();
   });
 });

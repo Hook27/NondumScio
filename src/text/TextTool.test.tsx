@@ -241,11 +241,20 @@ function layer() {
   return element;
 }
 
-/** Slepen van (x, y) naar (x2, y2), in punten vanaf linksonder zoals de PDF. */
-function drag(target: Element, [x, y]: [number, number], [x2, y2]: [number, number]) {
-  fireEvent.mouseDown(target, { button: 0, clientX: x, clientY: 842 - y });
-  fireEvent.mouseMove(window, { clientX: x2, clientY: 842 - y2 });
-  fireEvent.mouseUp(window, { clientX: x2, clientY: 842 - y2 });
+/**
+ * Slepen van (x, y) naar (x2, y2), in punten vanaf linksonder zoals de PDF; met de muis, of met
+ * `pointerType` een vinger of pen. Bewegen en loslaten gaan naar de laag (die houdt de aanwijzer vast).
+ */
+function drag(
+  target: Element,
+  [x, y]: [number, number],
+  [x2, y2]: [number, number],
+  pointerType = 'mouse',
+) {
+  const init = { button: 0, pointerId: 1, pointerType };
+  fireEvent.pointerDown(target, { ...init, clientX: x, clientY: 842 - y });
+  fireEvent.pointerMove(layer(), { ...init, clientX: x2, clientY: 842 - y2 });
+  fireEvent.pointerUp(layer(), { ...init, clientX: x2, clientY: 842 - y2 });
 }
 
 /** Een vak tekenen van linksboven (x, y) naar rechtsonder (x2, y2), in punten. */
@@ -2484,5 +2493,195 @@ describe('PDF → Platte tekst: het scrollwiel', () => {
     await act(() => new Promise((resolve) => setTimeout(resolve, 300)));
     expect(fireEvent.wheel(root, { deltaY: 50 })).toBe(true);
     expect(getTextState().page).toBe(2);
+  });
+});
+
+describe('PDF → Platte tekst: leesvakken met vinger, pen en toetsenbord', () => {
+  /** Het eerste vak in punten: [links, boven, breedte, hoogte] (de laag is 595 × 842). */
+  const first = () => {
+    const zone = getTextState().zones[0]!;
+    return [zone.x0 * 595, zone.y0 * 842, (zone.x1 - zone.x0) * 595, (zone.y1 - zone.y0) * 842];
+  };
+  const zone = (n: number) => screen.getByRole('button', { name: format(p.zones.item, { n }) });
+
+  async function openWithZones() {
+    await open('artikel.pdf');
+    fireEvent.click(check(p.zones.use));
+    await settle();
+  }
+
+  it('met een pen tekenen; een vinger op een lege plek tekent niet (die scrolt)', async () => {
+    await openWithZones();
+    drag(layer(), [40, 720], [300, 600], 'touch');
+    expect(getTextState().zones).toHaveLength(0);
+    drag(layer(), [40, 720], [300, 600], 'pen');
+    expect(getTextState().zones).toHaveLength(1);
+  });
+
+  it('met een vinger een vak verplaatsen en een greepje verslepen', async () => {
+    await openWithZones();
+    draw(...LEFT_BOX);
+    const [x, y, width, height] = first();
+    drag(document.querySelector('.plaintext-zone')!, [150, 650], [170, 640], 'touch');
+    expect(first()[0]).toBeCloseTo(x! + 20, 5);
+    expect(first()[1]).toBeCloseTo(y! + 10, 5);
+    layer();
+    drag(document.querySelector('.plaintext-zone__handle--e')!, [320, 650], [360, 650], 'touch');
+    expect(first()[2]).toBeCloseTo(width! + 40, 5);
+    expect(first()[3]).toBeCloseTo(height!, 5);
+  });
+
+  it('niet kleiner dan 8 beeldpunten: een rand voorbij de overkant stopt daar', async () => {
+    await openWithZones();
+    draw(...LEFT_BOX);
+    const [x] = first();
+    layer();
+    drag(document.querySelector('.plaintext-zone__handle--e')!, [300, 650], [10, 650]);
+    expect(first()[0]).toBeCloseTo(x!, 5);
+    expect(first()[2]).toBeCloseTo(8, 5);
+    layer();
+    drag(document.querySelector('.plaintext-zone__handle--s')!, [100, 600], [100, 800]);
+    expect(first()[3]).toBeCloseTo(8, 5);
+  });
+
+  it('Escape tijdens het slepen breekt het af: het vak blijft, geen stap om ongedaan te maken', async () => {
+    await openWithZones();
+    draw(...LEFT_BOX);
+    const before = first();
+    const undo = getTextState().undo.length;
+    const left = () =>
+      parseFloat(document.querySelector<HTMLElement>('.plaintext-zone')!.style.left);
+    const startLeft = (before[0]! / 595) * 100;
+    const init = { button: 0, pointerId: 1, pointerType: 'mouse' };
+    fireEvent.pointerDown(document.querySelector('.plaintext-zone')!, {
+      ...init,
+      clientX: 150,
+      clientY: 200,
+    });
+    fireEvent.pointerMove(layer(), { ...init, clientX: 300, clientY: 300 });
+    expect(left()).not.toBeCloseTo(startLeft, 3);
+    fireEvent.keyDown(document.body, { key: 'Escape' });
+    expect(left()).toBeCloseTo(startLeft, 3);
+    fireEvent.pointerUp(layer(), { ...init, clientX: 300, clientY: 300 });
+    expect(first()).toEqual(before);
+    expect(getTextState().undo).toHaveLength(undo);
+  });
+
+  it('bladeren tijdens het slepen breekt het slepen af (het vak gaat niet mee)', async () => {
+    await openWithZones();
+    draw(...LEFT_BOX);
+    const before = first();
+    const init = { button: 0, pointerId: 1, pointerType: 'mouse' };
+    fireEvent.pointerDown(document.querySelector('.plaintext-zone')!, {
+      ...init,
+      clientX: 150,
+      clientY: 200,
+    });
+    fireEvent.pointerMove(layer(), { ...init, clientX: 300, clientY: 300 });
+    fireEvent.keyDown(document.body, { key: 'ArrowRight' });
+    expect(getTextState().page).toBe(2);
+    fireEvent.pointerUp(layer(), { ...init, clientX: 300, clientY: 300 });
+    expect(first()).toEqual(before);
+  });
+
+  it('toetsenbord: de pijltjes verschuiven het vak (Shift verder), samen één stap ongedaan; niet bladeren', async () => {
+    await openWithZones();
+    draw(...LEFT_BOX);
+    const [x, y] = first();
+    const steps = getTextState().undo.length;
+    expect(screen.getByRole('group', { name: format(p.zones.layer, { n: 1 }) })).toBeTruthy();
+    zone(1).focus();
+    fireEvent.keyDown(zone(1), { key: 'ArrowRight' });
+    fireEvent.keyDown(zone(1), { key: 'ArrowRight' });
+    fireEvent.keyDown(zone(1), { key: 'ArrowDown', shiftKey: true });
+    expect(first()[0]).toBeCloseTo(x! + 2, 5);
+    expect(first()[1]).toBeCloseTo(y! + 10, 5);
+    expect(getTextState().page).toBe(1);
+    expect(getTextState().undo).toHaveLength(steps + 1);
+    fireEvent.click(button(messages.nl.pages.undo));
+    expect(first()[0]).toBeCloseTo(x!, 5);
+    // Met Ctrl doet een pijltje op een vak niets met het vak.
+    fireEvent.keyDown(zone(1), { key: 'ArrowRight', ctrlKey: true });
+    expect(first()[0]).toBeCloseTo(x!, 5);
+  });
+
+  it('toetsenbord: na Ongedaan begint een nieuwe stap; de stap is een punt van deze pagina', async () => {
+    await openWithZones();
+    draw(...LEFT_BOX);
+    const [x] = first();
+    const steps = getTextState().undo.length;
+    zone(1).focus();
+    fireEvent.keyDown(zone(1), { key: 'ArrowRight' });
+    fireEvent.click(button(messages.nl.pages.undo));
+    fireEvent.keyDown(zone(1), { key: 'ArrowRight' });
+    // Weer een eigen stap: Ongedaan zet het vak terug waar het stond.
+    expect(getTextState().undo).toHaveLength(steps + 1);
+    fireEvent.click(button(messages.nl.pages.undo));
+    expect(first()[0]).toBeCloseTo(x!, 5);
+  });
+
+  it('een pijltje is één punt van de pagina, ook bij een ander formaat (Letter, 612 breed)', async () => {
+    await open('letter.pdf');
+    fireEvent.click(check(p.zones.use));
+    await settle();
+    fireEvent.click(button(p.zones.add));
+    const before = getTextState().zones[0]!.x0;
+    fireEvent.keyDown(zone(1), { key: 'ArrowRight', shiftKey: true });
+    expect(getTextState().zones[0]!.x0 - before).toBeCloseTo(10 / 612, 10);
+  });
+
+  it('Delete op een middelste vak: de focus gaat naar het vak dat nu op die plek staat', async () => {
+    await openWithZones();
+    draw(...LEFT_BOX);
+    draw(...RIGHT_BOX);
+    fireEvent.click(button(p.zones.add));
+    zone(2).focus();
+    fireEvent.keyDown(zone(2), { key: 'Delete' });
+    expect(getTextState().zones).toHaveLength(2);
+    // Eerst het verplaatsen van de focus afwachten (een beeld later), dan kijken waar die staat.
+    await settle();
+    expect(document.activeElement).toBe(zone(2));
+  });
+
+  it('een tweede vinger tijdens het slepen doet niets met het vak', async () => {
+    await openWithZones();
+    draw(...LEFT_BOX);
+    const before = first();
+    const touch = { button: 0, pointerType: 'touch' };
+    fireEvent.pointerDown(document.querySelector('.plaintext-zone')!, {
+      ...touch,
+      pointerId: 1,
+      clientX: 150,
+      clientY: 200,
+    });
+    fireEvent.pointerMove(layer(), { ...touch, pointerId: 2, clientX: 400, clientY: 500 });
+    fireEvent.pointerUp(layer(), { ...touch, pointerId: 1, clientX: 150, clientY: 200 });
+    expect(first()).toEqual(before);
+  });
+
+  it('toetsenbord: Delete wist het vak en de focus gaat naar het volgende', async () => {
+    await openWithZones();
+    draw(...LEFT_BOX);
+    draw(...RIGHT_BOX);
+    zone(1).focus();
+    fireEvent.keyDown(zone(1), { key: 'Delete' });
+    expect(getTextState().zones).toHaveLength(1);
+    await waitFor(() => expect(document.activeElement).toBe(zone(1)));
+    fireEvent.keyDown(zone(1), { key: 'Backspace' });
+    expect(getTextState().zones).toHaveLength(0);
+    expect(document.activeElement).toBe(layer());
+  });
+
+  it('Vak toevoegen (knop of Enter op de pagina): midden op de pagina, en meteen gekozen', async () => {
+    await openWithZones();
+    fireEvent.click(button(p.zones.add));
+    expect(getTextState().zones).toEqual([{ x0: 0.25, y0: 0.4, x1: 0.75, y1: 0.6 }]);
+    await waitFor(() => expect(document.activeElement).toBe(zone(1)));
+    fireEvent.keyDown(layer(), { key: 'Enter' });
+    expect(getTextState().zones).toHaveLength(2);
+    await waitFor(() => expect(document.activeElement).toBe(zone(2)));
+    // Enter op een vak voegt niets toe.
+    fireEvent.keyDown(zone(2), { key: 'Enter' });
+    expect(getTextState().zones).toHaveLength(2);
   });
 });

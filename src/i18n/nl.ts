@@ -856,8 +856,12 @@ export const nl = {
       item: 'Vak {n}',
       remove: 'Vak {n} wissen',
       clearAll: 'Alle vakken wissen',
+      add: 'Vak toevoegen',
+      layer: 'Leesvakken op pagina {n}',
       drawHint:
-        'Sleep een vak over de tekst; versleep daarna een vak, of zijn randen en hoeken. Ctrl+Z maakt ongedaan, Ctrl+Y doet het opnieuw.',
+        'Sleep een vak over de tekst (met een vinger: Vak toevoegen); versleep daarna een vak, of zijn randen en hoeken. Ctrl+Z maakt ongedaan, Ctrl+Y doet het opnieuw.',
+      keysHint:
+        'Met het toetsenbord: Tab naar een vak, de pijltjes verschuiven het (met Shift verder), Delete wist het. Enter op de pagina voegt een vak toe.',
     },
     settings: {
       title: 'Tekstopschoning',
