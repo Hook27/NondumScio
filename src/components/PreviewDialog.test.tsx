@@ -36,6 +36,7 @@ vi.mock('../pdf/loader', async (importOriginal) => {
 });
 
 const p = messages.nl.preview;
+const pb = messages.nl.pageBar;
 const file = new File(['%PDF-1.7'], 'scan_001.pdf', { type: 'application/pdf' });
 
 function setup(onClose = vi.fn()) {
@@ -61,8 +62,8 @@ describe('PreviewDialog: een PDF bekijken', () => {
     const dialog = screen.getByRole('dialog', { name: /260312 gemeente utrecht aan\.pdf/ });
     expect(await screen.findByText('Pagina 1 van 3')).toBeTruthy();
     await waitFor(() => expect(rendered).toEqual([1]));
-    const previous = screen.getByRole('button', { name: p.previous }) as HTMLButtonElement;
-    const next = screen.getByRole('button', { name: p.next }) as HTMLButtonElement;
+    const previous = screen.getByRole('button', { name: pb.previous }) as HTMLButtonElement;
+    const next = screen.getByRole('button', { name: pb.next }) as HTMLButtonElement;
     expect(previous.disabled).toBe(true);
 
     fireEvent.click(next);
@@ -90,6 +91,25 @@ describe('PreviewDialog: een PDF bekijken', () => {
     expect(await screen.findByText('Pagina 2 van 3')).toBeTruthy();
     fireEvent.keyDown(dialog, { key: 'ArrowUp' });
     expect(await screen.findByText('Pagina 1 van 3')).toBeTruthy();
+  });
+
+  it('bladert met het scrollwiel aan de rand van de pagina, zoals overal', async () => {
+    const { pdf } = fakePdf();
+    vi.mocked(loadPdf).mockResolvedValue({ pdf: pdf as never, pageCount: 3 });
+    setup();
+    expect(await screen.findByText('Pagina 1 van 3')).toBeTruthy();
+    // jsdom meet niets: de pagina staat altijd boven- en onderaan.
+    const page = document.querySelector('.preview-dialog__page[data-scroll-root]')!;
+    const pause = () => new Promise((resolve) => setTimeout(resolve, 300));
+    expect(fireEvent.wheel(page, { deltaY: 50 })).toBe(false);
+    expect(await screen.findByText('Pagina 2 van 3')).toBeTruthy();
+    await pause();
+    expect(fireEvent.wheel(page, { deltaY: -50 })).toBe(false);
+    expect(await screen.findByText('Pagina 1 van 3')).toBeTruthy();
+    await pause();
+    // Op de eerste pagina omhoog: gewoon scrollen.
+    expect(fireEvent.wheel(page, { deltaY: -50 })).toBe(true);
+    expect(screen.getByText('Pagina 1 van 3')).toBeTruthy();
   });
 
   it('sluit met Escape, met de knop en met een klik naast het venster; ruimt de PDF op', async () => {
@@ -147,7 +167,7 @@ describe('PreviewDialog: een PDF bekijken', () => {
     await waitFor(() => expect(shown).toEqual([6]));
     // De draaiing van de pagina zelf plus die uit het plan.
     expect(angles).toEqual([0, 0]);
-    fireEvent.click(screen.getByRole('button', { name: p.next }));
+    fireEvent.click(screen.getByRole('button', { name: pb.next }));
     expect(await screen.findByText('Pagina 2 van 2')).toBeTruthy();
     await waitFor(() => expect(shown).toEqual([6, 2]));
     expect(angles.slice(2)).toEqual([90, 90]);

@@ -14,6 +14,7 @@ import { BROKEN_PDF, messages, openPage, SLOW, warningColor, type Theme } from '
 
 const nl = messages.nl;
 const p = nl.plainText;
+const pb = nl.pageBar;
 const s = p.settings;
 
 /**
@@ -300,7 +301,7 @@ test.describe('PDF → Platte tekst', () => {
     const label = (n: number) => page.getByText(format(p.preview.page, { n, total: 3 }));
     await expect.poll(() => ink(page)).toBeGreaterThan(100);
     const first = await fingerprint(page);
-    await page.getByRole('button', { name: p.preview.next }).click();
+    await page.getByRole('button', { name: pb.next }).click();
     await expect(label(2)).toBeVisible();
     // Er wordt echt een andere pagina getekend (de regels noemen hun paginanummer).
     await expect.poll(() => fingerprint(page)).not.toBe(first);
@@ -314,18 +315,18 @@ test.describe('PDF → Platte tekst', () => {
     await page.mouse.wheel(0, 200);
     await expect(label(2)).toBeVisible();
 
-    const value = page.locator('.plaintext-zoom__value');
+    const value = page.locator('.zoom-bar__value');
     const fitted = parseInt((await value.textContent())!, 10);
-    await page.getByRole('button', { name: p.preview.zoomIn }).click();
+    await page.getByRole('button', { name: pb.zoomIn }).click();
     await expect
       .poll(async () => parseInt((await value.textContent())!, 10))
       .toBeGreaterThan(fitted);
-    await page.getByRole('button', { name: p.preview.fitWidth }).click();
-    await expect(page.getByRole('button', { name: p.preview.fitWidth })).toHaveAttribute(
+    await page.getByRole('button', { name: pb.fitWidth }).click();
+    await expect(page.getByRole('button', { name: pb.fitWidth })).toHaveAttribute(
       'aria-pressed',
       'true',
     );
-    await page.getByRole('button', { name: p.preview.fitPage }).click();
+    await page.getByRole('button', { name: pb.fitPage }).click();
     await expect(value).toHaveText(`${fitted}%`);
   });
 
@@ -491,7 +492,7 @@ test.describe('PDF → Platte tekst: vakken per pagina en bewaren', () => {
     await draw(page, LEFT_BOX);
 
     // Pagina 2: eigen vakken, de rechterkolom.
-    await page.getByRole('button', { name: p.preview.next }).click();
+    await page.getByRole('button', { name: pb.next }).click();
     await zones(page).getByRole('checkbox', { name: z.own }).check();
     await expect(zones(page).getByText(format(z.ownOn, { n: 2 }))).toBeVisible();
     await zones(page).getByRole('button', { name: z.clearAll }).click();
@@ -510,7 +511,7 @@ test.describe('PDF → Platte tekst: vakken per pagina en bewaren', () => {
         .locator('.plaintext-zone--own [data-handle="e"]')
         .evaluate((el) => getComputedStyle(el).backgroundColor),
     ).toBe(own);
-    await page.getByRole('button', { name: p.preview.previous }).click();
+    await page.getByRole('button', { name: pb.previous }).click();
     await expect(page.locator('.plaintext-zone--own')).toHaveCount(0);
     expect(await colour('.plaintext-zone')).not.toBe(own);
     await axe(page);
@@ -526,7 +527,7 @@ test.describe('PDF → Platte tekst: vakken per pagina en bewaren', () => {
 
     // Pagina 3 zonder vakken: overgeslagen, of helemaal gelezen.
     await page.getByRole('button', { name: p.views.preview }).click();
-    await page.getByRole('button', { name: p.preview.last }).click();
+    await page.getByRole('button', { name: pb.last }).click();
     await zones(page).getByRole('checkbox', { name: z.own }).check();
     await zones(page).getByRole('button', { name: z.clearAll }).click();
     await extract(page);
@@ -839,12 +840,12 @@ test.describe('PDF → Platte tekst: pagina-overgangen', () => {
 
     // In de balk: het afgedrukte paginanummer.
     await page.getByRole('button', { name: p.views.preview }).click();
-    await page.getByRole('button', { name: p.preview.next }).click();
-    await page.getByRole('button', { name: p.preview.next }).click();
-    await expect(page.locator('.plaintext-nav__page')).toHaveText(/^3 \/ 5 · 2/);
+    await page.getByRole('button', { name: pb.next }).click();
+    await page.getByRole('button', { name: pb.next }).click();
+    await expect(page.locator('.page-nav__page')).toHaveText(/^3 \/ 5 · 2/);
 
     // Pagina 4 gescheiden van pagina 3.
-    await page.getByRole('button', { name: p.preview.next }).click();
+    await page.getByRole('button', { name: pb.next }).click();
     const join = block.getByRole('combobox', { name: format(g.join, { n: 4 }) });
     await expect(join).toHaveValue('auto');
     await join.selectOption('break');
@@ -1270,8 +1271,8 @@ test.describe('PDF → Platte tekst op een scherm met schaal 150 %', () => {
       p.clear,
       p.zones.clearAll,
       p.extract,
-      p.preview.fitPage,
-      p.preview.fitWidth,
+      pb.fitPage,
+      pb.fitWidth,
       p.zones.allOwn,
     ];
     for (const name of names) {
@@ -1303,8 +1304,8 @@ test.describe('PDF → Platte tekst: toetsen zoals overal', () => {
 
   test('↓ ↑ bladeren, + − 0 zoomen, Ctrl+Z en Ctrl+Y voor de vakken', async ({ page }) => {
     await openArticle(page, 3);
-    const where = page.locator('.plaintext-bar .plaintext-nav__page');
-    const percent = page.locator('.plaintext-zoom__value');
+    const where = page.locator('.plaintext-bar .page-nav__page');
+    const percent = page.locator('.zoom-bar__value');
     await page.locator('body').click({ position: { x: 1, y: 1 } });
     await page.keyboard.press('ArrowDown');
     await expect(where).toContainText('2 / 3');

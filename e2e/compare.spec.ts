@@ -13,6 +13,7 @@ import { BROKEN_PDF, messages, openPage, SLOW, warningColor, type Theme } from '
 
 const nl = messages.nl;
 const c = nl.compare;
+const pb = nl.pageBar;
 
 /**
  * Een huurovereenkomst: per pagina een kop, alinea's (elk over twee regels, met een witregel
@@ -548,6 +549,32 @@ function countColours(page: Page) {
 test.describe('PDF’s vergelijken: beeld', () => {
   test.skip(({ isMobile }) => isMobile, 'Geavanceerd is er alleen op de computer');
 
+  test('de blader- en zoombalk blijft boven het beeld staan als je schuift', async ({ page }) => {
+    await openPage(page, '/#/advanced/compare', { lang: 'nl' });
+    await page
+      .locator('#compare-file-a')
+      .setInputFiles([await file('huur-oud.pdf', OLD), await file('huur-nieuw.pdf', NEW)]);
+    await expect(page.getByRole('table')).toBeVisible(SLOW);
+    await page.getByRole('button', { name: c.tabs.visual }).click();
+    const stat = page.locator('.compare-visual__stat');
+    await expect(stat).toHaveText(/^Verschil: /, SLOW);
+    // Ingezoomd is het beeld hoger dan het vak: helemaal naar beneden schuiven.
+    const zoomIn = page.getByRole('button', { name: pb.zoomIn });
+    for (let i = 0; i < 3; i++) await zoomIn.click();
+    await expect(page.locator('.zoom-bar__value')).toHaveText('200%');
+    await expect(stat).toHaveText(/^Verschil: /, SLOW);
+    const view = page.locator('.workspace__view');
+    await view.evaluate((element) => element.scrollTo(0, element.scrollHeight));
+    expect(await view.evaluate((element) => element.scrollTop)).toBeGreaterThan(300);
+    // De balk staat nog bovenaan in het vak, en is te gebruiken.
+    const top = (await view.boundingBox())!.y;
+    const bar = (await page.locator('.compare-visual__bar').boundingBox())!;
+    expect(bar.y).toBeGreaterThanOrEqual(top);
+    expect(bar.y).toBeLessThan(top + 150);
+    await page.getByRole('button', { name: pb.fitWidth }).click();
+    await expect(page.locator('.zoom-bar__value')).toHaveText('100%');
+  });
+
   for (const theme of ['light', 'dark'] as Theme[]) {
     test(`tekent het verschil, naast elkaar en als overlay (thema ${theme})`, async ({ page }) => {
       const v = c.visual;
@@ -603,10 +630,10 @@ test.describe('PDF’s vergelijken: beeld', () => {
       // Tijdens het vervangen door een nieuw getekend canvas is er heel even geen maat.
       const width = async () => (await canvas.boundingBox())?.width ?? Number.NaN;
       const before = await width();
-      await page.getByRole('button', { name: v.zoomIn }).click();
+      await page.getByRole('button', { name: pb.zoomIn }).click();
       await expect(page.getByText('125%')).toBeVisible();
       await expect.poll(width, SLOW).toBeGreaterThan(before * 1.2);
-      await page.getByRole('button', { name: v.fit }).click();
+      await page.getByRole('button', { name: pb.fitWidth }).click();
       await expect.poll(width, SLOW).toBeLessThan(before + 2);
     });
   }

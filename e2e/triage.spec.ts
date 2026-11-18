@@ -13,7 +13,7 @@ import { messages, openPage, SLOW, type Theme } from './helpers';
 
 const nl = messages.nl;
 const tr = nl.triage;
-const pv = nl.plainText.preview;
+const pb = nl.pageBar;
 
 /** Een PDF met `pages` pagina's; op elke pagina staat "<naam> pagina <n>". */
 async function pdf(name: string, pages: number) {
@@ -53,8 +53,7 @@ async function decideKey(page: Page, key: string) {
 }
 const canvas = (page: Page, n: number, lang: 'nl' | 'en' = 'nl') =>
   page.getByRole('img', { name: format(messages[lang].plainText.preview.canvas, { n }) });
-const pageNumber = (page: Page) =>
-  page.locator('.plaintext-bar .plaintext-nav__page [aria-hidden]');
+const pageNumber = (page: Page) => page.locator('.plaintext-bar .page-nav__page [aria-hidden]');
 
 /**
  * Het aantal regels van de tekst op een knop: de bovenkanten van de stukjes tekst, waarbij een
@@ -149,12 +148,12 @@ test.describe('Archief / Triage', () => {
     await addThree(page);
     await expect(canvas(page, 1)).toBeVisible(SLOW);
     const before = (await canvas(page, 1).boundingBox())!.width;
-    await page.getByRole('button', { name: pv.zoomIn }).click();
+    await page.getByRole('button', { name: pb.zoomIn }).click();
     await expect
       .poll(async () => (await canvas(page, 1).boundingBox())?.width ?? 0)
       .toBeGreaterThan(before * 1.2);
-    await page.getByRole('button', { name: pv.fitPage }).click();
-    await page.getByRole('button', { name: pv.next }).click();
+    await page.getByRole('button', { name: pb.fitPage }).click();
+    await page.getByRole('button', { name: pb.next }).click();
     await expect(canvas(page, 2)).toBeVisible(SLOW);
 
     await page.getByRole('button', { name: tr.keep, exact: true }).click();

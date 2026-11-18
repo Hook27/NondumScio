@@ -316,7 +316,12 @@ describe('Bewerken: annoteren', () => {
     fireEvent.keyDown(pageNr(1), { key: 'Enter' });
     const field = screen.getByRole('textbox', { name: nl.edit.textLabel }) as HTMLTextAreaElement;
     fireEvent.input(field, { target: { value: 'Hallo α' } });
-    expect(screen.getByRole('status').textContent).toContain('α');
+    // De zoomwaarde is ook een status (output); de melding staat in de andere.
+    const statuses = screen
+      .getAllByRole('status')
+      .map((status) => status.textContent)
+      .join(' ');
+    expect(statuses).toContain('α');
     fireEvent.keyDown(field, { key: 'Escape' });
     expect(screen.queryByRole('textbox', { name: nl.edit.textLabel })).toBeNull();
     expect(within(pageNr(1)).getByRole('button', { name: 'Tekst: Hallo α' })).toBeTruthy();
@@ -336,29 +341,29 @@ describe('Bewerken: annoteren', () => {
     await setup();
     const width = () => Number(pageNr(1).style.width.replace('px', ''));
     const fit = width();
-    fireEvent.click(button(nl.edit.zoomIn));
+    fireEvent.click(button(nl.pageBar.zoomIn));
     expect(width()).toBeCloseTo(fit * 1.25, 3);
-    expect(screen.getByRole('button', { name: /^Zoom 125%/ })).toBeTruthy();
-    fireEvent.click(button(nl.edit.zoomOut));
-    fireEvent.click(button(nl.edit.zoomOut));
+    expect(document.querySelector('.zoom-bar__value')!.textContent).toBe('125%');
+    expect(button(nl.pageBar.fitWidth).getAttribute('aria-pressed')).toBe('false');
+    fireEvent.click(button(nl.pageBar.zoomOut));
+    fireEvent.click(button(nl.pageBar.zoomOut));
     expect(width()).toBeCloseTo(fit * 0.75, 3);
-    fireEvent.click(screen.getByRole('button', { name: /^Zoom 75%/ }));
+    fireEvent.click(button(nl.pageBar.fitWidth));
     expect(width()).toBeCloseTo(fit, 3);
-    expect((screen.getByRole('button', { name: /^Zoom 100%/ }) as HTMLButtonElement).disabled).toBe(
-      true,
-    );
+    expect(document.querySelector('.zoom-bar__value')!.textContent).toBe('100%');
+    expect(button(nl.pageBar.fitWidth).getAttribute('aria-pressed')).toBe('true');
   });
 
   it('toont bij uitzoomen meer pagina’s naast elkaar, als overzicht', async () => {
     await setup(4);
-    const label = () => screen.getByRole('button', { name: /^Zoom \d+%/ }).textContent;
+    const label = () => document.querySelector('.zoom-bar__value')!.textContent;
     expect(label()).toBe('100%');
     for (const expected of ['75%', '50%', '33%', '25%']) {
-      fireEvent.click(button(nl.edit.zoomOut));
+      fireEvent.click(button(nl.pageBar.zoomOut));
       expect(label()).toBe(expected);
     }
-    expect(button(nl.edit.zoomOut).disabled).toBe(true);
-    fireEvent.click(screen.getByRole('button', { name: /^Zoom 25%/ }));
+    expect(button(nl.pageBar.zoomOut).disabled).toBe(true);
+    fireEvent.click(button(nl.pageBar.fitWidth));
     expect(label()).toBe('100%');
   });
 
@@ -769,7 +774,7 @@ describe('"getekend" betekent echt getekend', () => {
     await waitFor(() => expect(page().getAttribute('data-rendered')).toBe('true'));
     // Opnieuw tekenen (inzoomen): zolang dat bezig is, weer "niet getekend".
     drawing.hold = new Promise((resolve) => (release = resolve));
-    fireEvent.click(screen.getByRole('button', { name: nl.edit.zoomIn }));
+    fireEvent.click(screen.getByRole('button', { name: nl.pageBar.zoomIn }));
     await waitFor(() => expect(page().getAttribute('data-rendered')).toBe('false'));
     release();
     await waitFor(() => expect(page().getAttribute('data-rendered')).toBe('true'));
@@ -815,7 +820,7 @@ describe('Bewerken en Redigeren: voortgang en Stoppen', () => {
 });
 
 describe('Bewerken en Redigeren: toetsen zoals overal', () => {
-  const label = () => screen.getByRole('button', { name: /^Zoom \d+%/ }).textContent;
+  const label = () => document.querySelector('.zoom-bar__value')!.textContent;
 
   it('+ − zoomen, 0 terug naar passend', async () => {
     await setup(1);

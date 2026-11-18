@@ -1,4 +1,6 @@
 import type { PDFDocumentProxy, RenderTask } from 'pdfjs-dist';
+import { PageNav } from './PageBars';
+import { useEdgeWheel } from './PageView';
 import { useEffect, useRef, useState } from 'preact/hooks';
 import { useI18n } from '../i18n/LanguageContext';
 import { format } from '../i18n/format';
@@ -140,6 +142,13 @@ export function PreviewDialog({
 
   const go = (step: -1 | 1) => setPage((at) => Math.min(Math.max(1, at + step), count));
 
+  // Het scrollwiel bladert aan de boven- of onderrand van de pagina, zoals overal.
+  const scroller = useRef<HTMLDivElement>(null);
+  useEdgeWheel(scroller, (direction) => {
+    const to = page + direction;
+    return to >= 1 && to <= count ? () => setPage(to) : null;
+  });
+
   return (
     <dialog
       ref={dialog}
@@ -169,33 +178,22 @@ export function PreviewDialog({
           <h2 id="preview-dialog-title" class="preview-dialog__title">
             {title}
           </h2>
-          <div class="preview-dialog__pages">
-            <button
-              type="button"
-              class="button button--secondary"
-              aria-label={p.previous}
-              disabled={page <= 1}
-              onClick={() => go(-1)}
-            >
-              ‹
-            </button>
+          <PageNav page={page} count={Math.max(1, count)} onPage={(to) => setPage(to)}>
             <span aria-live="polite">{label}</span>
-            <button
-              type="button"
-              class="button button--secondary"
-              aria-label={p.next}
-              disabled={page >= count}
-              onClick={() => go(1)}
-            >
-              ›
-            </button>
-          </div>
+          </PageNav>
           <button type="button" class="button button--secondary" onClick={onClose}>
             {p.close}
           </button>
         </div>
         {/* Scrolt bij een grote pagina; met het toetsenbord bereikbaar (Tab, dan pijltjes). */}
-        <div class="preview-dialog__page" tabIndex={0} role="region" aria-label={label || title}>
+        <div
+          ref={scroller}
+          class="preview-dialog__page"
+          data-scroll-root
+          tabIndex={0}
+          role="region"
+          aria-label={label || title}
+        >
           {failed ? (
             <p role="alert">{p.error}</p>
           ) : (

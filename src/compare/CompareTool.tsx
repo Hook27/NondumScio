@@ -1,7 +1,8 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'preact/hooks';
 import { Dropzone } from '../components/Dropzone';
 import { useShortcuts } from '../lib/useShortcuts';
-import { CanvasBox, usePageSpace } from '../components/PageView';
+import { PageNav, ZoomBar } from '../components/PageBars';
+import { CanvasBox, useEdgeWheel, usePageSpace } from '../components/PageView';
 import { IncomingNote } from '../components/IncomingNote';
 import { PaneHead } from '../components/WorkspaceParts';
 import { useI18n } from '../i18n/LanguageContext';
@@ -250,39 +251,15 @@ function pageTotal(state: ReturnType<typeof useCompareState>) {
 const decimals = (n: number, digits: number, language: string) =>
   n.toLocaleString(language, { minimumFractionDigits: digits, maximumFractionDigits: digits });
 
-/** Links bij het beeld: bladeren, B verschuiven, de weergave, de drempel of B over A, en de zoom. */
+/** Links bij het beeld: B verschuiven, de weergave, en de drempel of B over A. */
 function VisualControls() {
   const { t } = useI18n();
   const v = t.compare.visual;
   const state = useCompareState();
   const { visual } = state;
-  const total = pageTotal(state);
-  const page = Math.min(visual.page, Math.max(1, total));
-  const lastZoom = ZOOM_STEPS[ZOOM_STEPS.length - 1]!;
   return (
     <fieldset class="compare-settings compare-visual__controls">
       <legend>{v.title}</legend>
-      <div class="compare-visual__nav">
-        <button
-          type="button"
-          class="button button--secondary"
-          aria-label={v.previous}
-          disabled={total === 0 || page <= 1}
-          onClick={() => setVisual({ page: page - 1 })}
-        >
-          ◀
-        </button>
-        <span>{total > 0 ? format(v.page, { n: page, total }) : v.noPages}</span>
-        <button
-          type="button"
-          class="button button--secondary"
-          aria-label={v.next}
-          disabled={page >= total}
-          onClick={() => setVisual({ page: page + 1 })}
-        >
-          ▶
-        </button>
-      </div>
       <div class="compare-visual__offset">
         <label for="compare-offset">{v.offset}</label>
         <input
@@ -335,38 +312,6 @@ function VisualControls() {
           </p>
         </div>
       )}
-      <p id="compare-zoom-label" class="compare-settings__label">
-        {v.zoom}
-      </p>
-      <div class="compare-visual__zoom" role="group" aria-labelledby="compare-zoom-label">
-        <button
-          type="button"
-          class="button button--secondary"
-          aria-label={v.zoomOut}
-          disabled={visual.zoom <= ZOOM_STEPS[0]}
-          onClick={() => setVisual({ zoom: stepZoom(visual.zoom, -1) })}
-        >
-          −
-        </button>
-        <output class="compare-visual__zoom-value">{`${visual.zoom}%`}</output>
-        <button
-          type="button"
-          class="button button--secondary"
-          aria-label={v.zoomIn}
-          disabled={visual.zoom >= lastZoom}
-          onClick={() => setVisual({ zoom: stepZoom(visual.zoom, 1) })}
-        >
-          +
-        </button>
-        <button
-          type="button"
-          class="button button--secondary"
-          disabled={visual.zoom === 100}
-          onClick={() => setVisual({ zoom: 100 })}
-        >
-          {v.fit}
-        </button>
-      </div>
       <p class="compare-settings__hint">{v.keys}</p>
     </fieldset>
   );
@@ -436,6 +381,12 @@ function VisualCanvas({ a, b }: { a: CompareDoc; b: CompareDoc }) {
 
   // Weg uit het beeld (of uit Vergelijken): wat nog getekend wordt, afbreken.
   useEffect(() => () => rendered.current?.stop.abort(), []);
+
+  // Het scrollwiel bladert aan de boven- of onderrand van het vak, zoals in Platte tekst en Triage.
+  useEdgeWheel(wrap, (direction) => {
+    const to = Math.min(getCompareState().visual.page, total) + direction;
+    return to >= 1 && to <= total ? () => setVisual({ page: to }) : null;
+  });
 
   // Bij "passend" hangt de tekenbreedte aan de breedte van het vak (met zijn opvulling eraf): opnieuw
   // meten als die verandert (zie PageView: gedeeld met Platte tekst en Triage).
@@ -543,9 +494,36 @@ function VisualCanvas({ a, b }: { a: CompareDoc; b: CompareDoc }) {
 
   return (
     <>
-      <PaneHead title={v.title} meta={format(v.pages, { a: pageA, b: pageB })}>
-        <ModeToggle />
-      </PaneHead>
+      {/* De kop en de blader- en zoombalk blijven samen boven het beeld staan als je schuift. */}
+      <div class="compare-visual__top">
+        <PaneHead title={v.title} meta={format(v.pages, { a: pageA, b: pageB })}>
+          <ModeToggle />
+        </PaneHead>
+        <div class="compare-visual__bar">
+          <PageNav
+            page={Math.max(1, pageA)}
+            count={Math.max(1, total)}
+            onPage={(page) => setVisual({ page })}
+            title={v.keys}
+          >
+            {total > 0 ? format(v.page, { n: pageA, total }) : v.noPages}
+          </PageNav>
+          <ZoomBar
+            percent={visual.zoom}
+            canZoomOut={visual.zoom > ZOOM_STEPS[0]}
+            canZoomIn={visual.zoom < ZOOM_STEPS[ZOOM_STEPS.length - 1]!}
+            onZoomOut={() => setVisual({ zoom: stepZoom(visual.zoom, -1) })}
+            onZoomIn={() => setVisual({ zoom: stepZoom(visual.zoom, 1) })}
+            fits={[
+              {
+                label: t.pageBar.fitWidth,
+                active: visual.zoom === 100,
+                onClick: () => setVisual({ zoom: 100 }),
+              },
+            ]}
+          />
+        </div>
+      </div>
       <p class="compare-visual__stat" aria-live="polite">
         {busy ? v.drawing : stat}
       </p>

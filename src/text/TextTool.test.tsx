@@ -196,6 +196,7 @@ vi.mock('../lib/zip', async (importOriginal) => {
 });
 
 const p = messages.nl.plainText;
+const pb = messages.nl.pageBar;
 const c = messages.nl.compare;
 const pdf = (name: string) => new File([`%PDF-1.7 ${name}`], name, { type: 'application/pdf' });
 /** De (nagebootste) vingerafdruk van brief.pdf, zoals `pdf('brief.pdf')` hem krijgt. */
@@ -377,10 +378,10 @@ describe('PDF → Platte tekst: voorbeeld', () => {
     await open('artikel.pdf');
     const at = (n: number) => screen.getByText(format(p.preview.page, { n, total: 3 }));
     expect(at(1)).toBeTruthy();
-    expect(button(p.preview.first).disabled).toBe(true);
-    expect(button(p.preview.previous).disabled).toBe(true);
+    expect(button(pb.first).disabled).toBe(true);
+    expect(button(pb.previous).disabled).toBe(true);
 
-    fireEvent.click(button(p.preview.next));
+    fireEvent.click(button(pb.next));
     expect(at(2)).toBeTruthy();
     await waitFor(() =>
       expect(renderPage).toHaveBeenLastCalledWith(
@@ -390,13 +391,13 @@ describe('PDF → Platte tekst: voorbeeld', () => {
         expect.anything(),
       ),
     );
-    fireEvent.click(button(p.preview.last));
+    fireEvent.click(button(pb.last));
     expect(at(3)).toBeTruthy();
-    expect(button(p.preview.next).disabled).toBe(true);
-    expect(button(p.preview.last).disabled).toBe(true);
-    fireEvent.click(button(p.preview.previous));
+    expect(button(pb.next).disabled).toBe(true);
+    expect(button(pb.last).disabled).toBe(true);
+    fireEvent.click(button(pb.previous));
     expect(at(2)).toBeTruthy();
-    fireEvent.click(button(p.preview.first));
+    fireEvent.click(button(pb.first));
     expect(at(1)).toBeTruthy();
 
     fireEvent.keyDown(document.body, { key: 'ArrowRight' });
@@ -442,19 +443,19 @@ describe('PDF → Platte tekst: voorbeeld', () => {
 
   it('zoomt in en uit, en maakt de pagina of de breedte passend', async () => {
     await open('brief.pdf');
-    const zoom = () => document.querySelector('.plaintext-zoom__value')!.textContent;
-    expect(pressed(p.preview.fitPage)).toBe('true');
+    const zoom = () => document.querySelector('.zoom-bar__value')!.textContent;
+    expect(pressed(pb.fitPage)).toBe('true');
     const fitted = zoom();
-    fireEvent.click(button(p.preview.zoomIn));
-    expect(pressed(p.preview.fitPage)).toBe('false');
+    fireEvent.click(button(pb.zoomIn));
+    expect(pressed(pb.fitPage)).toBe('false');
     expect(parseInt(zoom()!, 10)).toBeGreaterThan(parseInt(fitted!, 10));
-    fireEvent.click(button(p.preview.zoomOut));
-    fireEvent.click(button(p.preview.zoomOut));
+    fireEvent.click(button(pb.zoomOut));
+    fireEvent.click(button(pb.zoomOut));
     expect(parseInt(zoom()!, 10)).toBeLessThan(parseInt(fitted!, 10));
-    fireEvent.click(button(p.preview.fitWidth));
-    expect(pressed(p.preview.fitWidth)).toBe('true');
-    expect(pressed(p.preview.fitPage)).toBe('false');
-    fireEvent.click(button(p.preview.fitPage));
+    fireEvent.click(button(pb.fitWidth));
+    expect(pressed(pb.fitWidth)).toBe('true');
+    expect(pressed(pb.fitPage)).toBe('false');
+    fireEvent.click(button(pb.fitPage));
     expect(zoom()).toBe(fitted);
   });
 
@@ -651,7 +652,7 @@ describe('PDF → Platte tekst: leesvakken', () => {
     fireEvent.click(check(p.zones.use));
     await settle();
     draw(...LEFT_BOX);
-    fireEvent.click(button(p.preview.next));
+    fireEvent.click(button(pb.next));
     choose('brief.pdf');
     await waitFor(() =>
       expect(screen.getByText(format(p.preview.page, { n: 1, total: 1 }))).toBeTruthy(),
@@ -851,15 +852,15 @@ describe('PDF → Platte tekst: indeling', () => {
     await open('artikel.pdf');
     const bar = document.querySelector<HTMLElement>('.plaintext-bar')!;
     expect(within(bar).getByRole('group', { name: p.views.label })).toBeTruthy();
-    expect(within(bar).getByRole('group', { name: p.preview.nav })).toBeTruthy();
-    expect(within(bar).getByRole('group', { name: p.preview.zoom })).toBeTruthy();
+    expect(within(bar).getByRole('group', { name: pb.nav })).toBeTruthy();
+    expect(within(bar).getByRole('group', { name: pb.zoom })).toBeTruthy();
     expect(within(bar).getByText('1 / 3')).toBeTruthy();
     expect(within(bar).queryByRole('button', { name: p.copy })).toBeNull();
     fireEvent.click(button(p.extract));
     const result = document.querySelector<HTMLElement>('.plaintext-bar')!;
     expect(within(result).getByRole('button', { name: p.copy })).toBeTruthy();
     expect(within(result).getByRole('button', { name: p.download })).toBeTruthy();
-    expect(within(result).queryByRole('group', { name: p.preview.nav })).toBeNull();
+    expect(within(result).queryByRole('group', { name: pb.nav })).toBeNull();
   });
 });
 
@@ -1080,7 +1081,7 @@ describe('PDF → Platte tekst: vakken per pagina', () => {
     expect(screen.getByText(p.zones.ownOff)).toBeTruthy();
     draw(...LEFT_BOX);
 
-    fireEvent.click(button(p.preview.next));
+    fireEvent.click(button(pb.next));
     await settle();
     fireEvent.click(check(p.zones.own));
     expect(screen.getByText(format(p.zones.ownOn, { n: 2 }))).toBeTruthy();
@@ -1100,12 +1101,12 @@ describe('PDF → Platte tekst: vakken per pagina', () => {
 
     // Pagina 1 heeft nog steeds de standaardvakken.
     fireEvent.click(button(p.views.preview));
-    fireEvent.click(button(p.preview.first));
+    fireEvent.click(button(pb.first));
     expect(check(p.zones.own).checked).toBe(false);
     expect(document.querySelector('.plaintext-zone--own')).toBeNull();
 
     // Uitvinken op pagina 2: terug naar de standaardvakken.
-    fireEvent.click(button(p.preview.next));
+    fireEvent.click(button(pb.next));
     fireEvent.click(check(p.zones.own));
     fireEvent.click(button(p.extract));
     expect(output()!.value).toBe([1, 2, 3].map((no) => columnText('links', no)).join('\n\n'));
@@ -1116,7 +1117,7 @@ describe('PDF → Platte tekst: vakken per pagina', () => {
     fireEvent.click(check(p.zones.use));
     await settle();
     draw(...LEFT_BOX);
-    fireEvent.click(button(p.preview.next));
+    fireEvent.click(button(pb.next));
     fireEvent.click(check(p.zones.own));
     fireEvent.click(button(p.zones.clearAll));
     fireEvent.click(button(p.extract));
@@ -1153,7 +1154,7 @@ describe('PDF → Platte tekst: vakken per pagina', () => {
     for (let no = 1; no <= 3; no++) {
       expect(check(p.zones.own).checked, `pagina ${no}`).toBe(true);
       expect(zoneList()).toEqual(['Vak 1']);
-      fireEvent.click(button(p.preview.next));
+      fireEvent.click(button(pb.next));
     }
     expect(Object.keys(getTextState().pages)).toEqual(['1', '2', '3']);
     fireEvent.click(button(messages.nl.pages.undo));
@@ -1206,7 +1207,7 @@ describe('PDF → Platte tekst: vakken per pagina', () => {
     fireEvent.click(check(p.zones.use));
     await settle();
     draw(...LEFT_BOX);
-    fireEvent.click(button(p.preview.next));
+    fireEvent.click(button(pb.next));
     fireEvent.click(check(p.zones.own));
     fireEvent.click(button(p.zones.clearAll));
     await settle();
@@ -1226,7 +1227,7 @@ describe('PDF → Platte tekst: instellingen bewaren', () => {
     fireEvent.click(check(p.zones.use));
     await settle();
     draw(...LEFT_BOX);
-    fireEvent.click(button(p.preview.next));
+    fireEvent.click(button(pb.next));
     fireEvent.click(check(p.zones.own));
     fireEvent.click(check(p.settings.dehyphen));
     expect(stored()).toEqual([`${SETTINGS_PREFIX}artikel.pdf`]);
@@ -1658,7 +1659,7 @@ describe('PDF → Platte tekst: pagina-overgangen', () => {
     // Op pagina 1 valt er niets te kiezen.
     expect(screen.getByText(g.joinFirst)).toBeTruthy();
     expect(screen.queryByRole('combobox')).toBeNull();
-    fireEvent.click(button(p.preview.last));
+    fireEvent.click(button(pb.last));
     const select = screen.getByRole<HTMLSelectElement>('combobox', {
       name: format(g.join, { n: 4 }),
     });
@@ -1669,8 +1670,8 @@ describe('PDF → Platte tekst: pagina-overgangen', () => {
     expect(output()!.value).toContain('op de\n\nvolgende pagina');
     // Pagina 2 aaneen met pagina 1.
     fireEvent.click(button(p.views.preview));
-    fireEvent.click(button(p.preview.first));
-    fireEvent.click(button(p.preview.next));
+    fireEvent.click(button(pb.first));
+    fireEvent.click(button(pb.next));
     fireEvent.change(screen.getByRole('combobox'), { target: { value: 'join' } });
     fireEvent.click(button(p.extract));
     expect(output()!.value!.startsWith('De titel van het boek. Het voorwoord')).toBe(true);
@@ -1686,7 +1687,7 @@ describe('PDF → Platte tekst: pagina-overgangen', () => {
 
   it('de keuzes per overgang worden onthouden en opgeslagen', async () => {
     await open('boek.pdf');
-    fireEvent.click(button(p.preview.last));
+    fireEvent.click(button(pb.last));
     fireEvent.change(screen.getByRole('combobox'), { target: { value: 'break' } });
     fireEvent.click(button(p.save.export));
     const [data] = vi.mocked(downloadFile).mock.calls[0]!;
@@ -1701,7 +1702,7 @@ describe('PDF → Platte tekst: pagina-overgangen', () => {
 
   it('een andere PDF begint zonder keuzes per overgang', async () => {
     await open('boek.pdf');
-    fireEvent.click(button(p.preview.last));
+    fireEvent.click(button(pb.last));
     fireEvent.change(screen.getByRole('combobox'), { target: { value: 'break' } });
     expect(getTextState().joins).toEqual({ 4: 'break' });
     choose('brief.pdf');
@@ -1713,10 +1714,10 @@ describe('PDF → Platte tekst: pagina-overgangen', () => {
 
   it('het afgedrukte paginanummer staat in de balk', async () => {
     await open('boek.pdf');
-    const bar = () => document.querySelector<HTMLElement>('.plaintext-nav__page')!;
+    const bar = () => document.querySelector<HTMLElement>('.page-nav__page')!;
     expect(bar().textContent).toContain('1 / 4');
     expect(document.querySelector('.plaintext-nav__printed')).toBeNull();
-    fireEvent.click(button(p.preview.next));
+    fireEvent.click(button(pb.next));
     expect(within(bar()).getByText('· 1', { exact: false })).toBeTruthy();
     expect(screen.getByText(format(p.preview.pageDoc, { n: 2, total: 4, p: '1' }))).toBeTruthy();
   });
@@ -2333,7 +2334,7 @@ describe('PDF → Platte tekst: opruimen', () => {
     const first = vi.mocked(renderPage).mock.lastCall![3]!;
     expect(first).toBeInstanceOf(AbortSignal);
     expect(first.aborted).toBe(false);
-    fireEvent.click(button(p.preview.next));
+    fireEvent.click(button(pb.next));
     await waitFor(() => expect(vi.mocked(renderPage).mock.lastCall![1]).toBe(2));
     expect(first.aborted).toBe(true);
     expect(vi.mocked(renderPage).mock.lastCall![3]!.aborted).toBe(false);

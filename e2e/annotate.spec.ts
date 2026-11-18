@@ -124,16 +124,16 @@ test.describe('annotaties: de weergave en het maken', () => {
     expect(before.width).toBeGreaterThan(300);
 
     const toolbar = page.getByRole('toolbar', { name: nl.edit.toolbar });
-    await toolbar.getByRole('button', { name: nl.edit.zoomIn }).click();
-    await toolbar.getByRole('button', { name: nl.edit.zoomIn }).click();
+    await toolbar.getByRole('button', { name: nl.pageBar.zoomIn }).click();
+    await toolbar.getByRole('button', { name: nl.pageBar.zoomIn }).click();
     const bigger = (await pages(page).first().boundingBox())!;
     expect(bigger.width / before.width).toBeCloseTo(1.5, 1);
     await expect(pages(page).first()).toHaveAttribute('data-rendered', 'true');
 
-    await toolbar.getByRole('button', { name: /terug naar paginabreedte/ }).click();
+    await toolbar.getByRole('button', { name: nl.pageBar.fitWidth }).click();
     const back = (await pages(page).first().boundingBox())!;
     expect(back.width).toBeCloseTo(before.width, 0);
-    await toolbar.getByRole('button', { name: nl.edit.zoomOut }).click();
+    await toolbar.getByRole('button', { name: nl.pageBar.zoomOut }).click();
     expect((await pages(page).first().boundingBox())!.width / before.width).toBeCloseTo(0.75, 1);
   });
 
@@ -153,7 +153,7 @@ test.describe('annotaties: de weergave en het maken', () => {
       [1, 4],
     ] as const) {
       for (let i = 0; i < times; i += 1) {
-        await toolbar.getByRole('button', { name: nl.edit.zoomOut }).click();
+        await toolbar.getByRole('button', { name: nl.pageBar.zoomOut }).click();
       }
       await expect.poll(row).toBe(columns);
     }

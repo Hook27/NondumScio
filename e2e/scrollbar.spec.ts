@@ -71,7 +71,7 @@ test.describe('Platte tekst op een scherm met schaal 150 %', () => {
       buffer: Buffer.from(await doc.save()),
     });
     await expect(page.locator('canvas.plaintext-preview__canvas')).toBeVisible({ timeout: 15_000 });
-    await page.getByRole('button', { name: messages.nl.plainText.preview.fitWidth }).click();
+    await page.getByRole('button', { name: messages.nl.pageBar.fitWidth }).click();
 
     const jumps: string[] = [];
     for (let width = 1100; width <= 1450; width += 9) {

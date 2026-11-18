@@ -189,6 +189,7 @@ vi.mock('./diff', async (importOriginal) => {
 });
 
 const c = messages.nl.compare;
+const pb = messages.nl.pageBar;
 const pdf = (name: string) => new File([`%PDF-1.7 ${name}`], name, { type: 'application/pdf' });
 
 function setup() {
@@ -771,9 +772,9 @@ describe('beeld', () => {
     fireEvent.click(button(c.tabs.visual));
     expect(screen.getByRole('heading', { name: v.title })).toBeTruthy();
     expect(screen.getByText(v.placeholder)).toBeTruthy();
-    expect(screen.getByText(v.noPages)).toBeTruthy();
-    expect(button(v.previous).hasAttribute('disabled')).toBe(true);
-    expect(button(v.next).hasAttribute('disabled')).toBe(true);
+    // De blader- en zoombalk staat boven het beeld: zonder beeld is die er nog niet.
+    expect(screen.queryByRole('group', { name: pb.nav })).toBeNull();
+    expect(screen.queryByRole('group', { name: pb.zoom })).toBeNull();
     // De instellingen en tellers horen bij de tekst.
     expect(screen.queryByRole('group', { name: c.settings.title })).toBeNull();
   });
@@ -825,13 +826,26 @@ describe('beeld', () => {
   it('bladeren, en een pagina die in B niet bestaat', async () => {
     await openVisual('scan.pdf', 'oud.pdf');
     expect(screen.getByText(format(v.page, { n: 1, total: 2 }))).toBeTruthy();
-    expect(button(v.previous).hasAttribute('disabled')).toBe(true);
-    fireEvent.click(button(v.next));
+    expect(button(pb.previous).hasAttribute('disabled')).toBe(true);
+    fireEvent.click(button(pb.next));
     await screen.findByText('Pagina 2 bestaat niet in B (B heeft 1 pagina).');
     expect(screen.getByText(format(v.page, { n: 2, total: 2 }))).toBeTruthy();
-    expect(button(v.next).hasAttribute('disabled')).toBe(true);
-    fireEvent.click(button(v.previous));
+    expect(button(pb.next).hasAttribute('disabled')).toBe(true);
+    fireEvent.click(button(pb.previous));
     await screen.findByText(/^Verschil: /);
+  });
+
+  it('het scrollwiel bladert aan de rand van het vak, zoals in Platte tekst', async () => {
+    await openVisual('scan.pdf', 'oud.pdf');
+    // jsdom meet niets: het vak staat altijd boven- en onderaan.
+    const root = document.querySelector('.workspace__view[data-scroll-root]')!;
+    expect(fireEvent.wheel(root, { deltaY: 50 })).toBe(false);
+    expect(screen.getByText(format(v.page, { n: 2, total: 2 }))).toBeTruthy();
+    await new Promise((resolve) => setTimeout(resolve, 300));
+    // Op de laatste pagina: gewoon scrollen.
+    expect(fireEvent.wheel(root, { deltaY: 50 })).toBe(true);
+    expect(fireEvent.wheel(root, { deltaY: -50 })).toBe(false);
+    expect(screen.getByText(format(v.page, { n: 1, total: 2 }))).toBeTruthy();
   });
 
   it('B verschuiven: pagina 1 van A naast pagina 2 van B', async () => {
@@ -877,15 +891,20 @@ describe('beeld', () => {
 
   it('zoomen tekent op een andere breedte; Passend gaat terug', async () => {
     await openVisual('oud.pdf', 'nieuw.pdf');
-    expect(button(v.fit).hasAttribute('disabled')).toBe(true);
-    fireEvent.click(button(v.zoomIn));
+    expect(button(pb.fitWidth).getAttribute('aria-pressed')).toBe('true');
+    fireEvent.click(button(pb.zoomIn));
     expect(screen.getByText('125%')).toBeTruthy();
+    expect(button(pb.fitWidth).getAttribute('aria-pressed')).toBe('false');
     await waitFor(() => expect(vi.mocked(renderPage).mock.lastCall![2]).toBe(1175));
-    fireEvent.click(button(v.fit));
+    fireEvent.click(button(pb.fitWidth));
     expect(screen.getByText('100%')).toBeTruthy();
-    for (let i = 0; i < 3; i++) fireEvent.click(button(v.zoomOut));
+    for (let i = 0; i < 3; i++) fireEvent.click(button(pb.zoomOut));
     expect(screen.getByText('50%')).toBeTruthy();
-    expect(button(v.zoomOut).hasAttribute('disabled')).toBe(true);
+    expect(button(pb.zoomOut).hasAttribute('disabled')).toBe(true);
+    // Tot 400% en niet verder.
+    for (let i = 0; i < 7; i++) fireEvent.click(button(pb.zoomIn));
+    expect(screen.getByText('400%')).toBeTruthy();
+    expect(button(pb.zoomIn).hasAttribute('disabled')).toBe(true);
   });
 
   it('toetsen: ← → bladeren, + − zoomen, 0 passend; niet in een invoerveld en niet met Ctrl', async () => {
@@ -943,11 +962,11 @@ describe('beeld', () => {
 
   it('Wissen: terug naar Tekst, pagina 1, geen verschuiving, passend; de PDF’s gaan dicht', async () => {
     await openVisual('scan.pdf', 'oud.pdf');
-    fireEvent.click(button(v.next));
+    fireEvent.click(button(pb.next));
     fireEvent.change(screen.getByRole('spinbutton', { name: v.offset }), {
       target: { value: '1' },
     });
-    fireEvent.click(button(v.zoomIn));
+    fireEvent.click(button(pb.zoomIn));
     fireEvent.click(mode(v.modes.overlay));
     fireEvent.click(button(c.clear));
     expect(
@@ -959,10 +978,10 @@ describe('beeld', () => {
     expect(button(c.tabs.text).getAttribute('aria-pressed')).toBe('true');
     fireEvent.click(button(c.tabs.visual));
     expect(screen.getByRole<HTMLInputElement>('spinbutton', { name: v.offset }).value).toBe('0');
-    expect(screen.getByText('100%')).toBeTruthy();
     // De weergave blijft staan, zoals de instellingen bij de tekst.
     choose('a', 'scan.pdf', 'oud.pdf');
     await screen.findByText(format(v.page, { n: 1, total: 2 }));
+    expect(document.querySelector('.zoom-bar__value')!.textContent).toBe('100%');
     expect(mode(v.modes.overlay).getAttribute('aria-pressed')).toBe('true');
   });
 
@@ -975,7 +994,7 @@ describe('beeld', () => {
     fireEvent.input(screen.getByRole('slider', { name: v.threshold }), { target: { value: '60' } });
     await waitFor(() => expect(vi.mocked(composeDiff).mock.lastCall![2]).toBe(60));
     expect(first.some((signal) => signal!.aborted)).toBe(false);
-    fireEvent.click(button(v.next));
+    fireEvent.click(button(pb.next));
     await waitFor(() => expect(vi.mocked(renderPage).mock.calls.length).toBeGreaterThan(2));
     expect(first.every((signal) => signal!.aborted)).toBe(true);
   });
@@ -993,7 +1012,7 @@ describe('beeld', () => {
     fireEvent.click(button(c.tabs.visual));
     await waitFor(() => expect(renderPage).toHaveBeenCalledTimes(2));
     // Nog vóór pagina 1 klaar is, naar pagina 2.
-    fireEvent.click(button(v.next));
+    fireEvent.click(button(pb.next));
     await screen.findByText('A: pagina 2 · B: pagina 2');
     expect(renderPage).toHaveBeenCalledTimes(4);
     fireEvent.input(screen.getByRole('slider', { name: v.threshold }), { target: { value: '60' } });

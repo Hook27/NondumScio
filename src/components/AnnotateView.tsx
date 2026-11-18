@@ -35,6 +35,7 @@ import { FileList } from './FilesParts';
 import { RadioGroup } from './ConvertParts';
 import { Icon, IconButton, type IconName } from './Icon';
 import { SaveDialog } from './SaveDialog';
+import { ZoomBar } from './PageBars';
 import { useSaveJob } from './useSaveJob';
 import { PaneHead, Split, useInfo } from './WorkspaceParts';
 import { DPI_CHOICES } from '../pdf/redactOptions';
@@ -512,27 +513,20 @@ export function AnnotateView({ mode = 'annotate' }: { mode?: 'annotate' | 'redac
                 onClick={redo}
               />
             </div>
-            <div class="toolbar__group" role="group" aria-label={t.edit.zoom}>
-              <IconButton
-                icon="zoomOut"
-                label={t.edit.zoomOut}
-                disabled={zoomIndex === 0}
-                onClick={() => setZoomIndex(zoomIndex - 1)}
-              />
-              <button
-                type="button"
-                class="button button--secondary annotate__zoom"
-                aria-label={format(t.edit.zoomReset, { percent })}
-                disabled={zoomIndex === FIT}
-                onClick={() => setZoomIndex(FIT)}
-              >
-                {percent}%
-              </button>
-              <IconButton
-                icon="zoomIn"
-                label={t.edit.zoomIn}
-                disabled={zoomIndex === ZOOMS.length - 1}
-                onClick={() => setZoomIndex(zoomIndex + 1)}
+            <div class="toolbar__group">
+              <ZoomBar
+                percent={percent}
+                canZoomOut={zoomIndex > 0}
+                canZoomIn={zoomIndex < ZOOMS.length - 1}
+                onZoomOut={() => setZoomIndex(zoomIndex - 1)}
+                onZoomIn={() => setZoomIndex(zoomIndex + 1)}
+                fits={[
+                  {
+                    label: t.pageBar.fitWidth,
+                    active: zoomIndex === FIT,
+                    onClick: () => setZoomIndex(FIT),
+                  },
+                ]}
               />
             </div>
             <div class="toolbar__group toolbar__group--wide">
