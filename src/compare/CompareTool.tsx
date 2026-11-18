@@ -494,32 +494,35 @@ function VisualCanvas({ a, b }: { a: CompareDoc; b: CompareDoc }) {
 
   return (
     <>
-      <PaneHead title={v.title} meta={format(v.pages, { a: pageA, b: pageB })}>
-        <ModeToggle />
-      </PaneHead>
-      <div class="compare-visual__bar">
-        <PageNav
-          page={Math.max(1, pageA)}
-          count={Math.max(1, total)}
-          onPage={(page) => setVisual({ page })}
-          title={v.keys}
-        >
-          {total > 0 ? format(v.page, { n: pageA, total }) : v.noPages}
-        </PageNav>
-        <ZoomBar
-          percent={visual.zoom}
-          canZoomOut={visual.zoom > ZOOM_STEPS[0]}
-          canZoomIn={visual.zoom < ZOOM_STEPS[ZOOM_STEPS.length - 1]!}
-          onZoomOut={() => setVisual({ zoom: stepZoom(visual.zoom, -1) })}
-          onZoomIn={() => setVisual({ zoom: stepZoom(visual.zoom, 1) })}
-          fits={[
-            {
-              label: t.pageBar.fitWidth,
-              active: visual.zoom === 100,
-              onClick: () => setVisual({ zoom: 100 }),
-            },
-          ]}
-        />
+      {/* De kop en de blader- en zoombalk blijven samen boven het beeld staan als je schuift. */}
+      <div class="compare-visual__top">
+        <PaneHead title={v.title} meta={format(v.pages, { a: pageA, b: pageB })}>
+          <ModeToggle />
+        </PaneHead>
+        <div class="compare-visual__bar">
+          <PageNav
+            page={Math.max(1, pageA)}
+            count={Math.max(1, total)}
+            onPage={(page) => setVisual({ page })}
+            title={v.keys}
+          >
+            {total > 0 ? format(v.page, { n: pageA, total }) : v.noPages}
+          </PageNav>
+          <ZoomBar
+            percent={visual.zoom}
+            canZoomOut={visual.zoom > ZOOM_STEPS[0]}
+            canZoomIn={visual.zoom < ZOOM_STEPS[ZOOM_STEPS.length - 1]!}
+            onZoomOut={() => setVisual({ zoom: stepZoom(visual.zoom, -1) })}
+            onZoomIn={() => setVisual({ zoom: stepZoom(visual.zoom, 1) })}
+            fits={[
+              {
+                label: t.pageBar.fitWidth,
+                active: visual.zoom === 100,
+                onClick: () => setVisual({ zoom: 100 }),
+              },
+            ]}
+          />
+        </div>
       </div>
       <p class="compare-visual__stat" aria-live="polite">
         {busy ? v.drawing : stat}

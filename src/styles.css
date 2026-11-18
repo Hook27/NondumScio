@@ -3729,6 +3729,20 @@ rect.handle {
     background: var(--bg);
   }
 
+  /* Vergelijken: de kop en de blader- en zoombalk blijven samen boven het beeld staan. */
+  .workspace__view .compare-visual__top {
+    /* flow-root: de witruimte onder de balk hoort bij het blok, ook als het beeld eronder schuift. */
+    display: flow-root;
+    position: sticky;
+    top: -4px;
+    z-index: 2;
+    background: var(--bg);
+  }
+
+  .workspace__view .compare-visual__top .pane-head {
+    position: static;
+  }
+
   /* De kolomkoppen van de delen blijven onder de kop van het vak staan (zie `BookmarkTable`). */
   .workspace__view .bookmark-table__head {
     position: sticky;
