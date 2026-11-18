@@ -25,15 +25,14 @@ import {
 import { pageRows, pageSize, profileRows, type PageNote, type ProfileDoc } from './profile';
 import { buildReport, copyText, type ReportDoc } from './report';
 import {
-  ZOOM_STEPS,
   closeVisual,
   composeDiff,
   composeOverlay,
+  drawWidths,
   fitWidth,
   renderPage,
-  stepZoom,
-  targetWidths,
 } from './visual';
+import { ZOOM_KEYS, nextZoom, realPercent, realWidth } from '../lib/zoom';
 import {
   clearCompare,
   expandRows,
@@ -391,15 +390,23 @@ function VisualCanvas({ a, b }: { a: CompareDoc; b: CompareDoc }) {
   // Bij "passend" hangt de tekenbreedte aan de breedte van het vak (met zijn opvulling eraf): opnieuw
   // meten als die verandert (zie PageView: gedeeld met Platte tekst en Triage).
   const available = usePageSpace(wrap).w - 32;
+  const side = visual.mode === 'side';
+  // Passend: zo breed als het vak (naast elkaar de helft); anders een vaste stap van de echte maat
+  // van pagina A (zie lib/zoom). B wordt even breed getekend, anders klopt het verschil niet.
+  const pointsA = a.pages.find((page) => page.no === pageA)?.w || 595;
+  const widths = drawWidths(
+    visual.zoom === null
+      ? fitWidth(available > 0 ? available : 940, side)
+      : realWidth(pointsA, visual.zoom),
+    window.devicePixelRatio,
+  );
+  // Wat je ziet, in procenten van de echte maat: voor de zoombalk, en + − gaan van hieruit verder.
+  const shown = visual.zoom ?? realPercent(widths.css, pointsA);
+  const zoomOut = nextZoom(shown, -1);
+  const zoomIn = nextZoom(shown, 1);
 
   useEffect(() => {
     let cancelled = false;
-    const side = visual.mode === 'side';
-    const widths = targetWidths(
-      fitWidth(available > 0 ? available : 940, side),
-      visual.zoom,
-      window.devicePixelRatio,
-    );
     const key = [fileId(a.file), pageA, fileId(b.file), pageB, widths.dev].join('|');
     if (rendered.current?.key !== key) {
       // Andere pagina's of een andere breedte: wat nog getekend wordt, is niet meer nodig.
@@ -443,7 +450,7 @@ function VisualCanvas({ a, b }: { a: CompareDoc; b: CompareDoc }) {
     return () => {
       cancelled = true;
     };
-  }, [a, b, pageA, pageB, visual.mode, visual.threshold, visual.alpha, visual.zoom, available]);
+  }, [a, b, pageA, pageB, visual.mode, visual.threshold, visual.alpha, widths.dev, widths.ratio]);
 
   // Toetsen zoals overal (zie de bedieningsafspraak): ← → ↑ ↓ PgUp PgDn bladeren, Home End naar de
   // eerste of laatste pagina, + − zoomen, 0 = passend; niet met Ctrl (en zie useShortcuts).
@@ -462,18 +469,16 @@ function VisualCanvas({ a, b }: { a: CompareDoc; b: CompareDoc }) {
         PageDown: forward,
         Home: () => setVisual({ page: 1 }),
         End: () => setVisual({ page: Math.max(1, total) }),
-        '+': () => setVisual({ zoom: stepZoom(now.zoom, 1) }),
-        '=': () => setVisual({ zoom: stepZoom(now.zoom, 1) }),
-        '-': () => setVisual({ zoom: stepZoom(now.zoom, -1) }),
-        _: () => setVisual({ zoom: stepZoom(now.zoom, -1) }),
-        '0': () => setVisual({ zoom: 100 }),
+        '0': () => setVisual({ zoom: null }),
       };
-      const action = actions[event.key];
+      const step = ZOOM_KEYS[event.key];
+      const next = step === undefined ? null : step > 0 ? zoomIn : zoomOut;
+      const action = next !== null ? () => setVisual({ zoom: next }) : actions[event.key];
       if (!action) return;
       event.preventDefault();
       action();
     },
-    [total],
+    [total, zoomIn, zoomOut],
   );
 
   const stat =
@@ -509,16 +514,16 @@ function VisualCanvas({ a, b }: { a: CompareDoc; b: CompareDoc }) {
             {total > 0 ? format(v.page, { n: pageA, total }) : v.noPages}
           </PageNav>
           <ZoomBar
-            percent={visual.zoom}
-            canZoomOut={visual.zoom > ZOOM_STEPS[0]}
-            canZoomIn={visual.zoom < ZOOM_STEPS[ZOOM_STEPS.length - 1]!}
-            onZoomOut={() => setVisual({ zoom: stepZoom(visual.zoom, -1) })}
-            onZoomIn={() => setVisual({ zoom: stepZoom(visual.zoom, 1) })}
+            percent={Math.round(shown)}
+            canZoomOut={zoomOut !== null}
+            canZoomIn={zoomIn !== null}
+            onZoomOut={() => setVisual({ zoom: zoomOut })}
+            onZoomIn={() => setVisual({ zoom: zoomIn })}
             fits={[
               {
                 label: t.pageBar.fitWidth,
-                active: visual.zoom === 100,
-                onClick: () => setVisual({ zoom: 100 }),
+                active: visual.zoom === null,
+                onClick: () => setVisual({ zoom: null }),
               },
             ]}
           />

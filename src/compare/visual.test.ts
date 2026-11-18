@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { MAX_CANVAS_W, fitWidth, pixelDiff, stepZoom, targetWidths } from './visual';
+import { MAX_CANVAS_W, drawWidths, fitWidth, pixelDiff } from './visual';
 
 /** Eén pixel (RGBA) per grijswaarde: 0 = zwart, 255 = wit. */
 const pixels = (...grays: number[]) =>
@@ -40,15 +40,7 @@ describe('pixelDiff', () => {
   });
 });
 
-describe('zoom en breedtes', () => {
-  it('stapt door de zoomstappen, en blijft binnen de grenzen', () => {
-    expect(stepZoom(100, 1)).toBe(125);
-    expect(stepZoom(100, -1)).toBe(75);
-    expect(stepZoom(50, -1)).toBe(50);
-    expect(stepZoom(400, 1)).toBe(400);
-    expect(stepZoom(110, 1)).toBe(100);
-  });
-
+describe('breedtes', () => {
   it('past een pagina in het vak, of twee naast elkaar', () => {
     expect(fitWidth(1000, false)).toBe(1000);
     expect(fitWidth(1000, true)).toBe(492);
@@ -57,11 +49,13 @@ describe('zoom en breedtes', () => {
   });
 
   it('tekent fijner op een scherm met hoge pixeldichtheid, hooguit 2× en hooguit 3200 breed', () => {
-    expect(targetWidths(1000, 100, 1)).toEqual({ css: 1000, dev: 1000, ratio: 1 });
-    expect(targetWidths(1000, 100, 2)).toEqual({ css: 1000, dev: 2000, ratio: 2 });
-    expect(targetWidths(1000, 100, 3)).toEqual({ css: 1000, dev: 2000, ratio: 2 });
-    expect(targetWidths(1000, 400, 2)).toEqual({ css: 4000, dev: MAX_CANVAS_W, ratio: 0.8 });
-    expect(targetWidths(100, 50, 1)).toEqual({ css: 120, dev: 120, ratio: 1 });
-    expect(targetWidths(1000, 100, 0).dev).toBe(1000);
+    expect(drawWidths(1000, 1)).toEqual({ css: 1000, dev: 1000, ratio: 1 });
+    expect(drawWidths(1000, 2)).toEqual({ css: 1000, dev: 2000, ratio: 2 });
+    expect(drawWidths(1000, 3)).toEqual({ css: 1000, dev: 2000, ratio: 2 });
+    expect(drawWidths(4000, 2)).toEqual({ css: 4000, dev: MAX_CANVAS_W, ratio: 0.8 });
+    expect(drawWidths(50, 1)).toEqual({ css: 120, dev: 120, ratio: 1 });
+    expect(drawWidths(1000, 0).dev).toBe(1000);
+    // Afgerond op hele beeldpunten.
+    expect(drawWidths(793.4, 1).css).toBe(793);
   });
 });

@@ -7,21 +7,11 @@ import { closePdf, openPdfFile } from '../pdf/loader';
  * staan hier los van het scherm, zodat ze te testen zijn.
  */
 
-/** De zoomstappen, in procenten van "passend in het vak". */
-export const ZOOM_STEPS = [50, 75, 100, 125, 150, 200, 300, 400] as const;
-
 /** De breedste pagina die we tekenen (in beeldpunten), ook bij inzoomen. */
 export const MAX_CANVAS_W = 3200;
 
 /** Ruimte tussen de twee pagina's naast elkaar (in CSS-pixels). */
 export const SIDE_GAP = 16;
-
-/** De volgende zoomstap (`dir` 1 of −1); buiten de stappen terug naar passend. */
-export function stepZoom(zoom: number, dir: 1 | -1): number {
-  const i = (ZOOM_STEPS as readonly number[]).indexOf(zoom);
-  if (i === -1) return 100;
-  return ZOOM_STEPS[Math.max(0, Math.min(ZOOM_STEPS.length - 1, i + dir))]!;
-}
 
 /** De breedte van één pagina als hij precies in het vak past; naast elkaar de helft. */
 export function fitWidth(available: number, side: boolean): number {
@@ -30,11 +20,12 @@ export function fitWidth(available: number, side: boolean): number {
 }
 
 /**
- * De weergavebreedte (`css`) en de werkelijke tekenbreedte (`dev`). Op een scherm met hoge
- * pixeldichtheid tekenen we fijner dan we tonen (hooguit 2×), anders is de tekst zacht.
+ * De weergavebreedte (`css`, afgerond, minstens 120) bij een gewenste breedte `width`, en de
+ * werkelijke tekenbreedte (`dev`). Op een scherm met hoge pixeldichtheid tekenen we fijner dan we
+ * tonen (hooguit 2×), anders is de tekst zacht. De zoom zelf: zie `src/lib/zoom.ts`.
  */
-export function targetWidths(fit: number, zoom: number, devicePixelRatio: number) {
-  const css = Math.max(120, Math.round((fit * zoom) / 100));
+export function drawWidths(width: number, devicePixelRatio: number) {
+  const css = Math.max(120, Math.round(width));
   const dpr = Math.min(2, devicePixelRatio || 1);
   const dev = Math.min(MAX_CANVAS_W, Math.round(css * dpr));
   return { css, dev, ratio: dev / css };

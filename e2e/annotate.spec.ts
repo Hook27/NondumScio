@@ -126,17 +126,25 @@ test.describe('annotaties: de weergave en het maken', () => {
 
     // De zoombalk staat boven de pagina's, in de groep Zoom.
     const toolbar = page.getByRole('group', { name: nl.pageBar.zoom });
+    const percent = async () =>
+      parseInt((await toolbar.locator('.zoom-bar__value').textContent())!, 10);
+    // Passend: het percentage is dat van de echte maat (een A4 is 595 punten, 96/72 per punt).
+    expect(await percent()).toBe(Math.round((before.width / ((595 * 96) / 72)) * 100));
     await toolbar.getByRole('button', { name: nl.pageBar.zoomIn }).click();
     await toolbar.getByRole('button', { name: nl.pageBar.zoomIn }).click();
+    // Een vaste stap: de pagina is precies zo breed als dat percentage van de echte maat.
+    const step = await percent();
+    expect(step).toBeGreaterThan(Math.round((before.width / ((595 * 96) / 72)) * 100));
     const bigger = (await pages(page).first().boundingBox())!;
-    expect(bigger.width / before.width).toBeCloseTo(1.5, 1);
+    expect(bigger.width).toBeCloseTo((595 * 96 * step) / 72 / 100, 0);
     await expect(pages(page).first()).toHaveAttribute('data-rendered', 'true');
 
     await toolbar.getByRole('button', { name: nl.pageBar.fitWidth }).click();
     const back = (await pages(page).first().boundingBox())!;
     expect(back.width).toBeCloseTo(before.width, 0);
+    // Kleiner dan passend: het overzicht (twee naast elkaar).
     await toolbar.getByRole('button', { name: nl.pageBar.zoomOut }).click();
-    expect((await pages(page).first().boundingBox())!.width / before.width).toBeCloseTo(0.75, 1);
+    expect((await pages(page).first().boundingBox())!.width).toBeLessThan(before.width / 2);
   });
 
   test('bladeren boven de pagina’s: de balk blijft staan en volgt het schuiven', async ({
@@ -177,16 +185,12 @@ test.describe('annotaties: de weergave en het maken', () => {
       return boxes.filter((top) => top === boxes[0]).length;
     };
     expect(await row()).toBe(1);
-    for (const [times, columns] of [
-      [2, 2],
-      [1, 3],
-      [1, 4],
-    ] as const) {
-      for (let i = 0; i < times; i += 1) {
-        await toolbar.getByRole('button', { name: nl.pageBar.zoomOut }).click();
-      }
+    // Eén stap kleiner dan passend is al het overzicht.
+    for (const columns of [2, 3, 4]) {
+      await toolbar.getByRole('button', { name: nl.pageBar.zoomOut }).click();
       await expect.poll(row).toBe(columns);
     }
+    await expect(toolbar.getByRole('button', { name: nl.pageBar.zoomOut })).toBeDisabled();
     // Het overzicht blijft binnen het vak.
     const view = (await page.locator('.annotate-pages').boundingBox())!;
     const last = (await pages(page).last().boundingBox())!;

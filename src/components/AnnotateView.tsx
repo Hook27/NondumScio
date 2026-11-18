@@ -30,7 +30,9 @@ import {
   readSources,
   type SaveErrorCode,
 } from '../pdf/save';
-import { AnnotatePage, type AnnotateController } from './AnnotatePage';
+import { AnnotatePage, pageInfo, type AnnotateController } from './AnnotatePage';
+import { displaySize } from '../annotations/geometry';
+import { ZOOM_KEYS, nextZoom, realPercent, realWidth } from '../lib/zoom';
 import { FileList } from './FilesParts';
 import { RadioGroup } from './ConvertParts';
 import { Icon, IconButton, type IconName } from './Icon';
@@ -46,22 +48,32 @@ import { RedactSearchPanel } from './RedactSearch';
 import { OutlinePanel } from './OutlinePanel';
 
 /**
- * De zoomstanden. Bij 25, 33 en 50% staan 4, 3 of 2 pagina's naast elkaar (een overzicht, zoals
- * het raster bij de andere taken); vanaf 75% staat er één pagina per regel, met 100% zo breed
- * als het vak.
+ * De zoomstand: passend (zo breed als het vak), een overzicht met 2, 3 of 4 pagina's naast elkaar
+ * (zoals het raster bij de andere taken), of een vaste stap van de echte maat (zie lib/zoom).
  */
-const ZOOMS = [
-  { percent: 25, columns: 4 },
-  { percent: 33, columns: 3 },
-  { percent: 50, columns: 2 },
-  { percent: 75 },
-  { percent: 100 },
-  { percent: 125 },
-  { percent: 150 },
-  { percent: 200 },
-  { percent: 300 },
-] as const;
-const FIT = 4;
+export type EditZoom =
+  { kind: 'fit' } | { kind: 'overview'; columns: 2 | 3 | 4 } | { kind: 'step'; percent: number };
+const FIT: EditZoom = { kind: 'fit' };
+
+/**
+ * De volgende zoomstand: kleiner dan passend is het overzicht (2, dan 3, dan 4 naast elkaar),
+ * groter de vaste stappen boven passend (`fitPercent`: hoeveel procent passend nu is). `null` als
+ * het niet verder kan.
+ */
+export function stepEditZoom(zoom: EditZoom, dir: 1 | -1, fitPercent: number): EditZoom | null {
+  if (zoom.kind === 'overview') {
+    if (dir > 0)
+      return zoom.columns === 2 ? FIT : { kind: 'overview', columns: zoom.columns === 4 ? 3 : 2 };
+    return zoom.columns === 4 ? null : { kind: 'overview', columns: zoom.columns === 2 ? 3 : 4 };
+  }
+  const from = zoom.kind === 'fit' ? fitPercent : zoom.percent;
+  const next = nextZoom(from, dir);
+  if (dir > 0) return next === null ? null : { kind: 'step', percent: next };
+  if (zoom.kind === 'fit') return { kind: 'overview', columns: 2 };
+  // Kleiner vanaf een vaste stap: de stap eronder, zolang die groter is dan passend.
+  return next !== null && next > fitPercent + 0.5 ? { kind: 'step', percent: next } : FIT;
+}
+
 /** De ruimte tussen pagina's (in beeldpunten), ook in de stijl. */
 const PAGE_GAP = 20;
 /** Voor pagina's zonder annotaties: steeds dezelfde lege lijst, zodat de pagina niet opnieuw tekent. */
@@ -156,7 +168,7 @@ export function AnnotateView({ mode = 'annotate' }: { mode?: 'annotate' | 'redac
   const [strokeWidth, setStrokeWidth] = useState<number>(DEFAULT_STROKE_WIDTH);
   const [selectedId, setSelectedId] = useState<number | null>(null);
   const [editingId, setEditingId] = useState<number | null>(null);
-  const [zoomIndex, setZoomIndex] = useState(FIT);
+  const [zoom, setZoom] = useState<EditZoom>(FIT);
   const [save, setSave] = useState<SaveState>({ status: 'idle' });
   const [asking, setAsking] = useState(false);
   const [preview, setPreview] = useState(false);
@@ -416,25 +428,36 @@ export function AnnotateView({ mode = 'annotate' }: { mode?: 'annotate' | 'redac
       ? selected.strokeWidth
       : strokeWidth;
 
+  /* Zoomen: hoeveel procent van de echte maat "passend" is, gemeten aan de eerste pagina */
+
+  const [firstPoints, setFirstPoints] = useState(595);
+  const firstPage = pages[0];
+  const firstPdf = firstPage ? sourceOf(firstPage)?.pdf : undefined;
+  useEffect(() => {
+    if (!firstPage || !firstPdf) return;
+    let cancelled = false;
+    void pageInfo(firstPdf, firstPage.source + 1).then((info) => {
+      if (!cancelled) setFirstPoints(displaySize(info.base, firstPage.rotation).width);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [firstPdf, firstPage?.source, firstPage?.rotation]);
+  const fitPercent = fitWidth > 0 ? realPercent(fitWidth, firstPoints) : 100;
+
   /* Sneltoetsen: gereedschap kiezen, annotatie verwijderen, zoomen (+ − 0, zoals overal) */
 
   useShortcuts((event) => {
     if (event.ctrlKey || event.metaKey || event.altKey) return;
     const key = event.key.toLowerCase();
     const match = tools.find((entry) => entry.key === key);
-    const zoomTo: Record<string, (index: number) => number> = {
-      '+': (index) => Math.min(index + 1, ZOOMS.length - 1),
-      '=': (index) => Math.min(index + 1, ZOOMS.length - 1),
-      '-': (index) => Math.max(index - 1, 0),
-      _: (index) => Math.max(index - 1, 0),
-      '0': () => FIT,
-    };
-    const zoom = zoomTo[event.key];
+    const step = ZOOM_KEYS[event.key];
     if (match) {
       setTool(match.id);
       event.preventDefault();
-    } else if (zoom) {
-      setZoomIndex(zoom);
+    } else if (event.key === '0' || step !== undefined) {
+      const next = step === undefined ? FIT : stepEditZoom(zoom, step, fitPercent);
+      if (next) setZoom(next);
       event.preventDefault();
     } else if (event.key === 'Escape') {
       setTool('select');
@@ -517,12 +540,13 @@ export function AnnotateView({ mode = 'annotate' }: { mode?: 'annotate' | 'redac
   const unsupported = redactMode
     ? []
     : unsupportedChars(counts.text + (draft?.kind === 'text' ? draft.text : ''));
-  const stop = ZOOMS[zoomIndex]!;
-  const percent = stop.percent;
-  const columns = 'columns' in stop ? stop.columns : 1;
+  const columns = zoom.kind === 'overview' ? zoom.columns : 1;
   // In het overzicht delen de pagina's de breedte, met de ruimte ertussen eraf.
   const pageWidth = columns > 1 ? (fitWidth - (columns - 1) * PAGE_GAP) / columns : fitWidth;
-  const zoom = 'columns' in stop ? 1 : stop.percent / 100;
+  // Bij een vaste stap: elke pagina op haar echte maat (beeldpunten per punt).
+  const fixedScale = zoom.kind === 'step' ? realWidth(1, zoom.percent) : undefined;
+  const zoomOut = stepEditZoom(zoom, -1, fitPercent);
+  const zoomIn = stepEditZoom(zoom, 1, fitPercent);
   const busy = save.status === 'saving';
   const anyRedaction = redactedPages > 0;
 
@@ -855,16 +879,18 @@ export function AnnotateView({ mode = 'annotate' }: { mode?: 'annotate' | 'redac
                 {format(t.pageBar.page, { n: shownPage, total: pages.length })}
               </PageNav>
               <ZoomBar
-                percent={percent}
-                canZoomOut={zoomIndex > 0}
-                canZoomIn={zoomIndex < ZOOMS.length - 1}
-                onZoomOut={() => setZoomIndex(zoomIndex - 1)}
-                onZoomIn={() => setZoomIndex(zoomIndex + 1)}
+                percent={Math.round(
+                  zoom.kind === 'step' ? zoom.percent : realPercent(pageWidth, firstPoints),
+                )}
+                canZoomOut={zoomOut !== null}
+                canZoomIn={zoomIn !== null}
+                onZoomOut={() => zoomOut && setZoom(zoomOut)}
+                onZoomIn={() => zoomIn && setZoom(zoomIn)}
                 fits={[
                   {
                     label: t.pageBar.fitWidth,
-                    active: zoomIndex === FIT,
-                    onClick: () => setZoomIndex(FIT),
+                    active: zoom.kind === 'fit',
+                    onClick: () => setZoom(FIT),
                   },
                 ]}
               />
@@ -888,7 +914,7 @@ export function AnnotateView({ mode = 'annotate' }: { mode?: 'annotate' | 'redac
                     item={page}
                     position={index + 1}
                     fitWidth={pageWidth}
-                    zoom={zoom}
+                    scale={fixedScale}
                     annotations={annotationsByPage.get(page.key) ?? NO_ANNOTATIONS}
                     candidates={redactMode ? candidatesByPage.get(page.key) : undefined}
                     draft={draft?.page === page.key ? draft : null}

@@ -1,3 +1,4 @@
+import type { Zoom } from '../lib/zoom';
 import { useEffect, useState } from 'preact/hooks';
 import { closeVisual } from '../compare/visual';
 import { setUnsavedWork } from '../lib/unsavedWarning';
@@ -77,8 +78,8 @@ export type TriageState = {
   cur: number;
   view: TriageView;
   fit: Fit;
-  /** Procent van passend (100 = passend). */
-  zoom: number;
+  /** Passend (`null`) of een vaste stap, in procenten van de echte maat (zie `lib/zoom`). */
+  zoom: Zoom;
   /** Het aantal pagina's per bestand (op id), zodra de PDF gelezen is. */
   pageCounts: Record<number, number>;
   skipped: Skipped | null;
@@ -119,7 +120,7 @@ const INITIAL: TriageState = {
   // Zoals pdf-triage.html: de pagina op de breedte van het vak. Op een klein scherm is "hele
   // pagina" te klein om te lezen.
   fit: 'width',
-  zoom: 100,
+  zoom: null,
   pageCounts: {},
   skipped: null,
   nextId: 1,
@@ -496,10 +497,10 @@ export function setPage(page: number): void {
 
 /** Passend maken: de hele pagina of de breedte. */
 export function setFit(fit: Fit): void {
-  setState({ fit, zoom: 100 });
+  setState({ fit, zoom: null });
 }
 
-export function setZoom(zoom: number): void {
+export function setZoom(zoom: Zoom): void {
   setState({ zoom });
 }
 

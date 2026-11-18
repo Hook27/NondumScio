@@ -2,7 +2,8 @@ import { Fragment, type ComponentChildren } from 'preact';
 import { useEffect, useLayoutEffect, useRef, useState } from 'preact/hooks';
 import { GAP_FACTOR } from '../compare/layout';
 import { copyText } from '../compare/report';
-import { ZOOM_STEPS, closeVisual, stepZoom, targetWidths } from '../compare/visual';
+import { closeVisual, drawWidths } from '../compare/visual';
+import { ZOOM_KEYS, nextZoom, realPercent, realWidth } from '../lib/zoom';
 import { ConfirmDialog } from '../components/ConfirmDialog';
 import { Dropzone } from '../components/Dropzone';
 import { IconButton } from '../components/Icon';
@@ -1037,7 +1038,15 @@ function PageView({ doc }: { doc: TextDoc }) {
   const space = usePageSpace(wrap);
 
   const fitCss = fitCssWidth(space, fit, size.w / size.h);
-  const widths = targetWidths(Math.floor(fitCss), zoom, window.devicePixelRatio);
+  // Passend: zo groot als het vak toelaat; anders een vaste stap van de echte maat (zie lib/zoom).
+  const widths = drawWidths(
+    zoom === null ? Math.floor(fitCss) : realWidth(size.w, zoom),
+    window.devicePixelRatio,
+  );
+  // Wat je ziet, in procenten van de echte maat: voor de zoombalk, en + − gaan van hieruit verder.
+  const shown = zoom ?? realPercent(widths.css, size.w);
+  const shownNow = useRef(shown);
+  shownNow.current = shown;
   // Tekenen; bij een andere pagina of breedte (of weggaan) breekt het af wat nog bezig is.
   const drawn = usePageCanvas({ file: doc.file, page, width: widths.dev });
 
@@ -1072,16 +1081,12 @@ function PageView({ doc }: { doc: TextDoc }) {
         ArrowDown: now.page + 1,
         PageDown: now.page + 1,
       };
-      const zoom: Record<string, number> = {
-        '+': stepZoom(now.zoom, 1),
-        '=': stepZoom(now.zoom, 1),
-        '-': stepZoom(now.zoom, -1),
-        _: stepZoom(now.zoom, -1),
-        '0': 100,
-      };
       if (event.key in to) setPage(to[event.key]!);
-      else if (event.key in zoom) setZoom(zoom[event.key]!);
-      else return;
+      else if (event.key === '0') setZoom(null);
+      else if (event.key in ZOOM_KEYS) {
+        const next = nextZoom(shownNow.current, ZOOM_KEYS[event.key]!);
+        if (next !== null) setZoom(next);
+      } else return;
       event.preventDefault();
     },
     [doc],
@@ -1093,8 +1098,8 @@ function PageView({ doc }: { doc: TextDoc }) {
     return to >= 1 && to <= doc.pageCount ? () => setPage(to) : null;
   });
 
-  const lastZoom = ZOOM_STEPS[ZOOM_STEPS.length - 1]!;
-  const percent = Math.round((widths.css / size.w) * 100);
+  const zoomOut = nextZoom(shown, -1);
+  const zoomIn = nextZoom(shown, 1);
   return (
     <>
       <Bar>
@@ -1110,14 +1115,14 @@ function PageView({ doc }: { doc: TextDoc }) {
           </span>
         </PageNav>
         <ZoomBar
-          percent={percent}
-          canZoomOut={zoom > ZOOM_STEPS[0]}
-          canZoomIn={zoom < lastZoom}
-          onZoomOut={() => setZoom(stepZoom(zoom, -1))}
-          onZoomIn={() => setZoom(stepZoom(zoom, 1))}
+          percent={Math.round(shown)}
+          canZoomOut={zoomOut !== null}
+          canZoomIn={zoomIn !== null}
+          onZoomOut={() => setZoom(zoomOut)}
+          onZoomIn={() => setZoom(zoomIn)}
           fits={FITS.map((option) => ({
             label: option === 'page' ? t.pageBar.fitPage : t.pageBar.fitWidth,
-            active: fit === option && zoom === 100,
+            active: fit === option && zoom === null,
             onClick: () => setFit(option),
           }))}
         />

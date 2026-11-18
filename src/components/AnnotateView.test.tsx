@@ -10,6 +10,7 @@ import { LanguageProvider } from '../i18n/LanguageContext';
 import type { LoadedPdf } from '../pdf/loader';
 import { buildPdf, downloadPdf } from '../pdf/save';
 import { Workspace } from './Workspace';
+import { stepEditZoom } from './AnnotateView';
 import { held } from '../lib/testFiles';
 import { giveAnnotatePagesWidth } from './testLayout';
 
@@ -337,34 +338,66 @@ describe('Bewerken: annoteren', () => {
     expect(button(nl.pages.undo).disabled).toBe(true);
   });
 
-  it('zoomt in en uit, en terug naar paginabreedte', async () => {
+  it('zoomt in vaste stappen van de echte maat, en terug naar passend', async () => {
     await setup();
     const width = () => Number(pageNr(1).style.width.replace('px', ''));
+    const label = () => document.querySelector('.zoom-bar__value')!.textContent;
+    // Het vak is 595 breed: een A4 (595 punten, 793 bij 100%) staat passend op 75%.
     const fit = width();
+    expect(fit).toBe(595);
+    expect(label()).toBe('75%');
     fireEvent.click(button(nl.pageBar.zoomIn));
-    expect(width()).toBeCloseTo(fit * 1.25, 3);
-    expect(document.querySelector('.zoom-bar__value')!.textContent).toBe('125%');
+    expect(label()).toBe('100%');
+    expect(width()).toBeCloseTo((595 * 96) / 72, 3);
     expect(button(nl.pageBar.fitWidth).getAttribute('aria-pressed')).toBe('false');
+    fireEvent.click(button(nl.pageBar.zoomIn));
+    expect(label()).toBe('125%');
+    expect(width()).toBeCloseTo((595 * 96 * 1.25) / 72, 3);
+    // Kleiner: 100%, en dan passend (75% ligt niet boven passend).
     fireEvent.click(button(nl.pageBar.zoomOut));
+    expect(label()).toBe('100%');
     fireEvent.click(button(nl.pageBar.zoomOut));
-    expect(width()).toBeCloseTo(fit * 0.75, 3);
-    fireEvent.click(button(nl.pageBar.fitWidth));
-    expect(width()).toBeCloseTo(fit, 3);
-    expect(document.querySelector('.zoom-bar__value')!.textContent).toBe('100%');
+    expect(width()).toBe(fit);
+    expect(label()).toBe('75%');
     expect(button(nl.pageBar.fitWidth).getAttribute('aria-pressed')).toBe('true');
+    fireEvent.click(button(nl.pageBar.zoomIn));
+    fireEvent.click(button(nl.pageBar.fitWidth));
+    expect(width()).toBe(fit);
+  });
+
+  it('het percentage hangt aan de eerste pagina zoals je hem ziet, ook gedraaid', async () => {
+    const { switchTo, showPages } = await setup(1);
+    // Een kwartslag gedraaid is de pagina 842 punten breed: passend (595) is dan 53%.
+    await showPages();
+    fireEvent.click(screen.getAllByRole('option')[0]!);
+    fireEvent.click(button(nl.pages.rotateRight));
+    await switchTo('edit');
+    await waitFor(() =>
+      expect(document.querySelector('.zoom-bar__value')!.textContent).toBe('53%'),
+    );
   });
 
   it('toont bij uitzoomen meer pagina’s naast elkaar, als overzicht', async () => {
     await setup(4);
     const label = () => document.querySelector('.zoom-bar__value')!.textContent;
-    expect(label()).toBe('100%');
-    for (const expected of ['75%', '50%', '33%', '25%']) {
+    const width = () => Number(pageNr(1).style.width.replace('px', ''));
+    expect(label()).toBe('75%');
+    // 2, 3 en 4 naast elkaar (met 20 ertussen); het percentage is dat van de echte maat.
+    for (const [expected, columns] of [
+      ['36%', 2],
+      ['23%', 3],
+      ['17%', 4],
+    ] as const) {
       fireEvent.click(button(nl.pageBar.zoomOut));
       expect(label()).toBe(expected);
+      expect(width()).toBeCloseTo((595 - (columns - 1) * 20) / columns, 3);
     }
     expect(button(nl.pageBar.zoomOut).disabled).toBe(true);
+    // Groter vanuit het overzicht: weer minder naast elkaar, dan passend.
+    fireEvent.click(button(nl.pageBar.zoomIn));
+    expect(label()).toBe('23%');
     fireEvent.click(button(nl.pageBar.fitWidth));
-    expect(label()).toBe('100%');
+    expect(label()).toBe('75%');
   });
 
   it('weggaan tijdens het opslaan: er komt geen download meer', async () => {
@@ -824,13 +857,18 @@ describe('Bewerken en Redigeren: toetsen zoals overal', () => {
 
   it('+ − zoomen, 0 terug naar passend', async () => {
     await setup(1);
+    // Passend is hier 75%: + naar 100 en 125, − terug naar 100 en passend, nog eens − het
+    // overzicht (2 naast elkaar), 0 weer passend.
     press('+');
+    press('=');
     expect(label()).toBe('125%');
     press('-');
     press('-');
     expect(label()).toBe('75%');
+    press('_');
+    expect(label()).toBe('36%');
     press('0');
-    expect(label()).toBe('100%');
+    expect(label()).toBe('75%');
   });
 
   it('bij een open venster doen de toetsen niets (ook Delete niet)', async () => {
@@ -846,7 +884,7 @@ describe('Bewerken en Redigeren: toetsen zoals overal', () => {
     press('v');
     press('+');
     expect(shapes()).toHaveLength(1);
-    expect(label()).toBe('100%');
+    expect(label()).toBe('75%');
     dialog.remove();
     press('Delete');
     expect(shapes()).toHaveLength(0);
@@ -930,5 +968,34 @@ describe('Bewerken en Redigeren: bladeren en zoomen boven de pagina’s', () => 
     } finally {
       spy.mockRestore();
     }
+  });
+});
+
+describe('Bewerken: de volgende zoomstand', () => {
+  const fit = { kind: 'fit' } as const;
+  const step = (percent: number) => ({ kind: 'step', percent }) as const;
+  const overview = (columns: 2 | 3 | 4) => ({ kind: 'overview', columns }) as const;
+
+  it('groter: van het overzicht naar passend, dan de stappen boven passend, tot 400%', () => {
+    expect(stepEditZoom(overview(4), 1, 141)).toEqual(overview(3));
+    expect(stepEditZoom(overview(3), 1, 141)).toEqual(overview(2));
+    expect(stepEditZoom(overview(2), 1, 141)).toEqual(fit);
+    expect(stepEditZoom(fit, 1, 141)).toEqual(step(150));
+    expect(stepEditZoom(step(150), 1, 141)).toEqual(step(200));
+    expect(stepEditZoom(step(400), 1, 141)).toBeNull();
+    // Passend al boven 400%: niet groter.
+    expect(stepEditZoom(fit, 1, 450)).toBeNull();
+  });
+
+  it('kleiner: de stappen zolang ze boven passend liggen, dan passend, dan het overzicht', () => {
+    expect(stepEditZoom(step(300), -1, 141)).toEqual(step(200));
+    expect(stepEditZoom(step(200), -1, 141)).toEqual(step(150));
+    expect(stepEditZoom(step(150), -1, 141)).toEqual(fit);
+    expect(stepEditZoom(fit, -1, 141)).toEqual(overview(2));
+    expect(stepEditZoom(overview(2), -1, 141)).toEqual(overview(3));
+    expect(stepEditZoom(overview(4), -1, 141)).toBeNull();
+    // Een stap vlak boven passend (binnen een halve procent) telt als passend.
+    expect(stepEditZoom(step(200), -1, 149.8)).toEqual(fit);
+    expect(stepEditZoom(step(200), -1, 149)).toEqual(step(150));
   });
 });
