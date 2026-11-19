@@ -614,7 +614,14 @@ describe('PDF → Platte tekst: leesvakken', () => {
 
     draw(...LEFT_BOX);
     draw(...RIGHT_BOX);
-    fireEvent.click(button(format(p.zones.remove, { n: 1 })));
+    // Een pictogram met uitleg bij de muis, geen teken (bedieningsafspraak V9).
+    const remove = button(format(p.zones.remove, { n: 1 }));
+    expect(remove.textContent).toBe('');
+    expect(remove.querySelector('svg.icon')).toBeTruthy();
+    expect(remove.closest('[data-tip]')?.getAttribute('data-tip')).toBe(
+      format(p.zones.remove, { n: 1 }),
+    );
+    fireEvent.click(remove);
     expect(zoneList()).toEqual(['Vak 1']);
     // Het overgebleven vak is het rechter.
     fireEvent.click(button(p.extract));

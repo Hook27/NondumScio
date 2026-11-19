@@ -17,6 +17,7 @@ const PATHS = {
   selectAll: ['M4 4h16v16H4z', 'M8 12l3 3 5-6'],
   selectNone: ['M4 4h16v16H4z', 'M9 9l6 6', 'M15 9l-6 6'],
   close: ['M6 6l12 12', 'M18 6L6 18'],
+  check: ['M20 6L9 17l-5-5'],
   info: ['M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18z', 'M12 11v6', 'M12 7.5v.5'],
   grid: ['M4 4h7v7H4z', 'M13 4h7v7h-7z', 'M4 13h7v7H4z', 'M13 13h7v7h-7z'],
   download: ['M12 4v11', 'M7 10l5 5 5-5', 'M5 20h14'],

@@ -3,6 +3,7 @@ import { useEffect, useLayoutEffect, useRef, useState } from 'preact/hooks';
 import { closeVisual, drawWidths, pageSize } from '../compare/visual';
 import { ZOOM_KEYS, nextZoom, realPercent, realWidth } from '../lib/zoom';
 import { ConfirmDialog } from '../components/ConfirmDialog';
+import { Icon, IconButton } from '../components/Icon';
 import { PageNav, ZoomBar } from '../components/PageBars';
 import { useShortcuts } from '../lib/useShortcuts';
 import {
@@ -235,7 +236,6 @@ function FolderSlot() {
   const { root, rootProblem, source, recursive, scan, files } = state;
   // Tijdens Uitvoeren blijft de map zoals hij is.
   const busy = state.run.status === 'running';
-  const [asking, setAsking] = useState(false);
   const problem = rootProblem && (
     <p class="plaintext-slot__meta dropzone__error" role="alert">
       {f[rootProblem]}
@@ -321,27 +321,7 @@ function FolderSlot() {
         </p>
       )}
       {problem}
-      <button
-        type="button"
-        class="button button--secondary triage-root__clear"
-        disabled={files.length === 0 || busy}
-        onClick={() => setAsking(true)}
-      >
-        {tr.clear}
-      </button>
-      {asking && (
-        <ConfirmDialog
-          title={tr.clearTitle}
-          text={tr.clearText}
-          cancel={tr.cancel}
-          confirm={tr.clearConfirm}
-          onCancel={() => setAsking(false)}
-          onConfirm={() => {
-            setAsking(false);
-            clearTriage();
-          }}
-        />
-      )}
+      <ClearButton extraClass="triage-root__clear" disabled={files.length === 0 || busy} />
     </section>
   );
 }
@@ -359,12 +339,43 @@ function folderText(folder: string, state: TriageState): { short: string; full: 
   return { short: shortPath([state.root.name, ...path]), full: fullPath(state.root.name, path) };
 }
 
-/** PDF's kiezen of slepen (meer keren toevoegen kan), en Wis alles; wat er is overgeslagen. */
+/** Wissen, met eerst een vraag: bij Lijst maken en bij Map opruimen dezelfde knop. */
+function ClearButton({ extraClass, disabled }: { extraClass?: string; disabled: boolean }) {
+  const { t } = useI18n();
+  const tr = t.triage;
+  const [asking, setAsking] = useState(false);
+  return (
+    <>
+      <button
+        type="button"
+        class={`button button--secondary${extraClass ? ` ${extraClass}` : ''}`}
+        disabled={disabled}
+        onClick={() => setAsking(true)}
+      >
+        {tr.clear}
+      </button>
+      {asking && (
+        <ConfirmDialog
+          title={tr.clearTitle}
+          text={tr.clearText}
+          cancel={tr.cancel}
+          confirm={tr.clear}
+          onCancel={() => setAsking(false)}
+          onConfirm={() => {
+            setAsking(false);
+            clearTriage();
+          }}
+        />
+      )}
+    </>
+  );
+}
+
+/** PDF's kiezen of slepen (meer keren toevoegen kan), en Wissen; wat er is overgeslagen. */
 function Slot() {
   const { t } = useI18n();
   const tr = t.triage;
   const { files, skipped } = useTriageState();
-  const [asking, setAsking] = useState(false);
   const skippedText = skipped
     ? format(tr.skipped, {
         list: [
@@ -388,37 +399,20 @@ function Slot() {
       onFiles={addTriageFiles}
       extraClass="plaintext-slot triage-slot"
     >
-      <button
-        type="button"
-        class="button button--secondary"
-        disabled={files.length === 0}
-        onClick={() => setAsking(true)}
-      >
-        {tr.clear}
-      </button>
+      <ClearButton disabled={files.length === 0} />
       {skippedText && (
         <p class="plaintext-slot__meta" role="status">
           {skippedText}
         </p>
       )}
-      {asking && (
-        <ConfirmDialog
-          title={tr.clearTitle}
-          text={tr.clearText}
-          cancel={tr.cancel}
-          confirm={tr.clearConfirm}
-          onCancel={() => setAsking(false)}
-          onConfirm={() => {
-            setAsking(false);
-            clearTriage();
-          }}
-        />
-      )}
     </Dropzone>
   );
 }
 
-/** "3 van 10 beoordeeld · ✓ 1 · → 1 · ✕ 1", met een voortgangsbalk. */
+/**
+ * "3 van 10 beoordeeld · ✓ 1 · → 1 · ✕ 1" (met de pictogrammen van de besluitknoppen), met een
+ * voortgangsbalk.
+ */
 function Progress() {
   const { t } = useI18n();
   const tr = t.triage;
@@ -431,7 +425,16 @@ function Progress() {
       <p class="triage-progress__text">
         {progress}
         {' · '}
-        <span aria-hidden="true">{`✓ ${c.keep} · → ${c.move} · ✕ ${c.remove}`}</span>
+        <span class="triage-progress__tally" aria-hidden="true">
+          <Icon name="check" />
+          {c.keep}
+          {' · '}
+          <Icon name="arrowRight" />
+          {c.move}
+          {' · '}
+          <Icon name="trash" />
+          {c.remove}
+        </span>
         <span class="visually-hidden">
           {format(tr.tallyLabel, { keep: c.keep, move: c.move, remove: c.remove })}
         </span>
@@ -533,31 +536,27 @@ function DecideBar() {
   const f = tr.folderMode;
   return (
     <div class="triage-decide">
-      <div class="plaintext-nav triage-filenav" role="group" aria-label={tr.fileNav}>
-        <button
-          type="button"
-          class="button button--secondary"
-          aria-label={tr.previousFile}
+      <div class="page-nav triage-filenav" role="group" aria-label={tr.fileNav}>
+        <IconButton
+          icon="pagePrevious"
+          label={tr.previousFile}
+          tip={`${tr.previousFile} (←)`}
           disabled={cur <= 0}
           onClick={() => navigate(-1)}
-        >
-          ‹
-        </button>
-        <span class="plaintext-nav__page">
+        />
+        <span class="page-nav__page">
           <span aria-hidden="true">{`${cur + 1} / ${files.length}`}</span>
           <span class="visually-hidden">
             {format(tr.filePos, { n: cur + 1, total: files.length })}
           </span>
         </span>
-        <button
-          type="button"
-          class="button button--secondary"
-          aria-label={tr.nextFile}
+        <IconButton
+          icon="pageNext"
+          label={tr.nextFile}
+          tip={`${tr.nextFile} (→)`}
           disabled={cur >= files.length - 1}
           onClick={() => navigate(1)}
-        >
-          ›
-        </button>
+        />
       </div>
       <div class="triage-move" role="group" aria-label={tr.moveTo}>
         <div class="triage-move__head">
@@ -614,7 +613,7 @@ function DecideBar() {
           disabled={fixed}
           onClick={() => decide('remove')}
         >
-          <span aria-hidden="true">✕</span>
+          <Icon name="trash" />
           <span class="triage-decide__label">{tr.remove}</span>
         </button>
         <button
@@ -626,7 +625,7 @@ function DecideBar() {
           disabled={fixed}
           onClick={() => decide('keep')}
         >
-          <span aria-hidden="true">✓</span>
+          <Icon name="check" />
           <span class="triage-decide__label">{tr.keep}</span>
         </button>
       </div>
@@ -1049,36 +1048,30 @@ function Change({ entry }: { entry: TriageFile }) {
     setDecision(entry.id, entry.decision === choice ? null : choice);
   return (
     <span class="triage-change" role="group" aria-label={format(o.change, { name: entry.name })}>
-      <button
-        type="button"
+      <IconButton
+        icon="check"
         class="triage-change__button"
-        aria-label={format(o.setKeep, { name: entry.name })}
+        label={format(o.setKeep, { name: entry.name })}
+        tip={t.triage.keep}
         aria-pressed={entry.decision === 'keep'}
-        data-tip={t.triage.keep}
         onClick={() => set('keep')}
-      >
-        ✓
-      </button>
-      <button
-        type="button"
+      />
+      <IconButton
+        icon="arrowRight"
         class="triage-change__button"
-        aria-label={format(o.setMove, { name: entry.name })}
+        label={format(o.setMove, { name: entry.name })}
+        tip={t.triage.moveTo}
         aria-pressed={isMove(entry.decision)}
-        data-tip={t.triage.moveTo}
         onClick={() => askFolder({ kind: 'file', id: entry.id })}
-      >
-        →
-      </button>
-      <button
-        type="button"
+      />
+      <IconButton
+        icon="trash"
         class="triage-change__button"
-        aria-label={format(o.setRemove, { name: entry.name })}
+        label={format(o.setRemove, { name: entry.name })}
+        tip={t.triage.remove}
         aria-pressed={entry.decision === 'remove'}
-        data-tip={t.triage.remove}
         onClick={() => set('remove')}
-      >
-        ✕
-      </button>
+      />
     </span>
   );
 }
@@ -1180,16 +1173,12 @@ function FolderBrowser({ target }: { target: FolderTarget }) {
         {title}
       </h2>
       <nav class="triage-browser__path" aria-label={b.path}>
-        <button
-          type="button"
-          class="button button--secondary triage-folder"
-          aria-label={b.up}
-          data-tip={b.up}
+        <IconButton
+          icon="arrowUp"
+          label={b.up}
           disabled={path.length === 0}
           onClick={() => setPath(parentOf(path))}
-        >
-          ↑
-        </button>
+        />
         {[root.name, ...path].map((name, i) => (
           <span key={i} class="triage-browser__crumb">
             {i > 0 && <span aria-hidden="true">/</span>}

@@ -261,16 +261,16 @@ test.describe('Archief / Triage', () => {
     );
   });
 
-  test('Wis alles vraagt eerst', async ({ page }) => {
+  test('Wissen vraagt eerst', async ({ page }) => {
     await open(page);
     await addThree(page);
     await expect(canvas(page, 1)).toBeVisible(SLOW);
-    await page.getByRole('button', { name: tr.clear }).click();
+    await page.getByRole('button', { name: tr.clear, exact: true }).click();
     const dialog = page.getByRole('dialog');
     await expect(dialog).toBeVisible();
     // In het venster doen de toetsen niets.
     await decideKey(page, 'k');
-    await dialog.getByRole('button', { name: tr.clearConfirm }).click();
+    await dialog.getByRole('button', { name: tr.clear, exact: true }).click();
     await expect(page.getByText(tr.placeholder)).toBeVisible();
     await expect(list(page)).toHaveCount(0);
   });
