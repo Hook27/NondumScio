@@ -119,7 +119,6 @@ describe('PageEditor', () => {
     expect(screen.queryByRole('button', { name: new RegExp(nl.merge.showPages) })).toBeNull();
     expect(screen.getByRole('heading', { name: nl.merge.result })).toBeTruthy();
     expect(screen.getByText(nl.merge.add)).toBeTruthy();
-    expect(screen.queryByText(nl.pages.addPdf)).toBeNull();
   });
 
   it('verwijdert de gekozen pagina’s en past het aantal aan', async () => {

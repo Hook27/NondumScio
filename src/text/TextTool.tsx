@@ -339,14 +339,12 @@ function ZoneSettings() {
                   {i + 1}
                 </span>
                 <span class="plaintext-zones__label">{format(z.item, { n: i + 1 })}</span>
-                <button
-                  type="button"
+                <IconButton
+                  icon="close"
                   class="plaintext-zones__remove"
-                  aria-label={format(z.remove, { n: i + 1 })}
+                  label={format(z.remove, { n: i + 1 })}
                   onClick={() => removeZone(i)}
-                >
-                  ×
-                </button>
+                />
               </li>
             ))}
           </ol>

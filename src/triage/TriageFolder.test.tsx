@@ -168,7 +168,10 @@ describe('Archief / Triage: Map opruimen', () => {
       within(screen.getByRole('navigation', { name: b.path }))
         .getAllByRole('button')
         .map((item) => item.textContent),
-    ).toEqual(['↑', 'Documenten', 'Archief']);
+    ).toEqual(['', 'Documenten', 'Archief']);
+    // Map omhoog: een pictogram met uitleg bij de muis, geen teken (bedieningsafspraak V9).
+    expect(inDialog(b.up).querySelector('svg.icon')).toBeTruthy();
+    expect(inDialog(b.up).closest('[data-tip]')?.getAttribute('data-tip')).toBe(b.up);
     fireEvent.click(inDialog(b.confirm));
     await settle();
     expect(screen.queryByRole('dialog')).toBeNull();
@@ -402,7 +405,7 @@ describe('Archief / Triage: Map opruimen', () => {
     expect(screen.getByRole('alert').textContent).toBe(f.noAccess);
   });
 
-  it('wisselen van werkwijze met besluiten vraagt eerst; Wis alles begint opnieuw met de bronmap', async () => {
+  it('wisselen van werkwijze met besluiten vraagt eerst; Wissen begint opnieuw met de bronmap', async () => {
     withPicker();
     await openArchief();
     await key('k');
@@ -413,7 +416,7 @@ describe('Archief / Triage: Map opruimen', () => {
     expect(decisions()[0]).toBe('keep');
 
     fireEvent.click(button(tr.clear));
-    fireEvent.click(inDialog(tr.clearConfirm));
+    fireEvent.click(inDialog(tr.clear));
     expect(getTriageState().files).toEqual([]);
     expect(getTriageState().source).toBe(null);
     expect(getTriageState().root?.name).toBe('Documenten');

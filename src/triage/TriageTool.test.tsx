@@ -176,7 +176,7 @@ describe('TriageTool', () => {
     expect(names().map(([, d]) => d)).toEqual(['remove', 'remove', null, null]);
     const progress = document.querySelector('.triage-progress')!;
     expect(progress.querySelector('p')!.textContent).toBe(
-      `${format(tr.progress, { done: 2, total: 4 })} · ✓ 0 · → 0 · ✕ 2${format(tr.tallyLabel, { keep: 0, move: 0, remove: 2 })}`,
+      `${format(tr.progress, { done: 2, total: 4 })} · 0 · 0 · 2${format(tr.tallyLabel, { keep: 0, move: 0, remove: 2 })}`,
     );
     expect(progress.querySelector('progress')!.getAttribute('value')).toBe('2');
     expect(progress.querySelector('progress')!.getAttribute('max')).toBe('4');
@@ -487,7 +487,7 @@ describe('TriageTool', () => {
     ).toBe(true);
   });
 
-  it('Wis alles vraagt eerst; Annuleren laat alles staan', async () => {
+  it('Wissen vraagt eerst; Annuleren laat alles staan', async () => {
     setup();
     choose(pdf('a.pdf'), pdf('b.pdf'));
     await settle();
@@ -497,7 +497,7 @@ describe('TriageTool', () => {
     expect(getTriageState().files).toHaveLength(2);
 
     fireEvent.click(screen.getByRole('button', { name: tr.clear }));
-    fireEvent.click(screen.getByRole('button', { name: tr.clearConfirm }));
+    fireEvent.click(within(screen.getByRole('dialog')).getByRole('button', { name: tr.clear }));
     await advance();
     expect(getTriageState().files).toHaveLength(0);
     expect(getTriageState().cur).toBe(-1);
@@ -560,7 +560,7 @@ describe('TriageTool', () => {
     fireEvent.click(folderButton('Archief'));
     expect(names()[3]![1]).toEqual({ move: 'Archief' });
     const progress = document.querySelector('.triage-progress p')!.textContent;
-    expect(progress).toContain('✓ 0 · → 4 · ✕ 0');
+    expect(progress).toContain('0 · 4 · 0');
   });
 
   it('het venster: een lege naam geeft een melding, een bestaande map (andere hoofdletters) is dezelfde, Annuleren sluit', async () => {
@@ -678,7 +678,7 @@ describe('TriageTool', () => {
     ).toEqual(['c.pdf', 'e.pdf', 'd.pdf']);
   });
 
-  it('Wis alles haalt ook de mappen weg', async () => {
+  it('Wissen haalt ook de mappen weg', async () => {
     setup();
     choose(pdf('a.pdf'));
     await settle();
@@ -686,7 +686,7 @@ describe('TriageTool', () => {
     fireEvent.input(nameField(), { target: { value: 'Zaken' } });
     fireEvent.click(screen.getByRole('button', { name: fd.confirm }));
     fireEvent.click(screen.getByRole('button', { name: tr.clear }));
-    fireEvent.click(screen.getByRole('button', { name: tr.clearConfirm }));
+    fireEvent.click(within(screen.getByRole('dialog')).getByRole('button', { name: tr.clear }));
     expect(getTriageState().folders).toEqual([]);
   });
 
@@ -747,5 +747,67 @@ describe('TriageTool: de gedeelde paginaweergave', () => {
     await pause(300);
     expect(fireEvent.wheel(root, { deltaY: 50 })).toBe(true);
     expect(getTriageState().files[0]!.page).toBe(2);
+  });
+});
+
+describe('TriageTool: pictogrammen en woorden (bedieningsafspraak V9)', () => {
+  /** De uitleg bij de muis: op de knop zelf of op het omhulsel eromheen. */
+  const tip = (button: HTMLElement) => button.closest('[data-tip]')?.getAttribute('data-tip');
+  const icon = (button: HTMLElement) => button.querySelector('svg.icon');
+
+  it('bestand voor en na, en de besluitknoppen: pictogrammen in plaats van tekens', async () => {
+    setup();
+    choose(pdf('a.pdf'), pdf('b.pdf'));
+    await settle();
+    const nav = screen.getByRole('group', { name: tr.fileNav });
+    for (const [name, arrow] of [
+      [tr.previousFile, '←'],
+      [tr.nextFile, '→'],
+    ] as const) {
+      const button = within(nav).getByRole('button', { name });
+      expect(button.textContent).toBe('');
+      expect(icon(button)).toBeTruthy();
+      expect(tip(button)).toBe(`${name} (${arrow})`);
+    }
+    for (const name of [tr.remove, tr.keep]) {
+      const button = screen.getByRole('button', { name });
+      expect(button.textContent).toBe(name);
+      expect(icon(button)).toBeTruthy();
+    }
+  });
+
+  it('de telling en het overzicht: pictogrammen in plaats van tekens', async () => {
+    setup();
+    choose(pdf('a.pdf'), pdf('b.pdf'));
+    await settle();
+    await key('x');
+    await advance();
+    const tally = document.querySelector('.triage-progress p')!;
+    expect(tally.textContent).not.toMatch(/[✓→✕]/);
+    expect(tally.querySelectorAll('svg.icon')).toHaveLength(3);
+
+    fireEvent.click(screen.getByRole('button', { name: tr.views.overview }));
+    const o = tr.overview;
+    for (const [label, hint] of [
+      [o.setKeep, tr.keep],
+      [o.setMove, tr.moveTo],
+      [o.setRemove, tr.remove],
+    ] as const) {
+      const button = screen.getByRole('button', { name: format(label, { name: 'a.pdf' }) });
+      expect(button.textContent).toBe('');
+      expect(icon(button)).toBeTruthy();
+      expect(tip(button)).toBe(hint);
+    }
+  });
+
+  it('Wissen heet overal Wissen, ook in het venster', async () => {
+    setup();
+    choose(pdf('a.pdf'));
+    await settle();
+    await key('k');
+    fireEvent.click(screen.getByRole('button', { name: 'Wissen' }));
+    fireEvent.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'Wissen' }));
+    await advance();
+    expect(getTriageState().files).toHaveLength(0);
   });
 });
