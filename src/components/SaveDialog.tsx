@@ -1,3 +1,4 @@
+import type { ComponentChildren } from 'preact';
 import { useEffect, useRef, useState } from 'preact/hooks';
 import { useI18n } from '../i18n/LanguageContext';
 import { format } from '../i18n/format';
@@ -96,4 +97,33 @@ export function SaveDialog({
       </form>
     </dialog>
   );
+}
+
+/** Wat het naamvenster vraagt: titel, voorgestelde naam en extensie, en wat er daarna gebeurt. */
+export type SaveRequest = {
+  title: string;
+  suggestion: string;
+  extension: string;
+  onConfirm: (fileName: string) => void;
+};
+
+/**
+ * Eerst het naamvenster, dan pas downloaden, overal (bedieningsafspraak V11): `ask` opent het
+ * venster, `dialog` zet je in de weergave. Annuleren downloadt niets.
+ */
+export function useSaveDialog(): [ask: (request: SaveRequest) => void, dialog: ComponentChildren] {
+  const [request, setRequest] = useState<SaveRequest | null>(null);
+  const dialog = request && (
+    <SaveDialog
+      title={request.title}
+      suggestion={request.suggestion}
+      extension={request.extension}
+      onCancel={() => setRequest(null)}
+      onConfirm={(fileName) => {
+        setRequest(null);
+        request.onConfirm(fileName);
+      }}
+    />
+  );
+  return [setRequest, dialog];
 }

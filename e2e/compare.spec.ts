@@ -3,7 +3,15 @@ import { readFileSync } from 'node:fs';
 import { expect, test, type Locator, type Page } from '@playwright/test';
 import { PDFDocument, StandardFonts, degrees, rgb } from 'pdf-lib';
 import { format } from '../src/i18n/format';
-import { BROKEN_PDF, messages, openPage, SLOW, warningColor, type Theme } from './helpers';
+import {
+  BROKEN_PDF,
+  downloadVia,
+  messages,
+  openPage,
+  SLOW,
+  type Theme,
+  warningColor,
+} from './helpers';
 
 /**
  * PDF's vergelijken (Geavanceerd, alleen op de computer): een origineel (A) en een nieuwe versie (B)
@@ -318,10 +326,7 @@ test.describe('PDF’s vergelijken: rapport', () => {
       .setInputFiles([await file('huur-oud.pdf', OLD), await file('huur-nieuw.pdf', NEW)]);
     await expect(page.getByRole('table')).toBeVisible(SLOW);
 
-    const [download] = await Promise.all([
-      page.waitForEvent('download'),
-      page.getByRole('button', { name: r.download }).click(),
-    ]);
+    const download = await downloadVia(page, page.getByRole('button', { name: r.download }));
     expect(download.suggestedFilename()).toMatch(/^pdf-vergelijking_\d{8}_\d{4}\.txt$/);
     await expect(
       page.getByText(format(r.downloaded, { name: download.suggestedFilename() })),

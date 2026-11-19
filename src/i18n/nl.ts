@@ -573,6 +573,7 @@ export const nl = {
       stored:
         'De database blijft in deze browser bewaard. Een export is een reservekopie, en werkt ook in de losse pdf-hernoemer.',
       export: 'Exporteren (.json)',
+      saveTitle: 'Database opslaan',
       import: 'Importeren (.json)',
       exported: 'Geëxporteerd: {senders}, {subjects}.',
       imported: 'Geïmporteerd en samengevoegd: +{senders}, +{subjects}.',
@@ -766,6 +767,7 @@ export const nl = {
     report: {
       copy: 'Rapport kopiëren',
       download: 'Rapport downloaden',
+      saveTitle: 'Rapport opslaan',
       copied: 'Rapport gekopieerd.',
       copyFailed: 'Kopiëren lukte niet: download het rapport in plaats daarvan.',
       downloaded: 'Gedownload als {name}.',
@@ -947,6 +949,7 @@ export const nl = {
       empty: 'Nog geen PDF’s in de lijst.',
       clearList: 'Lijst wissen',
       run: 'Batch extraheren',
+      saveTitle: 'Uitkomst van de batch opslaan',
       start: 'Bestand {n} start: {name}',
       end: 'Bestand {n} einde: {name}',
       reading: 'Verwerken {i}/{n}: {name}…',
@@ -1020,6 +1023,7 @@ export const nl = {
     copied: 'De tekst is gekopieerd.',
     copyFailed: 'Kopiëren lukte niet. Selecteer de tekst en kopieer hem zelf.',
     download: 'Tekst downloaden',
+    saveTitle: 'Tekst opslaan',
     downloaded: 'Gedownload als {name}.',
     placeholder: 'Kies een PDF om te beginnen.',
     resultPlaceholder: 'Klik op Tekst extraheren om de tekst te zien.',
@@ -1187,6 +1191,7 @@ export const nl = {
       empty: 'Er staan nog geen PDF’s in de lijst.',
       txt: '.txt downloaden',
       csv: '.csv downloaden',
+      saveTitle: 'Lijst opslaan',
       downloaded: '{name} is gedownload.',
     },
     export: {

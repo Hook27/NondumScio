@@ -561,6 +561,7 @@ export const en: Messages = {
       stored:
         'The database is kept in this browser. An export is a backup, and also works in the separate pdf-hernoemer.',
       export: 'Export (.json)',
+      saveTitle: 'Save database',
       import: 'Import (.json)',
       exported: 'Exported: {senders}, {subjects}.',
       imported: 'Imported and merged: +{senders}, +{subjects}.',
@@ -753,6 +754,7 @@ export const en: Messages = {
     report: {
       copy: 'Copy report',
       download: 'Download report',
+      saveTitle: 'Save report',
       copied: 'Report copied.',
       copyFailed: 'Copying did not work: download the report instead.',
       downloaded: 'Downloaded as {name}.',
@@ -935,6 +937,7 @@ export const en: Messages = {
       empty: 'No PDFs in the list yet.',
       clearList: 'Clear list',
       run: 'Run batch',
+      saveTitle: 'Save batch result',
       start: 'File {n} start: {name}',
       end: 'File {n} end: {name}',
       reading: 'Processing {i}/{n}: {name}…',
@@ -1006,6 +1009,7 @@ export const en: Messages = {
     copied: 'The text has been copied.',
     copyFailed: 'Copying did not work. Select the text and copy it yourself.',
     download: 'Download text',
+    saveTitle: 'Save text',
     downloaded: 'Downloaded as {name}.',
     placeholder: 'Choose a PDF to begin.',
     resultPlaceholder: 'Click Extract text to see the text.',
@@ -1174,6 +1178,7 @@ export const en: Messages = {
       empty: 'There are no PDFs in the list yet.',
       txt: 'Download .txt',
       csv: 'Download .csv',
+      saveTitle: 'Save list',
       downloaded: '{name} has been downloaded.',
     },
     export: {

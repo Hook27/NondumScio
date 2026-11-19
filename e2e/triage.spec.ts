@@ -3,7 +3,7 @@ import { readFileSync } from 'node:fs';
 import { expect, test, type Locator, type Page } from '@playwright/test';
 import { PDFDocument, StandardFonts } from 'pdf-lib';
 import { format } from '../src/i18n/format';
-import { messages, openPage, SLOW, type Theme } from './helpers';
+import { downloadVia, messages, openPage, SLOW, type Theme } from './helpers';
 
 /**
  * Archief / Triage (Geavanceerd, alleen op de computer): PDF's één voor één bekijken, per PDF
@@ -122,18 +122,12 @@ test.describe('Archief / Triage', () => {
     await expect(
       page.getByRole('heading', { name: format(tr.overview.keep, { n: 1 }) }),
     ).toBeVisible();
-    const [txt] = await Promise.all([
-      page.waitForEvent('download'),
-      page.getByRole('button', { name: tr.overview.txt }).click(),
-    ]);
+    const txt = await downloadVia(page, page.getByRole('button', { name: tr.overview.txt }));
     expect(txt.suggestedFilename()).toMatch(/^triage_\d{4}-\d{2}-\d{2}_\d{4}\.txt$/);
     expect(readFileSync(await txt.path(), 'utf8')).toBe(
       'ARCHIEF TRIAGE\n====================================\n\nBEWAREN:\n  brief.pdf\n\nVERWIJDEREN:\n  factuur.pdf\n\nNIET BEOORDEELD:\n  offerte.pdf\n',
     );
-    const [csv] = await Promise.all([
-      page.waitForEvent('download'),
-      page.getByRole('button', { name: tr.overview.csv }).click(),
-    ]);
+    const csv = await downloadVia(page, page.getByRole('button', { name: tr.overview.csv }));
     expect(csv.suggestedFilename()).toMatch(/^triage_\d{4}-\d{2}-\d{2}_\d{4}\.csv$/);
     // Voor een Nederlandse Excel: het coderingsteken (BOM) vooraan, puntkomma's en Windows-regeleinden.
     const bytes = readFileSync(await csv.path());
@@ -245,17 +239,11 @@ test.describe('Archief / Triage', () => {
     await page
       .getByRole('button', { name: format(tr.overview.setKeep, { name: 'factuur.pdf' }) })
       .click();
-    const [csv] = await Promise.all([
-      page.waitForEvent('download'),
-      page.getByRole('button', { name: tr.overview.csv }).click(),
-    ]);
+    const csv = await downloadVia(page, page.getByRole('button', { name: tr.overview.csv }));
     expect(readFileSync(await csv.path(), 'utf8')).toBe(
       '﻿"Bestandsnaam";"Besluit";"Map"\r\n"brief.pdf";"verplaatsen";"Facturen"\r\n"factuur.pdf";"bewaren";""\r\n"offerte.pdf";"verplaatsen";"Archief"',
     );
-    const [txt] = await Promise.all([
-      page.waitForEvent('download'),
-      page.getByRole('button', { name: tr.overview.txt }).click(),
-    ]);
+    const txt = await downloadVia(page, page.getByRole('button', { name: tr.overview.txt }));
     expect(readFileSync(await txt.path(), 'utf8')).toBe(
       'ARCHIEF TRIAGE\n====================================\n\nBEWAREN:\n  factuur.pdf\n\nVERPLAATSEN NAAR Archief:\n  offerte.pdf\n\nVERPLAATSEN NAAR Facturen:\n  brief.pdf\n',
     );
@@ -606,10 +594,7 @@ test.describe('Archief / Triage: Map opruimen', () => {
 
     await page.getByRole('button', { name: tr.views.overview }).click();
     await expect(page.getByRole('button', { name: tr.run.button })).toBeEnabled();
-    const [csv] = await Promise.all([
-      page.waitForEvent('download'),
-      page.getByRole('button', { name: tr.overview.csv }).click(),
-    ]);
+    const csv = await downloadVia(page, page.getByRole('button', { name: tr.overview.csv }));
     expect(readFileSync(await csv.path(), 'utf8')).toBe(
       '﻿"Bestandsnaam";"Besluit";"Map"\r\n"brief.pdf";"verplaatsen";"Archief/Facturen"\r\n"factuur.pdf";"verplaatsen";"Foto/Bloemen"\r\n"2024/c.pdf";"bewaren";""',
     );

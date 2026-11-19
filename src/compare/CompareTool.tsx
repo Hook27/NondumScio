@@ -5,6 +5,7 @@ import { PageNav, ZoomBar } from '../components/PageBars';
 import { CanvasBox, useEdgeWheel, usePageSpace } from '../components/PageView';
 import { IncomingNote } from '../components/IncomingNote';
 import { PaneHead } from '../components/WorkspaceParts';
+import { useSaveDialog } from '../components/SaveDialog';
 import { useI18n } from '../i18n/LanguageContext';
 import { format, plural } from '../i18n/format';
 import { formatFileSize } from '../lib/format';
@@ -165,8 +166,8 @@ const reportDoc = (doc: CompareDoc): ReportDoc => ({
 
 /**
  * Het rapport (profiel en tekstverschillen, met de instellingen) kopiëren of downloaden, zodra A en
- * B vergeleken zijn. Downloaden gaat meteen, met datum en tijd in de naam, zoals de export van de
- * database bij Slim hernoemen.
+ * B vergeleken zijn. Downloaden vraagt eerst de naam (bedieningsafspraak V11); het voorstel heeft
+ * datum en tijd in de naam, zoals de export van de database bij Slim hernoemen.
  */
 function ReportButtons({ onStatus }: { onStatus: (status: string) => void }) {
   const { t, language } = useI18n();
@@ -175,6 +176,7 @@ function ReportButtons({ onStatus }: { onStatus: (status: string) => void }) {
   const state = useCompareState();
   const { a, b, result } = state;
   const ready = result !== null && a.status === 'ready' && b.status === 'ready';
+  const [askName, nameDialog] = useSaveDialog();
   const report = () => {
     if (!result || a.status !== 'ready' || b.status !== 'ready') return '';
     return buildReport({
@@ -206,14 +208,21 @@ function ReportButtons({ onStatus }: { onStatus: (status: string) => void }) {
         type="button"
         class="button button--secondary"
         disabled={!ready}
-        onClick={() => {
-          const name = `${r.fileName}_${stamp()}.txt`;
-          downloadFile(new TextEncoder().encode(report()), name, 'text/plain;charset=utf-8');
-          onStatus(format(r.downloaded, { name }));
-        }}
+        onClick={() =>
+          askName({
+            title: r.saveTitle,
+            suggestion: `${r.fileName}_${stamp()}.txt`,
+            extension: '.txt',
+            onConfirm: (name) => {
+              downloadFile(new TextEncoder().encode(report()), name, 'text/plain;charset=utf-8');
+              onStatus(format(r.downloaded, { name }));
+            },
+          })
+        }
       >
         {r.download}
       </button>
+      {nameDialog}
     </div>
   );
 }

@@ -6,13 +6,14 @@ import { PDFDocument, StandardFonts, degrees, rgb } from 'pdf-lib';
 import { format } from '../src/i18n/format';
 import {
   BROKEN_PDF,
+  downloadVia,
   messages,
   openPage,
   scrolled,
   SLOW,
   touchDrag,
-  warningColor,
   type Theme,
+  warningColor,
 } from './helpers';
 
 /**
@@ -388,10 +389,7 @@ test.describe('PDF → Platte tekst', () => {
     await extract(page);
     await expect(output(page)).toHaveValue(TEXT, SLOW);
 
-    const [download] = await Promise.all([
-      page.waitForEvent('download'),
-      page.getByRole('button', { name: p.download }).click(),
-    ]);
+    const download = await downloadVia(page, page.getByRole('button', { name: p.download }));
     expect(download.suggestedFilename()).toBe('brief_extract.txt');
     await expect(page.getByText(format(p.downloaded, { name: 'brief_extract.txt' }))).toBeVisible();
     expect(readFileSync((await download.path())!, 'utf-8')).toBe(TEXT);
@@ -421,10 +419,7 @@ test.describe('PDF → Platte tekst', () => {
     await expect(page.getByText(p.edited)).toBeVisible();
     await axe(page);
 
-    const [download] = await Promise.all([
-      page.waitForEvent('download'),
-      page.getByRole('button', { name: p.download }).click(),
-    ]);
+    const download = await downloadVia(page, page.getByRole('button', { name: p.download }));
     expect(readFileSync((await download.path())!, 'utf-8')).toBe(edited);
     await page.getByRole('button', { name: p.copy }).click();
     await expect(page.getByText(p.copied)).toBeVisible();
@@ -605,10 +600,7 @@ test.describe('PDF → Platte tekst: vakken per pagina en bewaren', () => {
     await zones(page).getByRole('checkbox', { name: z.use }).check();
     await draw(page, LEFT_BOX);
     await openBlock(page, sv.title);
-    const [download] = await Promise.all([
-      page.waitForEvent('download'),
-      page.getByRole('button', { name: sv.export }).click(),
-    ]);
+    const download = await downloadVia(page, page.getByRole('button', { name: sv.export }));
     expect(download.suggestedFilename()).toBe('artikel_instellingen.json');
     const saved = JSON.parse(readFileSync((await download.path())!, 'utf-8'));
     expect(saved).toMatchObject({ v: 2, pdf: 'artikel.pdf', options: { useCrop: true } });
@@ -1049,6 +1041,7 @@ test.describe('PDF → Platte tekst: batch', () => {
     await page.locator('#plaintext-batch-files').setInputFiles(files);
     const download = page.waitForEvent('download', SLOW);
     await page.getByRole('button', { name: b.run, exact: true }).click();
+    await page.getByRole('dialog').getByRole('button', { name: nl.saveDialog.download }).click();
     return download;
   }
 
@@ -1093,6 +1086,7 @@ test.describe('PDF → Platte tekst: batch', () => {
     await block.getByRole('checkbox', { name: b.combine }).check();
     const download = page.waitForEvent('download', SLOW);
     await block.getByRole('button', { name: b.run, exact: true }).click();
+    await page.getByRole('dialog').getByRole('button', { name: nl.saveDialog.download }).click();
     const text = readFileSync((await (await download).path())!, 'utf-8');
     expect(text.startsWith('Bestand 2 start: verslag-b.pdf\n')).toBe(true);
     expect(text).toContain('\n\nBestand 3 start: verslag-a.pdf\n');
@@ -1245,6 +1239,7 @@ test.describe('PDF → Platte tekst op een scherm met schaal 150 %', () => {
     await page.locator('#plaintext-batch-files').setInputFiles([file, file]);
     const download = page.waitForEvent('download', SLOW);
     await page.getByRole('button', { name: p.batch.run, exact: true }).click();
+    await page.getByRole('dialog').getByRole('button', { name: nl.saveDialog.download }).click();
     await download;
     const message = page.locator('.plaintext-batch__message');
     await expect(message).toContainText(format(p.batch.downloaded, { name: 'batch_extract.zip' }));

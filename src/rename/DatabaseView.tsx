@@ -1,4 +1,5 @@
 import { useLayoutEffect, useRef, useState } from 'preact/hooks';
+import { useSaveDialog } from '../components/SaveDialog';
 import { PaneHead } from '../components/WorkspaceParts';
 import { useI18n } from '../i18n/LanguageContext';
 import { format, plural } from '../i18n/format';
@@ -51,6 +52,7 @@ export function DatabaseView() {
   const db = useRenameDb();
   const [status, setStatus] = useState<{ text: string; error: boolean } | null>(null);
   const [removed, setRemoved] = useState<Removed | null>(null);
+  const [askName, nameDialog] = useSaveDialog();
 
   const count = (kind: DbKind, n: number) => plural(n, d.kinds[kind].one, d.kinds[kind].other);
 
@@ -66,8 +68,9 @@ export function DatabaseView() {
     setRemoved(null);
   };
 
-  const save = () => {
-    downloadFile(new TextEncoder().encode(exportDb(db)), dbFileName(), 'application/json');
+  // Eerst de naam (bedieningsafspraak V11), dan pas downloaden.
+  const download = (name: string) => {
+    downloadFile(new TextEncoder().encode(exportDb(db)), name, 'application/json');
     setStatus({
       text: format(d.exported, {
         senders: count('afzenders', db.afzenders.length),
@@ -106,9 +109,21 @@ export function DatabaseView() {
         </div>
         <div class="toolbar toolbar--tools" role="toolbar" aria-label={d.title}>
           <div class="toolbar__group toolbar__group--wide">
-            <button type="button" class="button button--secondary" onClick={save}>
+            <button
+              type="button"
+              class="button button--secondary"
+              onClick={() =>
+                askName({
+                  title: d.saveTitle,
+                  suggestion: dbFileName(),
+                  extension: '.json',
+                  onConfirm: download,
+                })
+              }
+            >
               {d.export}
             </button>
+            {nameDialog}
             <input
               id="rename-db-import"
               class="visually-hidden"

@@ -9,6 +9,7 @@ import { Dropzone } from '../components/Dropzone';
 import { IconButton } from '../components/Icon';
 import { IncomingNote } from '../components/IncomingNote';
 import { PageNav, ZoomBar } from '../components/PageBars';
+import { useSaveDialog } from '../components/SaveDialog';
 import {
   CanvasBox,
   fitCssWidth,
@@ -636,6 +637,7 @@ function BatchSettings() {
   const b = p.batch;
   const { batchCombine, batch, batchFiles, useZones } = useTextState();
   const running = batch.status === 'running';
+  const [askName, nameDialog] = useSaveDialog();
   return (
     <Block id="batch" title={b.title}>
       <p class="compare-settings__hint">{b.hint}</p>
@@ -677,16 +679,27 @@ function BatchSettings() {
         type="button"
         class="button plaintext-batch__run"
         disabled={running || batchFiles.length === 0}
-        onClick={() =>
-          void runBatch({
-            concordance: p.concordance,
-            head: { fields: p.header.fields, conventions: p.conventions },
-            batch: { start: b.start, end: b.end },
-          })
-        }
+        onClick={() => {
+          const extension = batchCombine ? '.txt' : '.zip';
+          askName({
+            title: b.saveTitle,
+            suggestion: `batch_extract${extension}`,
+            extension,
+            onConfirm: (fileName) =>
+              void runBatch(
+                {
+                  concordance: p.concordance,
+                  head: { fields: p.header.fields, conventions: p.conventions },
+                  batch: { start: b.start, end: b.end },
+                },
+                fileName,
+              ),
+          });
+        }}
       >
         {b.run}
       </button>
+      {nameDialog}
       <BatchMessage batch={batch} t={t} />
     </Block>
   );
@@ -832,6 +845,7 @@ function SaveSettings() {
   const [status, setStatusText] = useState<{ text: string; warning: boolean } | null>(null);
   const setStatus = (text: string, warning = false) => setStatusText({ text, warning });
   const [confirming, setConfirming] = useState<'defaults' | 'forget' | null>(null);
+  const [askName, nameDialog] = useSaveDialog();
   const ready = slot.status === 'ready';
   return (
     <Block id="save" title={v.title}>
@@ -844,12 +858,20 @@ function SaveSettings() {
           onClick={() => {
             const out = exportSettings();
             if (!out) return;
-            downloadFile(new TextEncoder().encode(out.json), out.name, 'application/json');
-            setStatus(format(v.exported, { name: out.name }));
+            askName({
+              title: v.export,
+              suggestion: out.name,
+              extension: '.json',
+              onConfirm: (name) => {
+                downloadFile(new TextEncoder().encode(out.json), name, 'application/json');
+                setStatus(format(v.exported, { name }));
+              },
+            });
           }}
         >
           {v.export}
         </button>
+        {nameDialog}
         <button
           type="button"
           class="button button--secondary"
@@ -1437,6 +1459,7 @@ function Output() {
   // Wat er met de tekst gebeurd is (gekopieerd, gedownload), bij welke tekst: bij een andere tekst
   // hoort de melding er niet meer bij. (Geen effect om hem te wissen, zie PDF's vergelijken.)
   const [status, setStatus] = useState<{ result: Extraction | null; text: string } | null>(null);
+  const [askName, nameDialog] = useSaveDialog();
   if (slot.status !== 'ready' || !result) {
     return (
       <>
@@ -1483,17 +1506,25 @@ function Output() {
             type="button"
             class="button button--secondary"
             disabled={text === ''}
-            onClick={() => {
-              const file = exportName(slot.doc.file.name);
-              downloadFile(new TextEncoder().encode(text), file, 'text/plain;charset=utf-8');
-              markTextKept(text);
-              setStatus({ result, text: format(p.downloaded, { name: file }) });
-            }}
+            onClick={() =>
+              askName({
+                title: p.saveTitle,
+                suggestion: exportName(slot.doc.file.name),
+                extension: '.txt',
+                // Pas na Downloaden telt de tekst als bewaard; Annuleren downloadt niets.
+                onConfirm: (file) => {
+                  downloadFile(new TextEncoder().encode(text), file, 'text/plain;charset=utf-8');
+                  markTextKept(text);
+                  setStatus({ result, text: format(p.downloaded, { name: file }) });
+                },
+              })
+            }
           >
             {p.download}
           </button>
         </div>
       </Bar>
+      {nameDialog}
       <p class="plaintext-bar__meta">{meta}</p>
       {shown && (
         <p class="page-editor__saved" role="status">

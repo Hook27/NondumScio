@@ -218,10 +218,7 @@ test.describe('Slim hernoemen', () => {
     await toView(r.views.database);
     await expect(page.getByLabel('Naam van onderwerp 2')).toHaveValue('OZB');
 
-    const [download] = await Promise.all([
-      page.waitForEvent('download'),
-      page.getByRole('button', { name: r.db.export }).click(),
-    ]);
+    const download = await downloadVia(page, page.getByRole('button', { name: r.db.export }));
     expect(download.suggestedFilename()).toMatch(/^pdf-hernoemer-database_\d{8}_\d{4}\.json$/);
     expect(JSON.parse(readFileSync((await download.path())!, 'utf8'))).toEqual({
       afzenders: [{ naam: 'ING', triggers: ['ing bank'] }],
