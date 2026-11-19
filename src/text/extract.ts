@@ -1,6 +1,7 @@
 import {
   analyseRunning,
   layoutBlock,
+  hasTextLayer,
   pageText,
   type LayoutOptions,
   type PageText,
@@ -149,7 +150,7 @@ export function extractText(
 ): Extraction {
   const running = setup === null && opts.strip ? analyseRunning(pages) : null;
   const results = pages.map((page, index): PageResult => {
-    if (page.items.length === 0) return { no: page.no, text: '', status: 'notext' };
+    if (!hasTextLayer(page)) return { no: page.no, text: '', status: 'notext' };
     if (setup === null)
       return { no: page.no, text: pageText(page, opts, running?.[index]), status: 'read' };
     const zones = zonesFor(setup, page.no);

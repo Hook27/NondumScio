@@ -226,3 +226,22 @@ describe('assemble', () => {
     expect(assemble(results, { ...opts, anchors: true }, plain)).toBe('');
   });
 });
+
+describe('afgedrukte paginanummers: alleen echte Romeinse cijfers tot 100 (audit F15)', () => {
+  it('neemt CV, ID, MI en dergelijke niet als paginanummer', () => {
+    for (const text of ['CV', 'id', 'mi', 'dc', 'cd', 'ci', 'mm', 'iiii', 'Xi']) {
+      expect(detectPageNumber(page(1, [[text, 30]])), text).toBeNull();
+    }
+  });
+
+  it('wel i tot en met c, in kleine of hoofdletters', () => {
+    expect(detectPageNumber(page(1, [['xiv', 30]]))).toEqual({
+      raw: 'xiv',
+      value: 14,
+      roman: true,
+    });
+    expect(detectPageNumber(page(1, [['IV', 30]]))).toEqual({ raw: 'iv', value: 4, roman: true });
+    expect(detectPageNumber(page(1, [['xc', 30]]))!.value).toBe(90);
+    expect(detectPageNumber(page(1, [['c', 30]]))!.value).toBe(100);
+  });
+});

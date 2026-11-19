@@ -1,5 +1,5 @@
 import { formatFileSize } from '../lib/format';
-import type { PageText } from './layout';
+import { hasTextLayer, withoutTextLayer, type PageText } from './layout';
 
 /**
  * Het documentprofiel: de gegevens van twee PDF's naast elkaar (bestand, pagina's, metadata,
@@ -78,7 +78,7 @@ export function pdfDate(raw: string | undefined, language: string): string {
 export const pageSize = (page: PageText) => `${Math.round(page.w)}×${Math.round(page.h)}`;
 
 const totalChars = (doc: ProfileDoc) => doc.pages.reduce((n, page) => n + page.chars, 0);
-const withoutText = (doc: ProfileDoc) => doc.pages.filter((page) => page.items.length === 0).length;
+const withoutText = (doc: ProfileDoc) => withoutTextLayer(doc.pages);
 
 /** De paginaformaten met hun aantal: "595×842 pt (3), 842×595 pt (1)". */
 function sizes(doc: ProfileDoc): string {
@@ -151,9 +151,11 @@ export function pageRows(a: ProfileDoc, b: ProfileDoc): PageRow[] {
       if (pageSize(pa) !== pageSize(pb)) notes.push({ kind: 'size' });
       const ca = pa.chars;
       const cb = pb.chars;
-      if (ca === 0 && cb === 0) notes.push({ kind: 'noTextBoth' });
-      else if (ca === 0) notes.push({ kind: 'noTextA' });
-      else if (cb === 0) notes.push({ kind: 'noTextB' });
+      const ta = hasTextLayer(pa);
+      const tb = hasTextLayer(pb);
+      if (!ta && !tb) notes.push({ kind: 'noTextBoth' });
+      else if (!ta) notes.push({ kind: 'noTextA' });
+      else if (!tb) notes.push({ kind: 'noTextB' });
       else if (Math.abs(ca - cb) > Math.max(20, Math.max(ca, cb) * 0.1)) {
         notes.push({ kind: 'chars', n: cb - ca });
       }

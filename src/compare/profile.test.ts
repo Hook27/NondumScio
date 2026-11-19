@@ -123,3 +123,21 @@ describe('pageRows', () => {
     expect(notes(1000, 899)).toEqual([{ kind: 'chars', n: -101 }]);
   });
 });
+
+describe('een pagina met alleen spaties (audit F15)', () => {
+  it('telt in het profiel als pagina zonder tekst', () => {
+    const spaces: PageText = {
+      no: 1,
+      w: 595,
+      h: 842,
+      items: [{ str: '   ', x: 50, y: 700, fh: 10, w: 15 }],
+      chars: 3,
+    };
+    const a = doc([spaces]);
+    const b = doc([page(1, 100)]);
+    expect(pageRows(a, b)[0]!.notes).toEqual([{ kind: 'noTextA' }]);
+    const words = { yes: 'ja', no: 'nee' };
+    const noText = profileRows(a, b, 'nl', words).find((row) => row.id === 'noText')!;
+    expect(noText).toMatchObject({ a: '1', b: '0' });
+  });
+});

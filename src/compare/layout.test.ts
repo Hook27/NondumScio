@@ -4,6 +4,8 @@ import {
   analyseRunning,
   isBullet,
   isGenericHeading,
+  hasTextLayer,
+  withoutTextLayer,
   isKeywordHeading,
   layoutBlock,
   pageText,
@@ -356,7 +358,7 @@ describe('opsommingen, koppen en tabellen', () => {
   it('herkent koppen voorzichtig', () => {
     expect(isKeywordHeading('Artikel 5 Huurprijs')).toBe(true);
     expect(isKeywordHeading('Hoofdstuk II')).toBe(true);
-    expect(isKeywordHeading('bijlage B')).toBe(true);
+    expect(isKeywordHeading('Bijlage B')).toBe(true);
     expect(isKeywordHeading('Artikel 5.1.2')).toBe(true);
     expect(isKeywordHeading('Artikelen over huur')).toBe(false);
     expect(isKeywordHeading('Het artikel 5 zegt')).toBe(false);
@@ -443,5 +445,80 @@ describe('opsommingen, koppen en tabellen', () => {
     const table = layoutBlock(items, { ...STRUCTURE, tables: true }, true).split('\n');
     expect(table[0]).toBe('sleutel 1\twaarde 1');
     expect(table).toHaveLength(6);
+  });
+});
+
+describe('voorzichtiger tekstregels (audit F15)', () => {
+  const STRUCTURE: LayoutOptions = {
+    ...OPTS,
+    structure: true,
+    headingMarker: false,
+    tables: false,
+  };
+
+  it('een kop met een vast woord alleen met een hoofdletter vooraan, ook in het Engels', () => {
+    expect(isKeywordHeading('artikel 5 van de wet, tenzij')).toBe(false);
+    expect(isKeywordHeading('bijlage B')).toBe(false);
+    expect(isKeywordHeading('ARTIKEL 5')).toBe(true);
+    for (const text of ['Chapter 3', 'Section 2.1', 'Article 5', 'Appendix B', 'Part II']) {
+      expect(isKeywordHeading(text), text).toBe(true);
+    }
+    expect(isKeywordHeading('Partly sunny')).toBe(false);
+  });
+
+  it('een Romeins cijfer als opsomming alleen als echt cijfer met i, v en x', () => {
+    for (const text of ['iv. vier', 'xiv. veertien', 'IX. Negen', 'ii) twee', 'v. vijf']) {
+      expect(isBullet(text), text).toBe(true);
+    }
+    for (const text of [
+      'mi. half elf',
+      'mm. dik',
+      'dl. 2',
+      'cd. speler',
+      'iiii. vier',
+      'iX. mix',
+    ]) {
+      expect(isBullet(text), text).toBe(false);
+    }
+    expect(isBullet('. punt')).toBe(false);
+  });
+
+  it('een letter met een punt midden in een alinea breekt niet af ("A. Jansen")', () => {
+    const items = lines(
+      [
+        'De verklaring is opgesteld en ondertekend door',
+        'A. Jansen namens het bestuur van de stichting en',
+        'de penningmeester van de vereniging samen.',
+      ],
+      700,
+    );
+    const joined =
+      'De verklaring is opgesteld en ondertekend door A. Jansen namens het bestuur van de stichting en de penningmeester van de vereniging samen.';
+    expect(layoutBlock(items, STRUCTURE, false)).toBe(joined);
+    // Ook bij Vergelijken (zonder `structure`).
+    expect(layoutBlock(items, OPTS, false)).toBe(joined);
+  });
+
+  it('een echte lijst met letters breekt wel af', () => {
+    const items = lines(
+      ['De voorwaarden zijn:', 'a. de huur is betaald;', 'b. de borg is betaald.'],
+      700,
+    );
+    expect(layoutBlock(items, STRUCTURE, false)).toBe(
+      'De voorwaarden zijn:\n\na. de huur is betaald;\nb. de borg is betaald.',
+    );
+  });
+
+  it('een pagina met alleen spaties heeft geen tekstlaag', () => {
+    expect(hasTextLayer(page(1, [piece(' ', 50, 700), piece('  ', 80, 680)]))).toBe(false);
+    expect(hasTextLayer(page(1, []))).toBe(false);
+    expect(hasTextLayer(page(1, [piece(' ', 50, 700), piece('Tekst', 80, 680)]))).toBe(true);
+    expect(
+      withoutTextLayer([
+        page(1, [piece(' ', 50, 700)]),
+        page(2, []),
+        page(3, [piece('x', 50, 700)]),
+      ]),
+    ).toBe(2);
   });
 });

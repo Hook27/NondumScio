@@ -32,6 +32,42 @@ export function romanToInt(text: string): number {
   return total;
 }
 
+/** Een getal als Romeins cijfer in kleine letters, in de gewone schrijfwijze (14 = "xiv"). */
+function toRoman(value: number): string {
+  const steps: [number, string][] = [
+    [100, 'c'],
+    [90, 'xc'],
+    [50, 'l'],
+    [40, 'xl'],
+    [10, 'x'],
+    [9, 'ix'],
+    [5, 'v'],
+    [4, 'iv'],
+    [1, 'i'],
+  ];
+  let rest = value;
+  let out = '';
+  for (const [n, letters] of steps) {
+    while (rest >= n) {
+      out += letters;
+      rest -= n;
+    }
+  }
+  return out;
+}
+
+/**
+ * Een Romeins paginanummer: een echt cijfer van 1 tot en met 100, in de gewone schrijfwijze en
+ * helemaal in kleine of helemaal in hoofdletters; anders 0. Zo worden "CV", "ID" of "mi" in een
+ * voetregel geen paginanummer (audit F15).
+ */
+function romanPage(text: string): number {
+  if (text !== text.toLowerCase() && text !== text.toUpperCase()) return 0;
+  const s = text.toLowerCase();
+  const value = romanToInt(s);
+  return value >= 1 && value <= 100 && toRoman(value) === s ? value : 0;
+}
+
 type Candidate = { raw: string; value: number; roman: boolean };
 
 /**
@@ -48,7 +84,7 @@ export function detectPageNumber(page: PageText): Candidate | null {
     let found: Candidate | null = null;
     if (/^\d{1,4}$/.test(s)) found = { raw: s, value: Number(s), roman: false };
     else if (/^[ivxlcdm]{1,7}$/i.test(s)) {
-      const value = romanToInt(s);
+      const value = romanPage(s);
       if (value) found = { raw: s.toLowerCase(), value, roman: true };
     }
     if (found && (!best || item.y < best.y)) best = { ...found, y: item.y };

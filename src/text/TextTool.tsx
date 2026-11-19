@@ -1,6 +1,6 @@
 import { Fragment, type ComponentChildren } from 'preact';
 import { useEffect, useLayoutEffect, useRef, useState } from 'preact/hooks';
-import { GAP_FACTOR } from '../compare/layout';
+import { GAP_FACTOR, withoutTextLayer } from '../compare/layout';
 import { copyText } from '../compare/report';
 import { closeVisual, drawWidths } from '../compare/visual';
 import { ZOOM_KEYS, nextZoom, realPercent, realWidth } from '../lib/zoom';
@@ -251,7 +251,7 @@ function SlotView() {
 /** "3 pagina's · 12 KB", met het aantal pagina's zonder tekstlaag als dat er zijn. */
 function docMeta(doc: TextDoc, t: Texts, language: string) {
   const c = t.compare;
-  const noText = doc.pages.filter((page) => page.items.length === 0).length;
+  const noText = withoutTextLayer(doc.pages);
   return [
     plural(doc.pageCount, c.pagesOne, c.pages),
     formatFileSize(doc.file.size, language),

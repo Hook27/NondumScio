@@ -256,13 +256,26 @@ function detectGutter(lines: readonly Line[], minX: number, maxX: number): numbe
 /**
  * Begint de regel met een opsommingsteken of een nummer? Nummergroepen bewust op 1 of 2 cijfers
  * gehouden: anders wordt een bedrag als "390.000 euro" of een jaartal als "2018." als
- * paragraafnummer gelezen en breekt de alinea midden in een zin af.
+ * paragraafnummer gelezen en breekt de alinea midden in een zin af. Een Romeins cijfer alleen als
+ * echt cijfer met i, v en x (i tot en met xxxix, niet gemengd): "mi.", "mm." of "dl." zijn
+ * afkortingen, geen opsomming (audit F15).
  */
 export function isBullet(text: string): boolean {
-  return /^\s*([•*●▪]|[-–—]|\d{1,3}(?:\.\d{1,2})+\.?|\d{1,2}[.)]|[A-Za-z][.)]|[ivxlcdmIVXLCDM]{1,7}[.)])\s/.test(
+  return /^\s*([•*●▪]|[-–—]|\d{1,3}(?:\.\d{1,2})+\.?|\d{1,2}[.)]|[A-Za-z][.)]|(?=[ivx])x{0,3}(?:ix|iv|v?i{0,3})[.)]|(?=[IVX])X{0,3}(?:IX|IV|V?I{0,3})[.)])\s/.test(
     text,
   );
 }
+
+/**
+ * Heeft de pagina een tekstlaag? Een pagina met alleen spaties telt niet (audit F15): die kan niet
+ * gelezen worden, net als een scan.
+ */
+export const hasTextLayer = (page: Pick<PageText, 'items'>): boolean =>
+  page.items.some((item) => item.str.trim() !== '');
+
+/** Hoeveel pagina's geen tekstlaag hebben (zie `hasTextLayer`). */
+export const withoutTextLayer = (pages: readonly Pick<PageText, 'items'>[]): number =>
+  pages.filter((page) => !hasTextLayer(page)).length;
 
 /**
  * Sluit deze regel een zin af? Om een dubbelzinnige cijferopsomming ("5.4 ") te onderscheiden
@@ -280,11 +293,36 @@ function isBulletOld(text: string): boolean {
   return /^\s*([•\-*●▪]|\d{1,2}[.)])\s/.test(text);
 }
 
-/** Een kop met een vast woord vooraan en een nummer: "Artikel 5", "Hoofdstuk II", "Bijlage B". */
+/** De vaste woorden voor een kop, in het Nederlands en het Engels. */
+const HEADING_WORDS = [
+  'Artikel',
+  'Hoofdstuk',
+  'Bijlage',
+  'Paragraaf',
+  'Sectie',
+  'Afdeling',
+  'Titel',
+  'Boek',
+  'Deel',
+  'Annex',
+  'Chapter',
+  'Section',
+  'Article',
+  'Appendix',
+  'Part',
+];
+
+const KEYWORD_HEADING = new RegExp(
+  `^(?:${HEADING_WORDS.join('|')}|${HEADING_WORDS.map((word) => word.toUpperCase()).join('|')})\\s+([0-9]+(?:[.–-][0-9]+)*|[IVXLCDM]+|[A-Z])\\b`,
+);
+
+/**
+ * Een kop met een vast woord vooraan en een nummer: "Artikel 5", "Hoofdstuk II", "Bijlage B",
+ * "Chapter 3". Alleen met een hoofdletter vooraan (of alles in hoofdletters): "artikel 5 van de wet"
+ * is een afgebroken zin, geen kop (audit F15).
+ */
 export function isKeywordHeading(text: string): boolean {
-  return /^(Artikel|Hoofdstuk|Bijlage|Paragraaf|Sectie|Afdeling|Titel|Boek|Deel|Annex)\s+([0-9]+(?:[.–-][0-9]+)*|[IVXLCDM]+|[A-Z])\b/i.test(
-    text.trim(),
-  );
+  return KEYWORD_HEADING.test(text.trim());
 }
 
 /**
@@ -494,9 +532,11 @@ export function layoutBlock(
     // wijst: de vorige regel sluit af met een leesteken of eindigt vóór de rechtermarge, of er
     // staat direct ervoor of erna een opsommingspunt (dan zitten we in een lijst). Een grote
     // witruimte (bigGap) breekt sowieso al.
+    // Een letter of Romeins cijfer ("A. Jansen", "iv.") is net zo dubbelzinnig (audit F15); alleen
+    // een opsommingsteken (•, -) breekt altijd.
     const bulletBreak =
       bulletRule(text) &&
-      (!/^\s*\d/.test(text) ||
+      (!/^\s*[\dA-Za-z]/.test(text) ||
         endsSentence(prev.text) ||
         endsShort(prev) ||
         bulletRule(prev.text) ||
