@@ -20,7 +20,7 @@ import {
 import { uniqueNames } from '../split/bookmarks';
 import { ZipTooLargeError, zipWriter } from '../lib/zip';
 import { FileList, FilesToolbar } from './FilesParts';
-import { Icon, IconButton } from './Icon';
+import { Icon } from './Icon';
 import { PreviewDialog } from './PreviewDialog';
 import { SaveDialog } from './SaveDialog';
 import { useSaveJob } from './useSaveJob';
@@ -30,13 +30,14 @@ import {
   BookmarkTable,
   bookmarkSummary,
   useBookmarkSplit,
+  useRangeSplit,
 } from './SplitBookmarks';
 import { Thumbnail } from './Thumbnail';
 import { PaneHead, Split, useInfo } from './WorkspaceParts';
 
 type Method = 'every' | 'ranges' | 'bookmarks';
 
-/** Wat rechts staat bij Op bladwijzers: de tabel met delen, of de pagina's per deel. */
+/** Wat rechts staat: de tabel met delen, of de pagina's per deel (bij elke manier van splitsen). */
 type PaneView = 'parts' | 'pages';
 
 type SaveState =
@@ -46,13 +47,12 @@ type SaveState =
   | { status: 'saved'; fileName: string }
   | { status: 'error'; code: SaveErrorCode };
 
-/** Wat er na het venster "Opslaan als" gedownload wordt: één deel, of alles als ZIP. */
-type Request = { kind: 'part'; index: number } | { kind: 'zip' };
-
 /**
  * Splitsen: de pagina's (in de volgorde van het pagina-plan, dus ook na bewerken bij
  * Pagina's) in delen knippen, per vast aantal pagina's, op bereiken of (op de computer) op
- * bladwijzers. Elk deel kan los worden gedownload, of alle (gekozen) delen samen als één ZIP.
+ * bladwijzers. Bij elke manier dezelfde weergave: rechts de delen in een tabel (aan- of uitvinken,
+ * de naam aanpassen, bekijken, los downloaden) of de pagina's per deel; alle gekozen delen samen
+ * gaan als één ZIP.
  */
 export function SplitView() {
   const { doc, pages, activeSources, sourceOf, annotations, redaction, undo, redo } = useDocument();
@@ -72,7 +72,7 @@ export function SplitView() {
   const [viewing, setViewing] = useState<number | null>(null);
   const [save, setSave] = useState<SaveState>({ status: 'idle' });
   const job = useSaveJob();
-  const [request, setRequest] = useState<Request | null>(null);
+  const [asking, setAsking] = useState(false);
   const info = useInfo(
     <>
       <p>{t.split.hint}</p>
@@ -82,34 +82,33 @@ export function SplitView() {
   const marked = useBookmarkSplit(level, overlap, prefix, folders);
   const byBookmarks = method === 'bookmarks';
 
-  // De delen als paginanummers (vanaf 1) in het plan, of wat er niet klopt aan de bereiken.
-  let parts: number[][] = [];
-  let problem: RangeProblem | null = null;
-  if (method === 'every') {
-    parts = chunkParts(pages.length, Number(size));
-  } else if (byBookmarks) {
-    parts = marked.rows.map((row) => row.positions);
-  } else if (ranges.trim() !== '') {
-    const result = parseParts(ranges, pages.length);
-    if (result.ok) parts = result.parts;
-    else problem = result.error;
-  }
-  // Op bladwijzers gaan alleen de aangevinkte delen in de ZIP.
-  const chosenRows = marked.rows.filter((row) => row.include);
-
   const name = activeSources[0]?.name ?? '';
-  // "pagina 3" of "pagina’s 1-2", in de lijst en in de bestandsnaam.
-  const pagesText = (part: number[]) =>
-    format(part.length === 1 ? t.split.pageOne : t.split.pagesOther, {
-      ranges: formatRanges(part),
-    });
-  const partName = (part: number[]) =>
+  // De voorgestelde naam van een deel: "rapport (pagina 3).pdf" of "rapport (pagina's 1-2).pdf".
+  const partName = (part: readonly number[]) =>
     editedFileName(
       name,
       format(part.length === 1 ? t.split.fileOne : t.pages.extractSuffix, {
-        ranges: formatRanges(part),
+        ranges: formatRanges([...part]),
       }),
     );
+
+  // Per aantal en op bereiken: de delen als paginanummers (vanaf 1) in het plan, of wat er niet
+  // klopt aan de bereiken.
+  let rangeParts: number[][] = [];
+  let problem: RangeProblem | null = null;
+  if (method === 'every') {
+    rangeParts = chunkParts(pages.length, Number(size));
+  } else if (method === 'ranges' && ranges.trim() !== '') {
+    const result = parseParts(ranges, pages.length);
+    if (result.ok) rangeParts = result.parts;
+    else problem = result.error;
+  }
+  const ranged = useRangeSplit(rangeParts, partName);
+  // Bij elke manier dezelfde rijen: aan- of uitvinken, de naam, de grootte. Alleen de aangevinkte
+  // delen gaan in de ZIP.
+  const split = byBookmarks ? marked : ranged;
+  const parts = split.rows.map((row) => row.positions);
+  const chosenRows = split.rows.filter((row) => row.include);
   const zipName = editedFileName(name, t.split.suffix).replace(/\.pdf$/, '.zip');
   const busy = save.status === 'saving';
 
@@ -150,44 +149,36 @@ export function SplitView() {
     );
   };
 
-  const saveAs = async (current: Request, fileName: string) => {
-    setRequest(null);
-    // Op bladwijzers: de aangevinkte delen, met hun eigen naam en de titel van hun bladwijzer.
-    const zipParts = byBookmarks ? chosenRows.map((row) => row.positions) : parts;
-    const zipNames = byBookmarks
-      ? uniqueNames(chosenRows.map((row) => row.path))
-      : zipParts.map(partName);
+  /** De aangevinkte delen als één ZIP, elk onder zijn naam uit de tabel. */
+  const saveZip = async (fileName: string) => {
+    setAsking(false);
+    const zipParts = chosenRows.map((row) => row.positions);
+    const zipNames = uniqueNames(chosenRows.map((row) => row.path));
+    // Op bladwijzers krijgt elk deel de titel van zijn bladwijzer.
     const titles = byBookmarks ? chosenRows.map((row) => row.title) : undefined;
     // Waar elk gekozen deel in de tabel staat (om zijn grootte te tonen).
-    const chosenIndices = marked.rows.flatMap((row, index) => (row.include ? [index] : []));
-    const wanted = current.kind === 'zip' ? zipParts : [parts[current.index]!];
-    setSave({ status: 'saving', done: 0, total: wanted.length });
+    const chosenIndices = split.rows.flatMap((row, index) => (row.include ? [index] : []));
+    setSave({ status: 'saving', done: 0, total: zipParts.length });
     const outcome = await job.run(async (signal) => {
-      if (current.kind === 'zip') {
-        // Elk deel gaat meteen de ZIP in, zodat niet alle delen tegelijk in het geheugen staan.
-        const zip = await zipWriter();
-        await build(
-          signal,
-          wanted,
-          (bytes, i, report) => {
-            try {
-              zip.add(zipNames[i]!, bytes);
-            } catch (error) {
-              throw error instanceof ZipTooLargeError ? new PdfSaveError('tooLarge') : error;
-            }
-            if (byBookmarks) {
-              marked.setSize(chosenIndices[i]!, {
-                size: bytes.length,
-                untrimmed: report?.untrimmed ?? 0,
-              });
-            }
-          },
-          titles,
-        );
-        return () => downloadFile(zip.finish(), fileName, 'application/zip');
-      }
-      const [pdf] = await build(signal, wanted);
-      return () => downloadPdf(pdf!, fileName);
+      // Elk deel gaat meteen de ZIP in, zodat niet alle delen tegelijk in het geheugen staan.
+      const zip = await zipWriter();
+      await build(
+        signal,
+        zipParts,
+        (bytes, i, report) => {
+          try {
+            zip.add(zipNames[i]!, bytes);
+          } catch (error) {
+            throw error instanceof ZipTooLargeError ? new PdfSaveError('tooLarge') : error;
+          }
+          split.setSize(chosenIndices[i]!, {
+            size: bytes.length,
+            untrimmed: report?.untrimmed ?? 0,
+          });
+        },
+        titles,
+      );
+      return () => downloadFile(zip.finish(), fileName, 'application/zip');
     });
     // Gestopt (of weggegaan: dan is dit scherm er niet meer en doet dit niets). Niets downloaden.
     if (!outcome.ok && outcome.stopped) {
@@ -203,9 +194,9 @@ export function SplitView() {
     setSave({ status: 'saved', fileName });
   };
 
-  /** Op bladwijzers: een deel meteen downloaden, onder de naam uit de tabel (zoals het origineel). */
+  /** Een deel meteen downloaden, onder de naam uit de tabel (zoals de losse bladwijzer-tool). */
   const downloadRow = async (index: number) => {
-    const row = marked.rows[index]!;
+    const row = split.rows[index]!;
     setSave({ status: 'saving', done: 0, total: 1 });
     const outcome = await job.run(async (signal) => {
       let pdf: Uint8Array = new Uint8Array();
@@ -214,9 +205,9 @@ export function SplitView() {
         [row.positions],
         (bytes, _, report) => {
           pdf = bytes;
-          marked.setSize(index, { size: bytes.length, untrimmed: report?.untrimmed ?? 0 });
+          split.setSize(index, { size: bytes.length, untrimmed: report?.untrimmed ?? 0 });
         },
-        [row.title],
+        byBookmarks ? [row.title] : undefined,
       );
       return pdf;
     });
@@ -240,7 +231,7 @@ export function SplitView() {
   // (gekozen) deel zit.
   const entries = [
     ...parts.flatMap((part, index) => {
-      const off = byBookmarks && !marked.rows[index]!.include;
+      const off = !split.rows[index]!.include;
       return part.map((position) => ({
         position,
         part: index,
@@ -253,16 +244,15 @@ export function SplitView() {
       : []),
   ];
 
-  const viewed = viewing === null ? undefined : marked.rows[viewing];
-  const zipCount = byBookmarks ? chosenRows.length : parts.length;
+  const viewed = viewing === null ? undefined : split.rows[viewing];
   const zipLabel =
-    byBookmarks && chosenRows.length < marked.rows.length
-      ? format(t.split.downloadSome, { n: chosenRows.length, total: marked.rows.length })
+    chosenRows.length < split.rows.length
+      ? format(t.split.downloadSome, { n: chosenRows.length, total: split.rows.length })
       : format(t.split.downloadAll, { n: parts.length });
 
   return (
     <Split
-      wide={byBookmarks}
+      wide
       tools={
         <div class="split">
           <FileList />
@@ -349,32 +339,12 @@ export function SplitView() {
             )}
           </fieldset>
 
-          {!byBookmarks && (
-            <ol class="split-parts" aria-label={t.split.parts}>
-              {parts.map((part, index) => {
-                const label = format(t.split.part, { n: index + 1 });
-                return (
-                  <li key={`${index}-${part.join()}`} class="split-parts__item">
-                    <span class="split-parts__name">{label}</span>
-                    <span class="split-parts__pages">{pagesText(part)}</span>
-                    <IconButton
-                      icon="download"
-                      label={format(t.split.downloadPart, { part: label })}
-                      disabled={busy}
-                      onClick={() => setRequest({ kind: 'part', index })}
-                    />
-                  </li>
-                );
-              })}
-            </ol>
-          )}
-
           <FilesToolbar label={t.split.actions}>
             <button
               type="button"
               class="button"
-              disabled={busy || zipCount === 0}
-              onClick={() => setRequest({ kind: 'zip' })}
+              disabled={busy || chosenRows.length === 0}
+              onClick={() => setAsking(true)}
             >
               <Icon name="download" />
               {zipLabel}
@@ -405,17 +375,13 @@ export function SplitView() {
               {t.pages.errors[save.code]}
             </p>
           )}
-          {request && (
+          {asking && (
             <SaveDialog
-              title={
-                request.kind === 'zip'
-                  ? t.split.saveAllTitle
-                  : format(t.split.savePartTitle, { n: request.index + 1 })
-              }
-              suggestion={request.kind === 'zip' ? zipName : partName(parts[request.index]!)}
-              extension={request.kind === 'zip' ? '.zip' : '.pdf'}
-              onConfirm={(fileName) => void saveAs(request, fileName)}
-              onCancel={() => setRequest(null)}
+              title={t.split.saveAllTitle}
+              suggestion={zipName}
+              extension=".zip"
+              onConfirm={(fileName) => void saveZip(fileName)}
+              onCancel={() => setAsking(false)}
             />
           )}
           {viewed && (
@@ -447,35 +413,32 @@ export function SplitView() {
         <>
           <PaneHead
             title={t.merge.result}
-            meta={
-              byBookmarks ? undefined : plural(parts.length, t.split.countOne, t.split.countOther)
-            }
+            meta={plural(parts.length, t.split.countOne, t.split.countOther)}
           >
-            {byBookmarks && (
-              <div class="segmented split-view" role="group" aria-label={t.split.views.label}>
-                {(['parts', 'pages'] as const).map((option) => (
-                  <button
-                    key={option}
-                    type="button"
-                    class="segmented__button"
-                    aria-pressed={paneView === option}
-                    onClick={() => setPaneView(option)}
-                  >
-                    {t.split.views[option]}
-                  </button>
-                ))}
-              </div>
-            )}
+            <div class="segmented split-view" role="group" aria-label={t.split.views.label}>
+              {(['parts', 'pages'] as const).map((option) => (
+                <button
+                  key={option}
+                  type="button"
+                  class="segmented__button"
+                  aria-pressed={paneView === option}
+                  onClick={() => setPaneView(option)}
+                >
+                  {t.split.views[option]}
+                </button>
+              ))}
+            </div>
           </PaneHead>
           {/* Niet in de kop, die blijft staan: op een klein scherm houdt de tabel zo de ruimte. */}
-          {byBookmarks && marked.loaded && marked.marks.length > 0 && (
-            <p class="split-summary">{bookmarkSummary(t, pages.length, marked)}</p>
+          {split.loaded && (byBookmarks ? marked.marks.length > 0 : split.rows.length > 0) && (
+            <p class="split-summary">{bookmarkSummary(t, pages.length, split, byBookmarks)}</p>
           )}
-          {byBookmarks && <BookmarkNotes split={marked} />}
-          {byBookmarks && paneView === 'parts' ? (
-            marked.rows.length > 0 && (
+          <BookmarkNotes split={split} bookmarks={byBookmarks} />
+          {paneView === 'parts' ? (
+            split.rows.length > 0 && (
               <BookmarkTable
-                split={marked}
+                split={split}
+                titleHeader={byBookmarks ? t.split.table.title : t.split.table.part}
                 busy={busy}
                 onView={setViewing}
                 onDownload={(index) => void downloadRow(index)}

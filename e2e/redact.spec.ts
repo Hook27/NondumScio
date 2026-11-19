@@ -322,11 +322,12 @@ test.describe('redigeren: de vakken gelden bij elke taak', () => {
     expect((await textOf(mergedBytes))[1]!.trim()).toBe('');
 
     await page.getByRole('navigation').getByRole('link', { name: nl.tasks.split.title }).click();
+    // Een los deel gaat meteen, onder de naam uit de tabel (geen naamvenster).
     const part = async (n: number) => {
-      const file = await downloadVia(
-        page,
-        page.getByRole('button', { name: `Deel ${n} downloaden` }),
-      );
+      const [file] = await Promise.all([
+        page.waitForEvent('download'),
+        page.getByRole('button', { name: `Deel ${n} downloaden` }).click(),
+      ]);
       return readFileSync((await file.path())!);
     };
     const [one, two] = [await part(1), await part(2)];

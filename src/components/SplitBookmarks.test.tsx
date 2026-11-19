@@ -124,7 +124,7 @@ async function setup(outline: Item[] = REPORT, pages = 10, more: File[] = []) {
   fireEvent.change(document.querySelector('input[type="file"]')!, {
     target: { files: [pdfFile('rapport.pdf', pages, outline), ...more] },
   });
-  await screen.findByRole('list', { name: s.parts });
+  await screen.findByRole('table', { name: s.table.label });
   fireEvent.click(screen.getByLabelText(s.bookmarks));
 }
 
@@ -197,9 +197,8 @@ describe('Splitsen op bladwijzers', () => {
       screen.getByText('1 bladwijzer zonder geldige pagina overgeslagen: Website'),
     ).toBeTruthy();
     expect(screen.getByText(s.sharedOne)).toBeTruthy();
-    // De gewone lijst met delen staat er dan niet; de status telt de delen.
-    expect(screen.queryByRole('list', { name: s.parts })).toBeNull();
-    expect(screen.getByText('5 delen')).toBeTruthy();
+    // De status links en de kop rechts tellen de delen, zoals bij de andere manieren.
+    expect(screen.getAllByText('5 delen')).toHaveLength(2);
     expect(screen.getByRole('button', { name: 'Alle 5 delen downloaden (ZIP)' })).toBeTruthy();
   });
 
@@ -569,6 +568,18 @@ describe('Splitsen op bladwijzers', () => {
     expect(screen.getByRole('table')).toBeTruthy();
   });
 
+  it('op bereiken met een fout: geen delen, ook niet die van de bladwijzers', async () => {
+    await setup();
+    await rows();
+    fireEvent.click(screen.getByLabelText(s.ranges));
+    fireEvent.input(screen.getByLabelText(s.rangesLabel), { target: { value: '1-2, x' } });
+    expect(screen.getByRole('alert')).toBeTruthy();
+    expect(screen.queryByRole('table', { name: s.table.label })).toBeNull();
+    fireEvent.input(screen.getByLabelText(s.rangesLabel), { target: { value: '1-2' } });
+    expect(screen.getAllByRole('row')).toHaveLength(2);
+    expect(screen.getAllByRole('columnheader')[2]!.textContent).toBe(s.table.part);
+  });
+
   it('meldt een PDF zonder bruikbare bladwijzers', async () => {
     await setup([{ title: 'Website', page: null }], 3);
     expect(await screen.findByText(s.noBookmarks)).toBeTruthy();
@@ -609,9 +620,10 @@ describe('Splitsen op bladwijzers op een smal scherm', () => {
       fireEvent.change(screen.getByLabelText(s.zipLayout), { target: { value: 'folders' } });
       list.matches = false;
       act(() => listener());
-      expect(screen.queryByRole('table')).toBeNull();
       expect((screen.getByLabelText(s.every) as HTMLInputElement).checked).toBe(true);
-      expect(screen.getByRole('list', { name: s.parts })).toBeTruthy();
+      // Per aantal: dezelfde tabel, met een deel per pagina.
+      expect(screen.getAllByRole('columnheader')[2]!.textContent).toBe(s.table.part);
+      expect(screen.getAllByRole('row')).toHaveLength(11);
       // Weer breed: de keuzes staan er weer zoals ze waren.
       list.matches = true;
       act(() => listener());
@@ -641,7 +653,7 @@ describe('Splitsen op bladwijzers op een smal scherm', () => {
       fireEvent.change(document.querySelector('input[type="file"]')!, {
         target: { files: [pdfFile('rapport.pdf', 10, REPORT)] },
       });
-      await screen.findByRole('list', { name: s.parts });
+      await screen.findByRole('table', { name: s.table.label });
       expect(screen.queryByLabelText(s.bookmarks)).toBeNull();
       expect(screen.queryByLabelText(s.level)).toBeNull();
       expect(screen.getByLabelText(s.every)).toBeTruthy();

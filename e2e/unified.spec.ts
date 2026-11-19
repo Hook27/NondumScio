@@ -75,6 +75,7 @@ test.describe('overal dezelfde indeling', () => {
   }) => {
     await open(page, TASKS[1]);
     await page.getByLabel(nl.split.size).fill('2');
+    await page.getByRole('button', { name: nl.split.views.pages, exact: true }).click();
     const grid = page.getByRole('list', { name: nl.merge.result });
     await expect(grid.getByRole('listitem')).toHaveCount(5);
     await expect(grid.locator('.page-option__file')).toHaveText([

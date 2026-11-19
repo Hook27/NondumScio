@@ -22,7 +22,10 @@ test('splitsen van een scan met gedeelde hulpbronnen: kleine delen die er hetzel
     mimeType: 'application/pdf',
     buffer: Buffer.from(await makeSharedResourcesPdf(6)),
   });
-  const parts = page.getByRole('list', { name: nl.split.parts }).getByRole('listitem');
+  const parts = page
+    .getByRole('table', { name: nl.split.table.label })
+    .getByRole('row')
+    .filter({ has: page.getByRole('cell') });
   // Ruim: op een drukke machine duurt het openen soms langer dan bij andere tests.
   await expect(parts).toHaveCount(6, { timeout: 30_000 });
   await page.getByLabel(nl.split.size).fill('3');
@@ -59,7 +62,10 @@ test('ook als elke pagina haar scan via een eigen formulier met de volle lijst t
     mimeType: 'application/pdf',
     buffer: Buffer.from(await makeSharedResourcesPdf(6, { viaForms: true })),
   });
-  const parts = page.getByRole('list', { name: nl.split.parts }).getByRole('listitem');
+  const parts = page
+    .getByRole('table', { name: nl.split.table.label })
+    .getByRole('row')
+    .filter({ has: page.getByRole('cell') });
   await expect(parts).toHaveCount(6, { timeout: 30_000 });
   await page.getByLabel(nl.split.size).fill('3');
   await expect(parts).toHaveCount(2);

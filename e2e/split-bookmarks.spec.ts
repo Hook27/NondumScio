@@ -33,7 +33,7 @@ async function open(page: Page, theme: 'light' | 'dark' = 'light', lang: 'nl' | 
     mimeType: 'application/pdf',
     buffer: await makeOutlinePdf(OUTLINE, 10),
   });
-  await expect(page.getByRole('list', { name: messages[lang].split.parts })).toBeVisible({
+  await expect(page.getByRole('table', { name: messages[lang].split.table.label })).toBeVisible({
     timeout: 15_000,
   });
   await page.getByLabel(messages[lang].split.bookmarks).check();
@@ -129,7 +129,7 @@ test.describe('splitsen op bladwijzers', () => {
       mimeType: 'application/pdf',
       buffer: Buffer.from(await doc.save()),
     });
-    await expect(page.getByRole('list', { name: s.parts })).toBeVisible({ timeout: 30_000 });
+    await expect(page.getByRole('table', { name: s.table.label })).toBeVisible({ timeout: 30_000 });
     await page.getByLabel(s.bookmarks).check();
     await expect(rows(page)).toHaveCount(3, { timeout: 15_000 });
     const size = (n: number) => rows(page).nth(n).locator('.bookmark-table__size');
@@ -296,7 +296,7 @@ test('op een telefoon is er geen splitsen op bladwijzers', async ({ page, isMobi
     mimeType: 'application/pdf',
     buffer: await makeOutlinePdf(OUTLINE, 10),
   });
-  await expect(page.getByRole('list', { name: s.parts })).toBeVisible({ timeout: 15_000 });
+  await expect(page.getByRole('table', { name: s.table.label })).toBeVisible({ timeout: 15_000 });
   await expect(page.getByLabel(s.every)).toBeVisible();
   await expect(page.getByLabel(s.bookmarks)).toHaveCount(0);
 });
