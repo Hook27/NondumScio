@@ -582,11 +582,12 @@ test.describe('annotaties: het resultaat in de PDF', () => {
 
     // Bij Splitsen (per pagina): deel 2 heeft de markering, deel 1 niet.
     await page.getByRole('navigation').getByRole('link', { name: nl.tasks.split.title }).click();
+    // Een los deel gaat meteen, onder de naam uit de tabel (geen naamvenster).
     const part = async (n: number) => {
-      const file = await downloadVia(
-        page,
-        page.getByRole('button', { name: `Deel ${n} downloaden` }),
-      );
+      const [file] = await Promise.all([
+        page.waitForEvent('download'),
+        page.getByRole('button', { name: `Deel ${n} downloaden` }).click(),
+      ]);
       return readFileSync((await file.path())!);
     };
     const [one, two] = [await part(1), await part(2)];

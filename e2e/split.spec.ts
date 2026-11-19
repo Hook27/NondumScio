@@ -4,6 +4,7 @@ import { expect, test, type Page } from '@playwright/test';
 import { unzipSync } from 'fflate';
 import { PDFDocument } from 'pdf-lib';
 import { makeSizedPdf } from './fixtures';
+import { format } from '../src/i18n/format';
 import { downloadVia, messages, openPage } from './helpers';
 
 const nl = messages.nl;
@@ -18,7 +19,12 @@ async function openPdf(page: Page, path: string, theme: 'light' | 'dark' = 'ligh
   });
 }
 
-const partsList = (page: Page) => page.getByRole('list', { name: nl.split.parts });
+/** De delen in de tabel rechts (zonder de kopregel). */
+const partRows = (page: Page) =>
+  page
+    .getByRole('table', { name: nl.split.table.label })
+    .getByRole('row')
+    .filter({ has: page.getByRole('cell') });
 
 async function widths(bytes: Uint8Array) {
   const doc = await PDFDocument.load(bytes);
@@ -28,9 +34,9 @@ async function widths(bytes: Uint8Array) {
 test.describe('splitsen', () => {
   test('per twee pagina’s splitsen en alles als ZIP downloaden', async ({ page }) => {
     await openPdf(page, '/#/split');
-    await expect(partsList(page).getByRole('listitem')).toHaveCount(5, { timeout: 15_000 });
+    await expect(partRows(page)).toHaveCount(5, { timeout: 15_000 });
     await page.getByLabel(nl.split.size).fill('2');
-    await expect(partsList(page).getByRole('listitem')).toHaveCount(3);
+    await expect(partRows(page)).toHaveCount(3);
 
     const download = await downloadVia(
       page,
@@ -53,20 +59,23 @@ test.describe('splitsen', () => {
 
   test('op bereiken splitsen en één deel downloaden', async ({ page }) => {
     await openPdf(page, '/#/split');
-    await expect(partsList(page).getByRole('listitem')).toHaveCount(5, { timeout: 15_000 });
+    await expect(partRows(page)).toHaveCount(5, { timeout: 15_000 });
     await page.getByLabel(nl.split.ranges).check();
     const field = page.getByLabel(nl.split.rangesLabel);
     await field.fill('4-, 1 3');
-    await expect(partsList(page).getByRole('listitem')).toHaveCount(2);
-    // Pagina 2 zit in geen deel: gedempt in het raster, met dat label.
+    await expect(partRows(page)).toHaveCount(2);
+    // Pagina 2 zit in geen deel: gedempt in het raster (onder Pagina's), met dat label.
+    await page.getByRole('button', { name: nl.split.views.pages, exact: true }).click();
     await expect(page.locator('.thumbs__off')).toHaveCount(1);
     await expect(page.locator('.thumbs__off')).toContainText(nl.split.unused);
 
-    const download = await downloadVia(
-      page,
-      page.getByRole('button', { name: 'Deel 2 downloaden' }),
-      'oneven',
-    );
+    // Eén deel: meteen, onder de naam uit de tabel (zoals op bladwijzers).
+    await page.getByRole('button', { name: nl.split.views.parts, exact: true }).click();
+    await page.getByLabel(format(nl.split.nameLabel, { n: 2 })).fill('oneven');
+    const [download] = await Promise.all([
+      page.waitForEvent('download'),
+      page.getByRole('button', { name: 'Deel 2 downloaden' }).click(),
+    ]);
     expect(download.suggestedFilename()).toBe('oneven.pdf');
     expect(await widths(new Uint8Array(readFileSync(await download.path())))).toEqual([300, 500]);
 
@@ -86,11 +95,11 @@ test.describe('splitsen', () => {
       .getByRole('navigation', { name: nl.mainMenu })
       .getByRole('link', { name: nl.tasks.split.title })
       .click();
-    await expect(partsList(page).getByRole('listitem')).toHaveCount(4);
-    const download = await downloadVia(
-      page,
-      page.getByRole('button', { name: 'Deel 1 downloaden' }),
-    );
+    await expect(partRows(page)).toHaveCount(4);
+    const [download] = await Promise.all([
+      page.waitForEvent('download'),
+      page.getByRole('button', { name: 'Deel 1 downloaden' }).click(),
+    ]);
     expect(await widths(new Uint8Array(readFileSync(await download.path())))).toEqual([400]);
   });
 
@@ -101,13 +110,19 @@ test.describe('splitsen', () => {
       await page.getByLabel(nl.split.rangesLabel).fill('1-2, x');
       await expect(page.getByRole('alert')).toBeVisible({ timeout: 15_000 });
       await page.getByLabel(nl.split.rangesLabel).fill('1-2, 4');
+      const axe = async () => {
+        const result = await new AxeBuilder({ page })
+          .withTags(['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa'])
+          .analyze();
+        expect(
+          result.violations.map((v) => `${v.id}: ${v.nodes.map((n) => n.target).join(', ')}`),
+        ).toEqual([]);
+      };
+      await expect(partRows(page)).toHaveCount(2);
+      await axe();
+      await page.getByRole('button', { name: nl.split.views.pages, exact: true }).click();
       await expect(page.locator('.thumb[data-rendered="true"]').first()).toBeVisible();
-      const result = await new AxeBuilder({ page })
-        .withTags(['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa'])
-        .analyze();
-      expect(
-        result.violations.map((v) => `${v.id}: ${v.nodes.map((n) => n.target).join(', ')}`),
-      ).toEqual([]);
+      await axe();
     });
   }
 });

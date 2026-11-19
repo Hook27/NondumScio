@@ -58,6 +58,100 @@ type Choice = {
 };
 
 /**
+ * Wat je per deel gekozen hebt (aan- of uitgevinkt, een eigen naam, de grootte na downloaden).
+ * Verandert `key` (andere delen), dan begint de keuze opnieuw: alles aan, voorgestelde namen.
+ */
+function usePartChoice(key: string, count: number) {
+  const fresh = (): Choice => ({
+    key,
+    include: Array.from({ length: count }, () => true),
+    names: Array.from({ length: count }, () => null),
+    sizes: Array.from({ length: count }, () => null),
+  });
+  const [stored, setStored] = useState<Choice>({ key: '', include: [], names: [], sizes: [] });
+  const choice = stored.key === key ? stored : fresh();
+  const change = (update: (current: Choice) => Choice) =>
+    setStored((previous) => update(previous.key === key ? previous : fresh()));
+  return {
+    choice,
+    /** Na het downloaden van deel `index`: zijn grootte (en wat er niet uitgedund kon worden). */
+    setSize: (index: number, sized: Sized) =>
+      change((current) => ({
+        ...current,
+        sizes: current.sizes.map((old, i) => (i === index ? sized : old)),
+      })),
+    setInclude: (index: number, include: boolean) =>
+      change((current) => ({
+        ...current,
+        include: current.include.map((on, i) => (i === index ? include : on)),
+      })),
+    setAll: (include: boolean) =>
+      change((current) => ({ ...current, include: current.include.map(() => include) })),
+    setName: (index: number, name: string) =>
+      change((current) => ({
+        ...current,
+        names: current.names.map((old, i) => (i === index ? name : old)),
+      })),
+  };
+}
+
+/**
+ * De rijen van de tabel: elk deel met zijn naam (zelf aangepast of `suggest`), pad in de ZIP,
+ * pagina's en grootte, en de controle van de totale grootte. De pagina's van een deel zijn
+ * `from` t/m `to`, of (op bereiken, waar een deel ook losse pagina's kan zijn) `positionsOf`.
+ */
+function useRows(
+  parts: readonly Part[],
+  choice: Choice,
+  suggest: (part: Part, index: number) => string,
+  folders: boolean,
+  overlap: boolean,
+  positionsOf?: (index: number) => number[],
+) {
+  const { pages, activeSources } = useDocument();
+  const { t } = useI18n();
+  const fallback = t.split.untitledFile;
+  const named = parts.map((part, index) => {
+    const name = choice.names[index] ?? suggest(part, index);
+    const fileName = fileNameOf(name, fallback);
+    const path = zipPath(fileName, part.top, folders, fallback);
+    return { name, fileName, path, include: choice.include[index]! };
+  });
+  // Dubbel is hetzelfde pad: dezelfde naam in een andere map mag.
+  const duplicates = duplicateNames(named.map((row) => (row.include ? row.path : null)));
+  // De grootte die je per deel zou verwachten: naar de grootte en het aantal pagina's van de bestanden.
+  const files = new Map(
+    activeSources.map((source) => [source.id, { size: source.size, pageCount: source.pageCount }]),
+  );
+  const rows: BookmarkRow[] = parts.map((part, index) => {
+    const positions =
+      positionsOf?.(index) ??
+      Array.from({ length: part.to - part.from + 1 }, (_, i) => part.from + i + 1);
+    const sized = choice.sizes[index] ?? null;
+    const expected = expectedSize(
+      positions.map((position) => pages[position - 1]!),
+      files,
+    );
+    return {
+      ...part,
+      ...named[index]!,
+      duplicate: duplicates.has(index),
+      positions,
+      size: sized?.size ?? null,
+      check: sized ? checkSize(sized.size, expected, sized.untrimmed) : null,
+    };
+  });
+  const sourceSize = activeSources.reduce((sum, source) => sum + source.size, 0);
+  // Alle delen samen, tegen alle bestanden samen.
+  const total = checkTotal(
+    rows.map((row) => row.size),
+    sourceSize,
+    overlap,
+  );
+  return { rows, total, sourceSize };
+}
+
+/**
  * De delen volgens de bladwijzers van de geopende bestanden, met wat je hebt aan- of uitgevinkt en
  * welke namen je hebt aangepast. Verandert het niveau, de grenspagina of het pagina-plan, dan
  * begint de keuze opnieuw (alles aan, voorgestelde namen); een ander voorvoegsel past alleen de
@@ -95,79 +189,47 @@ export function useBookmarkSplit(
   }, [outlines, pages, activeSources, level, overlap, s]);
 
   const key = `${level}|${overlap}|${parts.map((p) => `${p.from}-${p.to}:${p.title}`).join('|')}`;
-  const fresh = (): Choice => ({
-    key,
-    include: parts.map(() => true),
-    names: parts.map(() => null),
-    sizes: parts.map(() => null),
-  });
-  const [stored, setStored] = useState<Choice>({ key: '', include: [], names: [], sizes: [] });
-  const choice = stored.key === key ? stored : fresh();
-  const change = (update: (current: Choice) => Choice) =>
-    setStored((previous) => update(previous.key === key ? previous : fresh()));
-
-  const fallback = s.untitledFile;
-  const named = parts.map((part, index) => {
-    const name = choice.names[index] ?? autoName(part.title, index, parts.length, prefix, fallback);
-    const fileName = fileNameOf(name, fallback);
-    const path = zipPath(fileName, part.top, folders, fallback);
-    return { name, fileName, path, include: choice.include[index]! };
-  });
-  // Dubbel is hetzelfde pad: dezelfde naam in een andere map mag.
-  const duplicates = duplicateNames(named.map((row) => (row.include ? row.path : null)));
-  // De grootte die je per deel zou verwachten: naar de grootte en het aantal pagina's van de bestanden.
-  const files = new Map(
-    activeSources.map((source) => [source.id, { size: source.size, pageCount: source.pageCount }]),
-  );
-  const rows: BookmarkRow[] = parts.map((part, index) => {
-    const positions = Array.from({ length: part.to - part.from + 1 }, (_, i) => part.from + i + 1);
-    const sized = choice.sizes[index] ?? null;
-    const expected = expectedSize(
-      positions.map((position) => pages[position - 1]!),
-      files,
-    );
-    return {
-      ...part,
-      ...named[index]!,
-      duplicate: duplicates.has(index),
-      positions,
-      size: sized?.size ?? null,
-      check: sized ? checkSize(sized.size, expected, sized.untrimmed) : null,
-    };
-  });
-  // Alle delen samen, tegen alle bestanden samen.
-  const total = checkTotal(
-    rows.map((row) => row.size),
-    activeSources.reduce((sum, source) => sum + source.size, 0),
+  const { choice, ...setters } = usePartChoice(key, parts.length);
+  const table = useRows(
+    parts,
+    choice,
+    (part, index) => autoName(part.title, index, parts.length, prefix, s.untitledFile),
+    folders,
     overlap,
   );
+  return { loaded, marks, ...table, ...setters };
+}
 
-  return {
-    loaded,
-    marks,
-    rows,
-    total,
-    /** Alle geopende bestanden samen (voor de melding over de totale grootte). */
-    sourceSize: activeSources.reduce((sum, source) => sum + source.size, 0),
-    /** Na het downloaden van deel `index`: zijn grootte (en wat er niet uitgedund kon worden). */
-    setSize: (index: number, sized: Sized) =>
-      change((current) => ({
-        ...current,
-        sizes: current.sizes.map((old, i) => (i === index ? sized : old)),
-      })),
-    setInclude: (index: number, include: boolean) =>
-      change((current) => ({
-        ...current,
-        include: current.include.map((on, i) => (i === index ? include : on)),
-      })),
-    setAll: (include: boolean) =>
-      change((current) => ({ ...current, include: current.include.map(() => include) })),
-    setName: (index: number, name: string) =>
-      change((current) => ({
-        ...current,
-        names: current.names.map((old, i) => (i === index ? name : old)),
-      })),
-  };
+/**
+ * Per aantal pagina's en op bereiken: dezelfde tabel als op bladwijzers (aan- of uitvinken, de
+ * naam aanpassen, de grootte), met "Deel 1", "Deel 2"… als titel en `suggest` als voorgestelde
+ * naam. `parts` zijn de pagina's per deel (plekken in het plan vanaf 1; op bereiken kan een deel
+ * ook losse pagina's zijn, zoals "1 3").
+ */
+export function useRangeSplit(
+  parts: readonly (readonly number[])[],
+  suggest: (positions: readonly number[]) => string,
+) {
+  const { t } = useI18n();
+  const asParts: Part[] = parts.map((positions, index) => ({
+    title: format(t.split.part, { n: index + 1 }),
+    depth: 1,
+    from: positions[0]! - 1,
+    to: positions[positions.length - 1]! - 1,
+    also: [],
+    top: null,
+  }));
+  const key = parts.map((positions) => positions.join(',')).join('|');
+  const { choice, ...setters } = usePartChoice(key, parts.length);
+  const table = useRows(
+    asParts,
+    choice,
+    (_, index) => suggest(parts[index]!),
+    false,
+    false,
+    (index) => [...parts[index]!],
+  );
+  return { loaded: true, marks: [] as Mark[], ...table, ...setters };
 }
 
 export type BookmarkSplit = ReturnType<typeof useBookmarkSplit>;
@@ -260,13 +322,18 @@ export function BookmarkOptions({
   );
 }
 
-/** Wat er te zeggen valt over de bladwijzers: nog aan het lezen, geen bruikbare, overgeslagen, of "ook". */
-export function BookmarkNotes({ split }: { split: BookmarkSplit }) {
+/**
+ * Wat er te zeggen valt over de delen: op bladwijzers nog aan het lezen, geen bruikbare,
+ * overgeslagen of "ook"; bij elke manier een deel of alle delen samen onevenredig groot.
+ */
+export function BookmarkNotes({ split, bookmarks }: { split: BookmarkSplit; bookmarks: boolean }) {
   const { t, language } = useI18n();
   const s = t.split;
   const { loaded, marks, rows, total } = split;
-  if (!loaded) return <p class="split-note">{s.reading}</p>;
-  if (rows.length === 0) return <p class="split-note split-note--error">{s.noBookmarks}</p>;
+  if (bookmarks && !loaded) return <p class="split-note">{s.reading}</p>;
+  if (bookmarks && rows.length === 0) {
+    return <p class="split-note split-note--error">{s.noBookmarks}</p>;
+  }
   const skipped = marks.filter((mark) => mark.position === null);
   const shared = rows.filter((row) => row.also.length > 0).length;
   const large = rows.filter((row) => row.check !== null).length;
@@ -299,11 +366,15 @@ export function BookmarkNotes({ split }: { split: BookmarkSplit }) {
   );
 }
 
-/** De samenvatting boven de tabel: pagina's · bladwijzers · niveaus → wat er geselecteerd is. */
+/**
+ * De samenvatting boven de tabel: pagina's · bladwijzers · niveaus → wat er geselecteerd is.
+ * Zonder `bookmarks` (per aantal, op bereiken) alleen de pagina's en wat er geselecteerd is.
+ */
 export function bookmarkSummary(
   t: ReturnType<typeof useI18n>['t'],
   pageCount: number,
   split: BookmarkSplit,
+  bookmarks: boolean,
 ): string {
   const s = t.split;
   const depth = maxDepth(split.marks);
@@ -311,8 +382,8 @@ export function bookmarkSummary(
   const chosenPages = chosen.reduce((sum, row) => sum + row.positions.length, 0);
   return [
     plural(pageCount, s.summaryPagesOne, s.summaryPagesOther),
-    plural(split.marks.length, s.marksOne, s.marksOther),
-    ...(depth > 0 ? [plural(depth, s.levelsOne, s.levelsOther)] : []),
+    ...(bookmarks ? [plural(split.marks.length, s.marksOne, s.marksOther)] : []),
+    ...(bookmarks && depth > 0 ? [plural(depth, s.levelsOne, s.levelsOther)] : []),
   ]
     .join(' · ')
     .concat(
@@ -353,9 +424,19 @@ function SizeCell({ row }: { row: BookmarkRow }) {
   );
 }
 
-/** Een bereik zoals in de tabel: "4" of "4–10". */
-const rangeText = (row: Part) =>
-  row.from === row.to ? String(row.from + 1) : `${row.from + 1}–${row.to + 1}`;
+/** De pagina's van een deel zoals in de tabel: "4", "4–10", of bij losse pagina's "1, 3–4". */
+function rangeText(row: BookmarkRow): string {
+  const runs: string[] = [];
+  let start = 0;
+  row.positions.forEach((position, i) => {
+    const next = row.positions[i + 1];
+    if (next === position + 1) return;
+    const first = row.positions[start]!;
+    runs.push(first === position ? String(first) : `${first}–${position}`);
+    start = i + 1;
+  });
+  return runs.join(', ');
+}
 
 /**
  * De tabel met de delen: aan- of uitvinken, de naam aanpassen, bekijken en los downloaden. Een
@@ -364,11 +445,14 @@ const rangeText = (row: Part) =>
  */
 export function BookmarkTable({
   split,
+  titleHeader,
   busy,
   onView,
   onDownload,
 }: {
   split: BookmarkSplit;
+  /** De kop van de kolom met de titel: "Bladwijzer", of "Deel" per aantal en op bereiken. */
+  titleHeader: string;
   busy: boolean;
   onView: (index: number) => void;
   onDownload: (index: number) => void;
@@ -415,7 +499,7 @@ export function BookmarkTable({
               {c.number}
             </span>
             <span class="bookmark-table__title" role="columnheader">
-              {c.title}
+              {titleHeader}
             </span>
             <span class="bookmark-table__pages" role="columnheader">
               {c.pages}

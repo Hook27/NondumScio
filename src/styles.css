@@ -3250,38 +3250,14 @@ rect.handle {
   }
 }
 
-.split-parts {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr);
-  gap: 0.35rem;
-  margin: 0 0 0.75rem;
-  padding: 0;
-  list-style: none;
-}
-
-.split-parts__item {
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
-  padding: 0.35rem 0.4rem 0.35rem 0.75rem;
-  background: var(--surface);
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-}
-
-.split-parts__name {
-  font-weight: 600;
-  white-space: nowrap;
-}
-
-.split-parts__pages {
-  flex: 1;
-  min-width: 0;
-  overflow: hidden;
-  color: var(--text-muted);
-  font-size: 0.9rem;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+/* Heel smal vak (een telefoon): de naam over de hele breedte, de grootte en de knoppen eronder. */
+@container (max-width: 30rem) {
+  .bookmark-table__row {
+    grid-template-areas:
+      'check num title pages count'
+      '. name name name name'
+      '. . . size actions';
+  }
 }
 
 .thumbs__part--alt .thumb__page {

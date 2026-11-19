@@ -74,13 +74,18 @@ async function setup(pages = 5) {
   fireEvent.change(document.querySelector('input[type="file"]')!, {
     target: { files: [new File([`%PDF-1.7 ${pages}\n`], 'rapport.pdf')] },
   });
-  await screen.findByRole('list', { name: nl.split.parts });
+  await screen.findByRole('table', { name: nl.split.table.label });
 }
 
+/** De delen in de tabel rechts, als "Deel 1 · 1–2" (titel en pagina's). */
 const parts = () =>
-  within(screen.getByRole('list', { name: nl.split.parts }))
-    .getAllByRole('listitem')
-    .map((item) => item.textContent);
+  within(screen.getByRole('table', { name: nl.split.table.label }))
+    .getAllByRole('row')
+    .slice(1)
+    .map(
+      (row) =>
+        `${row.querySelector('.bookmark-table__title')!.textContent} · ${row.querySelector('.bookmark-table__pages')!.textContent}`,
+    );
 
 beforeEach(() => {
   vi.mocked(buildParts).mockClear();
@@ -93,14 +98,14 @@ afterEach(() => cleanup());
 describe('Splitsen', () => {
   it('splitst standaard per pagina', async () => {
     await setup(3);
-    expect(parts()).toEqual(['Deel 1pagina 1', 'Deel 2pagina 2', 'Deel 3pagina 3']);
+    expect(parts()).toEqual(['Deel 1 · 1', 'Deel 2 · 2', 'Deel 3 · 3']);
     expect(screen.getByRole('button', { name: 'Alle 3 delen downloaden (ZIP)' })).toBeTruthy();
   });
 
   it('splitst per vast aantal pagina’s', async () => {
     await setup(5);
     fireEvent.input(screen.getByLabelText(nl.split.size), { target: { value: '2' } });
-    expect(parts()).toEqual(['Deel 1pagina’s 1-2', 'Deel 2pagina’s 3-4', 'Deel 3pagina 5']);
+    expect(parts()).toEqual(['Deel 1 · 1–2', 'Deel 2 · 3–4', 'Deel 3 · 5']);
   });
 
   it('heeft dezelfde bestandslijst en balk als Samenvoegen', async () => {
@@ -126,6 +131,7 @@ describe('Splitsen', () => {
     await setup(5);
     fireEvent.input(screen.getByLabelText(nl.split.size), { target: { value: '2' } });
     expect(screen.getByRole('heading', { name: nl.merge.result })).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: nl.split.views.pages }));
     const grid = screen.getByRole('list', { name: nl.merge.result });
     const cells = within(grid).getAllByRole('listitem');
     expect(cells.map((cell) => cell.querySelector('.page-option__file')!.textContent)).toEqual([
@@ -163,8 +169,9 @@ describe('Splitsen', () => {
     fireEvent.click(screen.getByLabelText(nl.split.ranges));
     const field = screen.getByLabelText(nl.split.rangesLabel);
     fireEvent.input(field, { target: { value: '1-2, 4-' } });
-    expect(parts()).toEqual(['Deel 1pagina’s 1-2', 'Deel 2pagina’s 4-5']);
+    expect(parts()).toEqual(['Deel 1 · 1–2', 'Deel 2 · 4–5']);
     // Pagina 3 zit in geen deel: gedempt in het raster, met dat label.
+    fireEvent.click(screen.getByRole('button', { name: nl.split.views.pages }));
     const dimmed = document.querySelectorAll('.thumbs__off');
     expect(dimmed).toHaveLength(1);
     expect(dimmed[0]!.textContent).toContain(nl.split.unused);
@@ -174,24 +181,12 @@ describe('Splitsen', () => {
       'Pagina 9 bestaat niet: er zijn 5 pagina’s.',
     );
     expect(field.getAttribute('aria-invalid')).toBe('true');
+    // Geen melding over bladwijzers: die horen alleen bij Op bladwijzers.
+    expect(screen.queryByText(nl.split.noBookmarks)).toBeNull();
     expect(
       (screen.getByRole('button', { name: 'Alle 0 delen downloaden (ZIP)' }) as HTMLButtonElement)
         .disabled,
     ).toBe(true);
-  });
-
-  it('downloadt één deel als PDF, met een voorgestelde naam', async () => {
-    await setup(5);
-    fireEvent.input(screen.getByLabelText(nl.split.size), { target: { value: '2' } });
-    fireEvent.click(screen.getByRole('button', { name: 'Deel 2 downloaden' }));
-    const name = screen.getByLabelText(nl.saveDialog.label) as HTMLInputElement;
-    expect(name.value).toBe("rapport (pagina's 3-4)");
-    fireEvent.click(screen.getByRole('button', { name: nl.saveDialog.download }));
-
-    await waitFor(() => expect(downloadPdf).toHaveBeenCalledTimes(1));
-    const plans = vi.mocked(buildParts).mock.calls[0]![1];
-    expect(plans.map((part) => part.map((page) => page.source + 1))).toEqual([[3, 4]]);
-    expect(vi.mocked(downloadPdf).mock.calls[0]![1]).toBe("rapport (pagina's 3-4).pdf");
   });
 
   it('meldt een ZIP die te groot wordt, en downloadt dan niets', async () => {
@@ -235,7 +230,6 @@ describe('Splitsen: weggaan tijdens het opslaan', () => {
     const work = held([new Uint8Array([1, 2, 3])]);
     vi.mocked(buildParts).mockImplementationOnce(() => work.promise);
     fireEvent.click(screen.getByRole('button', { name: 'Deel 2 downloaden' }));
-    fireEvent.click(screen.getByRole('button', { name: nl.saveDialog.download }));
     await waitFor(() => expect(buildParts).toHaveBeenCalledTimes(1));
     const abort = vi.spyOn(AbortController.prototype, 'abort');
     cleanup();
@@ -256,7 +250,6 @@ describe('Splitsen: voortgang en Stoppen', () => {
     const work = held([new Uint8Array([1, 2, 3])]);
     vi.mocked(buildParts).mockImplementationOnce(() => work.promise);
     fireEvent.click(screen.getByRole('button', { name: 'Deel 2 downloaden' }));
-    fireEvent.click(screen.getByRole('button', { name: nl.saveDialog.download }));
     expect(await screen.findByText(format(nl.split.progress, { done: 0, total: 1 }))).toBeTruthy();
     fireEvent.click(await screen.findByRole('button', { name: nl.pages.stop }));
     expect(screen.getByText(nl.pages.stopping)).toBeTruthy();
@@ -267,5 +260,100 @@ describe('Splitsen: voortgang en Stoppen', () => {
     expect(stopped.classList.contains('page-editor__status')).toBe(true);
     expect(screen.queryByRole('button', { name: nl.pages.stop })).toBeNull();
     expect(downloadPdf).not.toHaveBeenCalled();
+  });
+});
+
+describe('Splitsen: per aantal en op bereiken dezelfde weergave als op bladwijzers', () => {
+  const s = nl.split;
+  const views = () => screen.getByRole('group', { name: s.views.label });
+  const names = () =>
+    [...document.querySelectorAll<HTMLInputElement>('.bookmark-table__name input')].map(
+      (input) => input.value,
+    );
+
+  it('rechts Delen en Pagina’s, met de tabel; links geen lijst meer', async () => {
+    await setup(3);
+    expect(
+      within(views()).getByRole('button', { name: s.views.parts }).getAttribute('aria-pressed'),
+    ).toBe('true');
+    expect(document.querySelector('.split-parts')).toBeNull();
+    const table = screen.getByRole('table', { name: s.table.label });
+    expect(within(table).getAllByRole('columnheader')[2]!.textContent).toBe(s.table.part);
+    expect(names()).toEqual([
+      'rapport (pagina 1).pdf',
+      'rapport (pagina 2).pdf',
+      'rapport (pagina 3).pdf',
+    ]);
+    expect(screen.getByText('3 pagina’s → 3 van 3 delen geselecteerd (3 pagina’s)')).toBeTruthy();
+    // Het aantal delen in de kop, zoals bij de andere taken.
+    expect(document.querySelector('.pane-head__meta')!.textContent).toBe('3 delen');
+
+    fireEvent.click(within(views()).getByRole('button', { name: s.views.pages }));
+    expect(screen.queryByRole('table', { name: s.table.label })).toBeNull();
+    expect(screen.getByRole('list', { name: nl.merge.result })).toBeTruthy();
+  });
+
+  it('uitvinken en een eigen naam: alleen de gekozen delen in de ZIP, onder hun naam', async () => {
+    await setup(3);
+    fireEvent.click(screen.getByLabelText(format(s.include, { n: 2, title: 'Deel 2' })));
+    fireEvent.input(screen.getByLabelText(format(s.nameLabel, { n: 3 })), {
+      target: { value: 'slot' },
+    });
+    // In het raster is het uitgevinkte deel gedempt.
+    fireEvent.click(within(views()).getByRole('button', { name: s.views.pages }));
+    expect(document.querySelectorAll('.thumbs__off')).toHaveLength(1);
+
+    fireEvent.click(screen.getByRole('button', { name: '2 van 3 delen downloaden (ZIP)' }));
+    fireEvent.click(screen.getByRole('button', { name: nl.saveDialog.download }));
+    await waitFor(() => expect(downloadFile).toHaveBeenCalledTimes(1));
+    const files = unzipSync(
+      new Uint8Array(await (vi.mocked(downloadFile).mock.calls[0]![0] as Blob).arrayBuffer()),
+    );
+    expect(Object.keys(files)).toEqual(['rapport (pagina 1).pdf', 'slot.pdf']);
+    expect(new TextDecoder().decode(files['slot.pdf'])).toBe('3');
+    // Geen titel per deel (die hoort bij bladwijzers), wel de grootte in de tabel.
+    expect(vi.mocked(buildParts).mock.calls[0]![6]).toBeUndefined();
+    fireEvent.click(within(views()).getByRole('button', { name: s.views.parts }));
+    const sizes = [...document.querySelectorAll('[role="cell"].bookmark-table__size')].map(
+      (cell) => cell.textContent,
+    );
+    expect(sizes).toEqual(['1 B', '—', '1 B']);
+  });
+
+  it('⬇ per deel downloadt meteen, onder de naam uit de tabel', async () => {
+    await setup(5);
+    fireEvent.input(screen.getByLabelText(s.size), { target: { value: '2' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Deel 2 downloaden' }));
+    expect(screen.queryByRole('dialog')).toBeNull();
+    await waitFor(() => expect(downloadPdf).toHaveBeenCalledTimes(1));
+    expect(vi.mocked(downloadPdf).mock.calls[0]![1]).toBe("rapport (pagina's 3-4).pdf");
+    const plans = vi.mocked(buildParts).mock.calls[0]![1];
+    expect(plans.map((part) => part.map((page) => page.source + 1))).toEqual([[3, 4]]);
+    expect(vi.mocked(buildParts).mock.calls[0]![6]).toBeUndefined();
+    await waitFor(() =>
+      expect(
+        document.querySelectorAll('[role="cell"].bookmark-table__size')[1]!.textContent,
+      ).not.toBe('—'),
+    );
+  });
+
+  it('op bereiken kan een deel losse pagina’s zijn: precies die gaan mee', async () => {
+    await setup(5);
+    fireEvent.click(screen.getByLabelText(s.ranges));
+    fireEvent.input(screen.getByLabelText(s.rangesLabel), { target: { value: '4-, 1 3' } });
+    expect(parts()).toEqual(['Deel 1 · 4–5', 'Deel 2 · 1, 3']);
+    expect(screen.getByText('5 pagina’s → 2 van 2 delen geselecteerd (4 pagina’s)')).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: 'Deel 2 downloaden' }));
+    await waitFor(() => expect(downloadPdf).toHaveBeenCalledTimes(1));
+    const plans = vi.mocked(buildParts).mock.calls[0]![1];
+    expect(plans.map((part) => part.map((page) => page.source + 1))).toEqual([[1, 3]]);
+  });
+
+  it('op bereiken ook: de tabel volgt de bereiken', async () => {
+    await setup(5);
+    fireEvent.click(screen.getByLabelText(s.ranges));
+    fireEvent.input(screen.getByLabelText(s.rangesLabel), { target: { value: '1-2, 4-' } });
+    expect(names()).toEqual(["rapport (pagina's 1-2).pdf", "rapport (pagina's 4-5).pdf"]);
+    expect(screen.getByText('5 pagina’s → 2 van 2 delen geselecteerd (4 pagina’s)')).toBeTruthy();
   });
 });
