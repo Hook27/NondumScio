@@ -5,6 +5,7 @@ import { ZOOM_KEYS, nextZoom, realPercent, realWidth } from '../lib/zoom';
 import { ConfirmDialog } from '../components/ConfirmDialog';
 import { Icon, IconButton } from '../components/Icon';
 import { PageNav, ZoomBar } from '../components/PageBars';
+import { useSaveDialog } from '../components/SaveDialog';
 import { useShortcuts } from '../lib/useShortcuts';
 import {
   CanvasBox,
@@ -853,18 +854,25 @@ function Overview() {
   const outcomes =
     state.run.status === 'running' || state.run.status === 'done' ? state.run.outcomes : {};
   const fixed = locked(state);
-  const save = (extension: 'txt' | 'csv') => {
-    const name = exportName(new Date(), extension);
-    const text =
-      extension === 'txt' ? triageTxt(files, exportTexts(t)) : triageCsv(files, exportTexts(t));
-    downloadFile(
-      new TextEncoder().encode(text),
-      name,
-      extension === 'txt' ? 'text/plain' : 'text/csv',
-    );
-    markTriageSaved();
-    setStatus(format(o.downloaded, { name }));
-  };
+  const [askName, nameDialog] = useSaveDialog();
+  // Eerst de naam (bedieningsafspraak V11); pas na Downloaden telt de lijst als bewaard.
+  const save = (extension: 'txt' | 'csv') =>
+    askName({
+      title: o.saveTitle,
+      suggestion: exportName(new Date(), extension),
+      extension: `.${extension}`,
+      onConfirm: (name) => {
+        const text =
+          extension === 'txt' ? triageTxt(files, exportTexts(t)) : triageCsv(files, exportTexts(t));
+        downloadFile(
+          new TextEncoder().encode(text),
+          name,
+          extension === 'txt' ? 'text/plain' : 'text/csv',
+        );
+        markTriageSaved();
+        setStatus(format(o.downloaded, { name }));
+      },
+    });
   const item = (entry: TriageFile) => (
     <li key={entry.id} class="triage-group__item">
       <span class="triage-list__dot" aria-hidden="true" />
@@ -903,6 +911,7 @@ function Overview() {
           >
             {o.csv}
           </button>
+          {nameDialog}
           {folderMode && (
             <button
               type="button"

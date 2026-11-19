@@ -8,6 +8,7 @@ import { LanguageProvider } from '../i18n/LanguageContext';
 import { held, makeFlaky } from '../lib/testFiles';
 import { PdfSaveError, buildPdf, downloadFile, downloadPdf } from '../pdf/save';
 import { DB_STORAGE_KEY, type RenameDb } from './database';
+import { cancelSave, confirmSave, saveDialog } from '../components/testSave';
 import { openScanReader } from './readText';
 import { RenameTool } from './RenameTool';
 import { resetRenameState } from './store';
@@ -512,6 +513,7 @@ describe('Slim hernoemen: de database', () => {
     expect(screen.queryByRole('button', { name: messages.nl.pages.undo })).toBeNull();
     // Na exporteren is een verwijdering niet meer in die export: die melding gaat weg.
     fireEvent.click(screen.getByRole('button', { name: d.export }));
+    confirmSave();
     expect(screen.getByRole('status').textContent).toContain('Geëxporteerd');
     // Een regel zonder naam heet naar zijn plaats.
     fireEvent.click(screen.getByRole('button', { name: 'Verwijderen: afzender 2' }));
@@ -528,6 +530,19 @@ describe('Slim hernoemen: de database', () => {
     ]);
     expect(field('Herkenwoorden van afzender 1').value).toBe('ing bank');
     expect(screen.queryByRole('button', { name: messages.nl.pages.undo })).toBeNull();
+  });
+
+  it('exporteren: eerst het naamvenster (bedieningsafspraak V11)', () => {
+    setup();
+    toView(r.views.database);
+    fireEvent.click(screen.getByRole('button', { name: d.export }));
+    expect(within(saveDialog()).getByRole('heading').textContent).toBe(d.saveTitle);
+    cancelSave();
+    expect(downloadFile).not.toHaveBeenCalled();
+    expect(screen.queryByText(/Geëxporteerd/)).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: d.export }));
+    confirmSave('reservekopie');
+    expect(vi.mocked(downloadFile).mock.calls[0]![1]).toBe('reservekopie.json');
   });
 
   it('importeren voegt samen; exporteren geeft het bestand van de HTML-tool', async () => {
@@ -548,6 +563,7 @@ describe('Slim hernoemen: de database', () => {
     expect(field('Herkenwoorden van afzender 1').value).toBe('nl99ingb, ing bank');
 
     fireEvent.click(screen.getByRole('button', { name: d.export }));
+    confirmSave();
     expect(downloadFile).toHaveBeenCalledTimes(1);
     const [bytes, name, type] = vi.mocked(downloadFile).mock.calls[0]!;
     expect(name).toMatch(/^pdf-hernoemer-database_\d{8}_\d{4}\.json$/);

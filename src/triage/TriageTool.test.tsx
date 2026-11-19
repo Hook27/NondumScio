@@ -8,6 +8,7 @@ import { format } from '../i18n/format';
 import { PdfLoadError } from '../pdf/loader';
 import { unsavedSources } from '../lib/unsavedWarning';
 import { downloadFile } from '../pdf/save';
+import { cancelSave, confirmSave, saveDialog } from '../components/testSave';
 import { TriageTool } from './TriageTool';
 import { ADVANCE_MS, getTriageState, resetTriageState } from './store';
 
@@ -441,6 +442,7 @@ describe('TriageTool', () => {
     expect(screen.getByRole('heading', { name: format(tr.overview.none, { n: 1 }) })).toBeTruthy();
 
     fireEvent.click(screen.getByRole('button', { name: tr.overview.txt }));
+    confirmSave();
     const [txt, txtName, txtType] = vi.mocked(downloadFile).mock.calls[0]!;
     expect(txtName).toBe('triage_2026-11-07_1830.txt');
     expect(txtType).toBe('text/plain');
@@ -452,6 +454,7 @@ describe('TriageTool', () => {
     );
 
     fireEvent.click(screen.getByRole('button', { name: tr.overview.csv }));
+    confirmSave();
     const [csv, csvName, csvType] = vi.mocked(downloadFile).mock.calls[1]!;
     expect(csvName).toBe('triage_2026-11-07_1830.csv');
     expect(csvType).toBe('text/csv');
@@ -475,6 +478,7 @@ describe('TriageTool', () => {
     expect(unsavedSources()).toContain('triage');
     fireEvent.click(screen.getByRole('button', { name: tr.views.overview }));
     fireEvent.click(screen.getByRole('button', { name: tr.overview.csv }));
+    confirmSave();
     expect(unsavedSources()).not.toContain('triage');
     // Een nieuw besluit na het downloaden: weer waarschuwen.
     fireEvent.click(
@@ -482,6 +486,7 @@ describe('TriageTool', () => {
     );
     expect(unsavedSources()).toContain('triage');
     fireEvent.click(screen.getByRole('button', { name: tr.overview.txt }));
+    confirmSave();
     expect(unsavedSources()).not.toContain('triage');
   });
 
@@ -852,9 +857,31 @@ describe('TriageTool: Wissen vraagt alleen als er werk verloren gaat (bedienings
     await advance();
     fireEvent.click(screen.getByRole('button', { name: tr.views.overview }));
     fireEvent.click(screen.getByRole('button', { name: tr.overview.txt }));
+    confirmSave();
     expect(downloadFile).toHaveBeenCalledTimes(1);
     fireEvent.click(screen.getByRole('button', { name: tr.clear }));
     expect(screen.queryByRole('dialog')).toBeNull();
     expect(getTriageState().files).toHaveLength(0);
+  });
+});
+
+describe('TriageTool: eerst het naamvenster (bedieningsafspraak V11)', () => {
+  it('Annuleren downloadt niets en de besluiten tellen niet als bewaard', async () => {
+    setup();
+    choose(pdf('a.pdf'));
+    await settle();
+    await key('k');
+    await advance();
+    fireEvent.click(screen.getByRole('button', { name: tr.views.overview }));
+    fireEvent.click(screen.getByRole('button', { name: tr.overview.csv }));
+    expect(within(saveDialog()).getByRole('heading').textContent).toBe(tr.overview.saveTitle);
+    cancelSave();
+    expect(downloadFile).not.toHaveBeenCalled();
+    expect(unsavedSources()).toContain('triage');
+
+    fireEvent.click(screen.getByRole('button', { name: tr.overview.csv }));
+    confirmSave('mijn lijst');
+    expect(vi.mocked(downloadFile).mock.calls[0]![1]).toBe('mijn lijst.csv');
+    expect(unsavedSources()).not.toContain('triage');
   });
 });

@@ -13,6 +13,7 @@ import { format } from '../i18n/format';
 import { PdfLoadError } from '../pdf/loader';
 import { unsavedSources } from '../lib/unsavedWarning';
 import { downloadFile } from '../pdf/save';
+import { cancelSave, confirmSave, saveDialog } from '../components/testSave';
 import { TextTool } from './TextTool';
 import { DEFAULT_TEXT_OPTIONS } from './extract';
 import { SETTINGS_PREFIX } from './settings';
@@ -791,6 +792,7 @@ describe('PDF → Platte tekst: resultaat', () => {
     fireEvent.click(button(p.copy));
     await waitFor(() => expect(copyText).toHaveBeenLastCalledWith('Mijn eigen tekst.'));
     fireEvent.click(button(p.download));
+    confirmSave();
     const [data] = vi.mocked(downloadFile).mock.calls.at(-1)!;
     expect(new TextDecoder().decode(data as Uint8Array)).toBe('Mijn eigen tekst.');
     // Weer precies de tekst uit de PDF: geen melding over aanpassingen.
@@ -819,7 +821,13 @@ describe('PDF → Platte tekst: resultaat', () => {
     expect(unsavedSources()).not.toContain('text');
     fireEvent.input(output()!, { target: { value: 'Mijn eigen tekst.' } });
     expect(unsavedSources()).toContain('text');
+    // Annuleren in het naamvenster: niets gedownload, dus nog steeds niet bewaard.
     fireEvent.click(button(p.download));
+    cancelSave();
+    expect(downloadFile).not.toHaveBeenCalled();
+    expect(unsavedSources()).toContain('text');
+    fireEvent.click(button(p.download));
+    confirmSave();
     expect(unsavedSources()).not.toContain('text');
     fireEvent.input(output()!, { target: { value: 'Nog eens anders.' } });
     expect(unsavedSources()).toContain('text');
@@ -837,10 +845,30 @@ describe('PDF → Platte tekst: resultaat', () => {
     expect(unsavedSources()).not.toContain('text');
   });
 
+  it('eerst het naamvenster (bedieningsafspraak V11), met een eigen naam', async () => {
+    await open('brief.pdf');
+    fireEvent.click(button(p.extract));
+    fireEvent.click(button(p.download));
+    expect(within(saveDialog()).getByRole('heading').textContent).toBe(p.saveTitle);
+    confirmSave('mijn brief');
+    expect(vi.mocked(downloadFile).mock.calls[0]![1]).toBe('mijn brief.txt');
+    expect(screen.getByText(format(p.downloaded, { name: 'mijn brief.txt' }))).toBeTruthy();
+
+    // De instellingen ook, als .json.
+    fireEvent.click(button(p.save.export));
+    expect(within(saveDialog()).getByRole('heading').textContent).toBe(p.save.export);
+    cancelSave();
+    expect(downloadFile).toHaveBeenCalledTimes(1);
+    fireEvent.click(button(p.save.export));
+    confirmSave('mijn instellingen');
+    expect(vi.mocked(downloadFile).mock.calls[1]![1]).toBe('mijn instellingen.json');
+  });
+
   it('downloadt de tekst als <naam>_extract.txt', async () => {
     await open('brief.pdf');
     fireEvent.click(button(p.extract));
     fireEvent.click(button(p.download));
+    confirmSave();
     expect(downloadFile).toHaveBeenCalledTimes(1);
     const [data, name, type] = vi.mocked(downloadFile).mock.calls[0]!;
     expect(name).toBe('brief_extract.txt');
@@ -960,6 +988,7 @@ describe('PDF → Platte tekst: niets weggooien', () => {
     await work();
     // Gedownload: niets te verliezen, dus geen vraag.
     fireEvent.click(button(p.download));
+    confirmSave();
     choose('geheim.pdf');
     await waitFor(() =>
       expect(screen.getByRole('alert').textContent).toBe(
@@ -1397,6 +1426,7 @@ describe('PDF → Platte tekst: instellingen bewaren', () => {
     await settle();
     draw(...LEFT_BOX);
     fireEvent.click(button(p.save.export));
+    confirmSave();
     const [data, name, type] = vi.mocked(downloadFile).mock.calls[0]!;
     expect(name).toBe('artikel_instellingen.json');
     expect(type).toBe('application/json');
@@ -1435,6 +1465,7 @@ describe('PDF → Platte tekst: instellingen bewaren', () => {
     );
     // Wat deze tool nog niet kent, gaat mee bij opslaan.
     fireEvent.click(button(p.save.export));
+    confirmSave();
     const [data] = vi.mocked(downloadFile).mock.calls[0]!;
     expect(JSON.parse(new TextDecoder().decode(data as Uint8Array)).options.tables).toBe(true);
     // Ongedaan: de vakken van daarvoor terug.
@@ -1644,6 +1675,7 @@ describe('PDF → Platte tekst: opsommingen, koppen en tabellen', () => {
     fireEvent.click(check(s.tables));
     fireEvent.click(check(s.headingMarker));
     fireEvent.click(button(p.save.export));
+    confirmSave();
     const [data] = vi.mocked(downloadFile).mock.calls[0]!;
     expect(JSON.parse(new TextDecoder().decode(data as Uint8Array)).options).toMatchObject({
       structure: true,
@@ -1733,6 +1765,7 @@ describe('PDF → Platte tekst: pagina-overgangen', () => {
     fireEvent.click(button(pb.last));
     fireEvent.change(screen.getByRole('combobox'), { target: { value: 'break' } });
     fireEvent.click(button(p.save.export));
+    confirmSave();
     const [data] = vi.mocked(downloadFile).mock.calls[0]!;
     const saved = JSON.parse(new TextDecoder().decode(data as Uint8Array));
     expect(saved.joinOverride).toEqual({ 4: 'break' });
@@ -1902,6 +1935,7 @@ describe('PDF → Platte tekst: documentkop en metadata', () => {
     fireEvent.click(check(h.use));
     type(f.title, 'Eigen titel');
     fireEvent.click(button(p.save.export));
+    confirmSave();
     const [data] = vi.mocked(downloadFile).mock.calls[0]!;
     const saved = JSON.parse(new TextDecoder().decode(data as Uint8Array));
     expect(saved.options).toMatchObject({ metaHeader: true, conventions: false });
@@ -2048,7 +2082,10 @@ describe('PDF → Platte tekst: batch', () => {
     fireEvent.change(document.querySelector('#plaintext-batch-files')!, {
       target: { files: names.map(pdf) },
     });
-  const run = () => fireEvent.click(document.querySelector('.plaintext-batch__run')!);
+  const run = () => {
+    fireEvent.click(document.querySelector('.plaintext-batch__run')!);
+    confirmSave();
+  };
   /** Een nieuwe lijst met deze PDF's, de batch starten, en wachten tot hij klaar is. */
   async function batch(...names: string[]) {
     act(() => clearBatchFiles());
@@ -2187,6 +2224,23 @@ describe('PDF → Platte tekst: batch', () => {
     await batch('brief.pdf', 'leeg.pdf');
     expect(await zipped()).toEqual({ 'brief_extract.txt': LETTER_TEXT, 'leeg_extract.txt': '' });
     expect(message()).toContain(format(b.noText, { list: 'leeg.pdf' }));
+  });
+
+  it('eerst het naamvenster (bedieningsafspraak V11): Annuleren verwerkt niets, een eigen naam wel', async () => {
+    setup();
+    add('brief.pdf');
+    fireEvent.click(document.querySelector('.plaintext-batch__run')!);
+    expect(within(saveDialog()).getByRole('heading').textContent).toBe(b.saveTitle);
+    cancelSave();
+    await settle();
+    expect(getTextState().batch.status).toBe('idle');
+    expect(downloadFile).not.toHaveBeenCalled();
+
+    fireEvent.click(document.querySelector('.plaintext-batch__run')!);
+    confirmSave('mijn batch');
+    await waitFor(() => expect(getTextState().batch.status).toBe('done'));
+    expect(vi.mocked(downloadFile).mock.calls.at(-1)![1]).toBe('mijn batch.zip');
+    expect(message()).toContain(format(b.downloaded, { name: 'mijn batch.zip' }));
   });
 
   it('niets bruikbaars: geen download, alleen de melding', async () => {

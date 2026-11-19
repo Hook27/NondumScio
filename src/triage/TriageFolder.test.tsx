@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/preact';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { confirmSave } from '../components/testSave';
 import { messages } from '../i18n';
 import { LanguageProvider } from '../i18n/LanguageContext';
 import { format } from '../i18n/format';
@@ -336,6 +337,7 @@ describe('Archief / Triage: Map opruimen', () => {
     expect((button(tr.run.button) as HTMLButtonElement).disabled).toBe(false);
     expect(screen.getByText('2024/c.pdf')).toBeTruthy();
     fireEvent.click(button(tr.overview.csv));
+    confirmSave();
     const [csv, name] = vi.mocked(downloadFile).mock.calls[0]!;
     expect(name).toBe('triage_2026-11-07_2105.csv');
     expect(new TextDecoder().decode(csv as Uint8Array)).toBe(

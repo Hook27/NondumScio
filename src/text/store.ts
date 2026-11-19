@@ -713,11 +713,12 @@ const encode = (text: string) => new TextEncoder().encode(text);
 /**
  * De PDF's van de lijst achter elkaar, in de volgorde van de lijst, met de instellingen van nu en
  * zonder leesvakken, zoals in de extractor. Eén PDF tegelijk wordt gelezen en meteen verwerkt.
- * Daarna één download: een zip met per PDF een .txt, of één .txt met alles. Is er niets bruikbaars
+ * Daarna één download (onder `fileName`, uit het naamvenster): een zip met per PDF een .txt, of één
+ * .txt met alles. Is er niets bruikbaars
  * (geen tekst, of niets gelezen), dan geen download, alleen de melding. De open PDF, de vakken en
  * het resultaat blijven ongemoeid, en de lijst blijft staan.
  */
-export async function runBatch(texts?: BatchTexts): Promise<void> {
+export async function runBatch(texts?: BatchTexts, fileName?: string): Promise<void> {
   const files = state.batchFiles.map((entry) => entry.file);
   if (state.batch.status === 'running' || files.length === 0) return;
   const opts = state.options;
@@ -774,11 +775,11 @@ export async function runBatch(texts?: BatchTexts): Promise<void> {
     }
     if (!usable) problem = ok === 0 ? 'nothingRead' : 'nothing';
     else if (combine) {
-      download = 'batch_extract.txt';
+      download = fileName ?? 'batch_extract.txt';
       const text = combineParts(combinedHead(opts, ctx), parts);
       downloadFile(encode(text), download, 'text/plain;charset=utf-8');
     } else {
-      download = 'batch_extract.zip';
+      download = fileName ?? 'batch_extract.zip';
       downloadFile(zip!.finish(), download, 'application/zip');
     }
   } catch (error) {

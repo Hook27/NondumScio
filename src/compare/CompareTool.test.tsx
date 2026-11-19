@@ -6,6 +6,7 @@ import { LanguageProvider } from '../i18n/LanguageContext';
 import { format } from '../i18n/format';
 import { PdfLoadError } from '../pdf/loader';
 import { downloadFile } from '../pdf/save';
+import { cancelSave, confirmSave, saveDialog } from '../components/testSave';
 import { CompareTool } from './CompareTool';
 import { compareTexts } from './diff';
 import type { PageText, Piece } from './layout';
@@ -1129,6 +1130,7 @@ describe('rapport', () => {
     await screen.findByRole('table');
     fireEvent.click(button(c.tabs.profile));
     fireEvent.click(button(r.download));
+    confirmSave();
     const [data, name, type] = vi.mocked(downloadFile).mock.calls[0]!;
     expect(name).toMatch(/^pdf-vergelijking_\d{8}_\d{4}\.txt$/);
     expect(type).toBe('text/plain;charset=utf-8');
@@ -1136,6 +1138,24 @@ describe('rapport', () => {
     expect(text).toContain('=== DOCUMENTPROFIEL ===');
     expect(text).toContain('@@ A pagina 1 | B pagina 1 @@');
     expect(screen.getByText(format(r.downloaded, { name }))).toBeTruthy();
+  });
+
+  it('eerst het naamvenster (bedieningsafspraak V11); Annuleren downloadt niets', async () => {
+    setup();
+    choose('a', 'oud.pdf', 'nieuw.pdf');
+    await screen.findByRole('table');
+    fireEvent.click(button(r.download));
+    expect(within(saveDialog()).getByRole('heading').textContent).toBe(r.saveTitle);
+    const field = within(saveDialog()).getByRole('textbox') as HTMLInputElement;
+    expect(field.value.startsWith('pdf-vergelijking_')).toBe(true);
+    cancelSave();
+    expect(screen.queryByRole('dialog')).toBeNull();
+    expect(downloadFile).not.toHaveBeenCalled();
+
+    fireEvent.click(button(r.download));
+    confirmSave('mijn rapport');
+    expect(vi.mocked(downloadFile).mock.calls[0]![1]).toBe('mijn rapport.txt');
+    expect(screen.getByText(format(r.downloaded, { name: 'mijn rapport.txt' }))).toBeTruthy();
   });
 
   it('volgt de instellingen, en de melding verdwijnt bij een nieuwe vergelijking', async () => {
