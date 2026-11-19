@@ -155,9 +155,17 @@ export function getTriageState(): TriageState {
   return state;
 }
 
+/**
+ * Gaat er werk verloren bij wissen of sluiten? Alleen als er besluiten zijn die nog niet gedownload
+ * of uitgevoerd zijn (bedieningsafspraak V10). Dan vraagt Wissen eerst, en waarschuwt het sluiten
+ * van het tabblad.
+ */
+export const triageAtRisk = (now: TriageState): boolean =>
+  now.unsaved && now.files.some((entry) => entry.decision !== null);
+
 function setState(change: Partial<TriageState>) {
   state = { ...state, ...change };
-  setUnsavedWork('triage', state.unsaved && state.files.some((entry) => entry.decision !== null));
+  setUnsavedWork('triage', triageAtRisk(state));
   for (const listener of listeners) listener();
 }
 

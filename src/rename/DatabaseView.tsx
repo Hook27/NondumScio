@@ -37,17 +37,34 @@ function setList(kind: DbKind, change: (list: readonly DbEntry[]) => DbEntry[]) 
   setRenameDb({ ...db, [kind]: change(db[kind]) });
 }
 
+/** De laatst verwijderde regel: wat Ongedaan maken terugzet, en op welke plek. */
+type Removed = { kind: DbKind; entry: DbEntry; index: number };
+
 /**
  * De database van Slim hernoemen: afzenders en onderwerpen met hun herkenwoorden, te bewerken,
  * te exporteren en te importeren (in de vorm van de HTML-tool, zodat een bestand in beide werkt).
+ * Verwijderen vraagt niets, maar kan terug met Ongedaan maken (bedieningsafspraak V10).
  */
 export function DatabaseView() {
   const { t } = useI18n();
   const d = t.rename.db;
   const db = useRenameDb();
   const [status, setStatus] = useState<{ text: string; error: boolean } | null>(null);
+  const [removed, setRemoved] = useState<Removed | null>(null);
 
   const count = (kind: DbKind, n: number) => plural(n, d.kinds[kind].one, d.kinds[kind].other);
+
+  const remove = (kind: DbKind, entry: DbEntry, index: number) => {
+    setList(kind, (current) => current.filter((e) => e !== entry));
+    setStatus(null);
+    setRemoved({ kind, entry, index });
+  };
+  const undoRemove = () => {
+    if (!removed) return;
+    const { kind, entry, index } = removed;
+    setList(kind, (current) => [...current.slice(0, index), entry, ...current.slice(index)]);
+    setRemoved(null);
+  };
 
   const save = () => {
     downloadFile(new TextEncoder().encode(exportDb(db)), dbFileName(), 'application/json');
@@ -116,12 +133,28 @@ export function DatabaseView() {
             {status.text}
           </p>
         )}
+        {removed && (
+          <p class="page-editor__saved undo-note" role="status">
+            {format(d.removed, {
+              name:
+                removed.entry.naam || `${d.kinds[removed.kind].item} ${String(removed.index + 1)}`,
+            })}{' '}
+            <button type="button" class="link-button" onClick={undoRemove}>
+              {t.pages.undo}
+            </button>
+          </p>
+        )}
         <p class="annotate__hint">{d.intro}</p>
         <p class="annotate__hint">{d.stored}</p>
       </div>
       <div class="workspace__view rename-db" data-scroll-root>
         {KINDS.map((kind) => (
-          <DbList key={kind} kind={kind} list={db[kind]} />
+          <DbList
+            key={kind}
+            kind={kind}
+            list={db[kind]}
+            onRemove={(entry, index) => remove(kind, entry, index)}
+          />
         ))}
       </div>
     </section>
@@ -129,7 +162,15 @@ export function DatabaseView() {
 }
 
 /** De lijst van één soort (afzenders of onderwerpen), met een knop om een regel toe te voegen. */
-function DbList({ kind, list }: { kind: DbKind; list: readonly DbEntry[] }) {
+function DbList({
+  kind,
+  list,
+  onRemove,
+}: {
+  kind: DbKind;
+  list: readonly DbEntry[];
+  onRemove: (entry: DbEntry, index: number) => void;
+}) {
   const { t } = useI18n();
   const d = t.rename.db;
   const k = d.kinds[kind];
@@ -172,7 +213,7 @@ function DbList({ kind, list }: { kind: DbKind; list: readonly DbEntry[] }) {
                   keys.set(changed, keyOf(entry));
                   setList(kind, (current) => current.map((e) => (e === entry ? changed : e)));
                 }}
-                onRemove={() => setList(kind, (current) => current.filter((e) => e !== entry))}
+                onRemove={() => onRemove(entry, index)}
               />
             ))
           )}

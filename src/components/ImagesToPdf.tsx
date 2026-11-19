@@ -133,9 +133,12 @@ export function useImagesToPdf() {
     [],
   );
 
-  /** Alles weg en opnieuw beginnen (niet ongedaan te maken, zoals het sluiten van een PDF). */
+  /**
+   * Alles weg en opnieuw beginnen, zonder vraag: het is een stap die je ongedaan kunt maken
+   * (bedieningsafspraak V10).
+   */
   const clear = () => {
-    setHistory({ past: [], present: [], future: [] });
+    edit(() => []);
     setSkipped([]);
   };
 
@@ -233,6 +236,14 @@ export function ImagesToPdf({ state, head }: { state: ImagesState; head: Compone
           chooseLabel={t.convert.choose}
           onFiles={(files) => void add(files)}
         >
+          {canUndo && (
+            <p class="dropzone__undo undo-note" role="status">
+              {t.convert.cleared}{' '}
+              <button type="button" class="link-button" onClick={undo}>
+                {t.pages.undo}
+              </button>
+            </p>
+          )}
           {skippedMessages}
         </Dropzone>
       </>

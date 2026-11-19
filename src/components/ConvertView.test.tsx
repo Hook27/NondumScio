@@ -261,6 +261,22 @@ describe('Omzetten: afbeeldingen naar PDF', () => {
     fireEvent.click(button(nl.document.close));
     expect(screen.getByRole('heading', { name: nl.convert.pickTitle })).toBeTruthy();
   });
+
+  it('de sluitknop kan terug met Ongedaan maken, ook met Ctrl+Z (bedieningsafspraak V10)', async () => {
+    setup();
+    expect(screen.queryByText('Alle afbeeldingen zijn weggehaald.')).toBeNull();
+    await addImages(png('a.png'), png('b.png'));
+    fireEvent.click(button(nl.document.close));
+    // Geen vraag: er gaat niets verloren, want het kan terug.
+    expect(screen.queryByRole('dialog')).toBeNull();
+    expect(screen.getByText('Alle afbeeldingen zijn weggehaald.')).toBeTruthy();
+    fireEvent.click(button(nl.pages.undo));
+    expect(names()).toEqual(['a.png', 'b.png']);
+
+    fireEvent.click(button(nl.document.close));
+    fireEvent.keyDown(document.body, { key: 'z', ctrlKey: true });
+    await waitFor(() => expect(names()).toEqual(['a.png', 'b.png']));
+  });
 });
 
 describe('Omzetten: PDF naar afbeeldingen', () => {

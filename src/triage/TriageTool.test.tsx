@@ -317,7 +317,14 @@ describe('TriageTool', () => {
     await key('x', { altKey: true });
     expect(names()[0]![1]).toBe(null);
 
+    // Wissen vraagt alleen met een besluit: b bewaren, terug naar a, en dan het venster.
+    await key('ArrowRight');
+    await settle();
+    await key('k');
+    await key('ArrowLeft');
+    await settle();
     fireEvent.click(screen.getByRole('button', { name: tr.clear }));
+    expect(screen.getByRole('dialog')).toBeTruthy();
     await settle();
     await key('k');
     expect(names()[0]![1]).toBe(null);
@@ -808,6 +815,46 @@ describe('TriageTool: pictogrammen en woorden (bedieningsafspraak V9)', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Wissen' }));
     fireEvent.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'Wissen' }));
     await advance();
+    expect(getTriageState().files).toHaveLength(0);
+  });
+});
+
+describe('TriageTool: Wissen vraagt alleen als er werk verloren gaat (bedieningsafspraak V10)', () => {
+  it('zonder besluiten: meteen gewist, zonder vraag', async () => {
+    setup();
+    choose(pdf('a.pdf'), pdf('b.pdf'));
+    await settle();
+    fireEvent.click(screen.getByRole('button', { name: tr.clear }));
+    expect(screen.queryByRole('dialog')).toBeNull();
+    await advance();
+    expect(getTriageState().files).toHaveLength(0);
+  });
+
+  it('een besluit dat weer is weggehaald: geen vraag', async () => {
+    setup();
+    choose(pdf('a.pdf'), pdf('b.pdf'));
+    await settle();
+    // Twee keer dezelfde toets haalt het besluit weer weg.
+    await key('k');
+    await key('k');
+    await advance();
+    expect(names()[0]![1]).toBe(null);
+    fireEvent.click(screen.getByRole('button', { name: tr.clear }));
+    expect(screen.queryByRole('dialog')).toBeNull();
+    expect(getTriageState().files).toHaveLength(0);
+  });
+
+  it('met besluiten die al gedownload zijn: ook zonder vraag', async () => {
+    setup();
+    choose(pdf('a.pdf'));
+    await settle();
+    await key('k');
+    await advance();
+    fireEvent.click(screen.getByRole('button', { name: tr.views.overview }));
+    fireEvent.click(screen.getByRole('button', { name: tr.overview.txt }));
+    expect(downloadFile).toHaveBeenCalledTimes(1);
+    fireEvent.click(screen.getByRole('button', { name: tr.clear }));
+    expect(screen.queryByRole('dialog')).toBeNull();
     expect(getTriageState().files).toHaveLength(0);
   });
 });
