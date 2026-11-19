@@ -90,6 +90,19 @@ function pdfFor(file: File): Promise<PDFDocumentProxy> {
   return pdf;
 }
 
+/**
+ * Een PDF die al open is (bijvoorbeeld door `readPdf` met `keepOpen`) voor het beeld gebruiken, zodat
+ * het bestand niet nog eens gelezen wordt. Staat dat bestand al open, dan blijft dat en gaat deze
+ * dicht. Sluiten gaat zoals altijd met `closeVisual`.
+ */
+export function shareVisual(file: File, pdf: PDFDocumentProxy): void {
+  if (open.has(file)) {
+    closePdf(pdf);
+    return;
+  }
+  open.set(file, Promise.resolve(pdf));
+}
+
 /** De PDF van een bestand sluiten, als hij voor het beeld open was. */
 export function closeVisual(file: File): void {
   const pdf = open.get(file);

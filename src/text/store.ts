@@ -3,11 +3,11 @@ import type { PageText } from '../compare/layout';
 import type { DocInfo } from '../compare/profile';
 import { readPdf } from '../compare/readPdf';
 import type { Incoming } from '../compare/store';
-import { closeVisual } from '../compare/visual';
+import { closeVisual, shareVisual } from '../compare/visual';
 import { setUnsavedWork } from '../lib/unsavedWarning';
 import { ZipTooLargeError, zipWriter, type ZipWriter } from '../lib/zip';
 import type { LoadErrorCode } from '../pdf/detect';
-import { PdfLoadError } from '../pdf/loader';
+import { PdfLoadError, closePdf } from '../pdf/loader';
 import { downloadFile } from '../pdf/save';
 import {
   DUTCH_CONTEXT,
@@ -48,8 +48,6 @@ export type TextDoc = {
   file: File;
   pageCount: number;
   pages: PageText[];
-  /** Een klein plaatje van de eerste pagina (een blob-adres), of null. */
-  thumb: string | null;
   /** Het afgedrukte paginanummer per pagina (herkend bij het openen). */
   printed: Printed;
   /** De gegevens van het document (metadata), zoals pdf.js ze geeft. */
@@ -277,10 +275,9 @@ function change(next: Partial<TextState>) {
   }
 }
 
-/** Het plaatje niet langer vasthouden, en de PDF sluiten als die voor het voorbeeld open was. */
+/** De PDF sluiten als die voor het voorbeeld open was. */
 function release(slot: TextSlot) {
   if (slot.status !== 'ready') return;
-  if (slot.doc.thumb) URL.revokeObjectURL(slot.doc.thumb);
   closeVisual(slot.doc.file);
 }
 
@@ -330,16 +327,16 @@ async function load(file: File) {
   };
   pending({ status: 'reading', name: file.name, done: 0, total: 0 });
   try {
-    const { pageCount, pages, info, thumb, fingerprint } = await readPdf(
+    // De PDF blijft open voor het voorbeeld: zo wordt het bestand één keer gelezen (audit E3). Geen
+    // plaatje van de eerste pagina: dat wordt in Platte tekst nergens getoond.
+    const { pageCount, pages, info, fingerprint, pdf } = await readPdf(
       file,
       (done, total) => pending({ status: 'reading', name: file.name, done, total }),
-      { fingerprint: true },
+      { fingerprint: true, thumb: false, keepOpen: true },
     );
-    const url = thumb
-      ? URL.createObjectURL(new Blob([thumb as BlobPart], { type: 'image/png' }))
-      : null;
     if (!current()) {
-      if (url) URL.revokeObjectURL(url);
+      // Intussen is er een andere PDF gekozen: deze is niet meer nodig.
+      if (pdf) closePdf(pdf);
       return;
     }
     // De gegevens uit de PDF in de velden; eerder onthouden instellingen voor precies deze PDF
@@ -366,7 +363,6 @@ async function load(file: File) {
           file,
           pageCount,
           pages,
-          thumb: url,
           printed: printedPages(pages),
           info,
           fingerprint,
@@ -374,6 +370,8 @@ async function load(file: File) {
       },
       { meta, other, ...(stored ? { ...stored, restored: true } : {}) },
     );
+    // Pas nu: het weghalen van de vorige PDF (`put`) sluit wat voor dat bestand open was.
+    if (pdf) shareVisual(file, pdf);
   } catch (error) {
     pending({
       status: 'error',

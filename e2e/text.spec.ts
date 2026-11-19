@@ -241,6 +241,28 @@ test.describe('PDF → Platte tekst', () => {
     });
   }
 
+  test('leest de PDF één keer: voor de tekst en het voorbeeld samen (audit E3)', async ({
+    page,
+  }) => {
+    // Tellen hoe vaak het gekozen bestand helemaal gelezen wordt.
+    await page.addInitScript(() => {
+      const w = window as unknown as { e2eReads: number };
+      w.e2eReads = 0;
+      const original = Blob.prototype.arrayBuffer;
+      Blob.prototype.arrayBuffer = function (this: Blob) {
+        if (this instanceof File && this.name === 'artikel.pdf') w.e2eReads += 1;
+        return original.call(this);
+      };
+    });
+    await openArticle(page);
+    await expect(page.getByText('2 pagina’s').first()).toBeVisible();
+    // Even laten tekenen: het voorbeeld heeft het bestand dan zeker nodig gehad.
+    await page.getByRole('button', { name: nl.pageBar.next }).click();
+    await expect(page.locator('.plaintext-bar .page-nav__page')).toContainText('2 / 2');
+    await expect(page.locator('canvas.plaintext-preview__canvas')).toBeVisible();
+    expect(await page.evaluate(() => (window as unknown as { e2eReads: number }).e2eReads)).toBe(1);
+  });
+
   test('leesvakken: alleen wat in de vakken staat, in tekenvolgorde', async ({ page }) => {
     await openArticle(page);
     const zones = page.getByRole('group', { name: p.zones.title });
