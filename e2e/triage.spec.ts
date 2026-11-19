@@ -261,10 +261,18 @@ test.describe('Archief / Triage', () => {
     );
   });
 
-  test('Wissen vraagt eerst', async ({ page }) => {
+  test('Wissen vraagt eerst als er een besluit is, en anders niet', async ({ page }) => {
     await open(page);
     await addThree(page);
     await expect(canvas(page, 1)).toBeVisible(SLOW);
+    // Zonder besluit gaat er niets verloren: meteen gewist.
+    await page.getByRole('button', { name: tr.clear, exact: true }).click();
+    await expect(page.getByRole('dialog')).toHaveCount(0);
+    await expect(list(page)).toHaveCount(0);
+
+    await addThree(page);
+    await expect(canvas(page, 1)).toBeVisible(SLOW);
+    await decideKey(page, 'k');
     await page.getByRole('button', { name: tr.clear, exact: true }).click();
     const dialog = page.getByRole('dialog');
     await expect(dialog).toBeVisible();

@@ -198,6 +198,10 @@ test.describe('omzetten: afbeeldingen naar PDF', () => {
     await expect(imagesList(page).getByRole('listitem')).toHaveCount(1);
     await page.getByRole('button', { name: nl.document.close }).click();
     await expect(page.getByRole('heading', { name: nl.convert.pickTitle })).toBeVisible();
+    // Zonder vraag gewist, maar het kan terug (bedieningsafspraak V10).
+    await expect(page.getByText(nl.convert.cleared)).toBeVisible();
+    await page.getByRole('button', { name: nl.pages.undo }).click();
+    await expect(imagesList(page).getByRole('listitem')).toHaveCount(1);
   });
 
   test('afbeeldingen sleep je naar een andere plek, en dat is ongedaan te maken', async ({

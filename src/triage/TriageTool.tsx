@@ -33,6 +33,7 @@ import {
 import {
   addNewFolder,
   addTriageFiles,
+  triageAtRisk,
   askFolder,
   askRun,
   chooseFolder,
@@ -339,10 +340,14 @@ function folderText(folder: string, state: TriageState): { short: string; full: 
   return { short: shortPath([state.root.name, ...path]), full: fullPath(state.root.name, path) };
 }
 
-/** Wissen, met eerst een vraag: bij Lijst maken en bij Map opruimen dezelfde knop. */
+/**
+ * Wissen, bij Lijst maken en bij Map opruimen dezelfde knop. Alleen met besluiten die nog niet
+ * gedownload of uitgevoerd zijn, vraagt hij eerst (bedieningsafspraak V10).
+ */
 function ClearButton({ extraClass, disabled }: { extraClass?: string; disabled: boolean }) {
   const { t } = useI18n();
   const tr = t.triage;
+  const atRisk = triageAtRisk(useTriageState());
   const [asking, setAsking] = useState(false);
   return (
     <>
@@ -350,7 +355,7 @@ function ClearButton({ extraClass, disabled }: { extraClass?: string; disabled: 
         type="button"
         class={`button button--secondary${extraClass ? ` ${extraClass}` : ''}`}
         disabled={disabled}
-        onClick={() => setAsking(true)}
+        onClick={() => (atRisk ? setAsking(true) : clearTriage())}
       >
         {tr.clear}
       </button>

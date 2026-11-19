@@ -2654,6 +2654,13 @@ rect.handle {
   cursor: pointer;
 }
 
+/* Wat er net weg is, met Ongedaan maken op dezelfde regel (Afbeeldingen naar PDF, de database). */
+.undo-note .link-button {
+  display: inline;
+  margin: 0;
+  font-size: inherit;
+}
+
 /* Slim hernoemen: een PDF bekijken in een venster */
 .preview-dialog {
   width: min(64rem, calc(100vw - 2rem));
@@ -2918,6 +2925,12 @@ rect.handle {
   display: flex;
   gap: 0.25rem;
   margin-left: auto;
+}
+
+/* Na Sluiten: wat er weg is, met Ongedaan maken (Afbeeldingen naar PDF). */
+.dropzone__undo {
+  margin: 1rem 0 0;
+  color: var(--text-muted);
 }
 
 .file-errors {

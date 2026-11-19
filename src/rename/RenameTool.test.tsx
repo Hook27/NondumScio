@@ -498,6 +498,38 @@ describe('Slim hernoemen: de database', () => {
     expect(field('Naam van onderwerp 1').value).toBe('');
   });
 
+  it('verwijderen kan terug met Ongedaan maken (bedieningsafspraak V10)', () => {
+    store({
+      afzenders: [
+        { naam: 'ing', triggers: ['ing bank'] },
+        { naam: '', triggers: ['postbus'] },
+        { naam: 'abn', triggers: ['abn amro'] },
+      ],
+      onderwerpen: [],
+    });
+    setup();
+    toView(r.views.database);
+    expect(screen.queryByRole('button', { name: messages.nl.pages.undo })).toBeNull();
+    // Na exporteren is een verwijdering niet meer in die export: die melding gaat weg.
+    fireEvent.click(screen.getByRole('button', { name: d.export }));
+    expect(screen.getByRole('status').textContent).toContain('Geëxporteerd');
+    // Een regel zonder naam heet naar zijn plaats.
+    fireEvent.click(screen.getByRole('button', { name: 'Verwijderen: afzender 2' }));
+    expect(screen.getByRole('status').textContent).toBe('Verwijderd: afzender 2. Ongedaan maken');
+    fireEvent.click(screen.getByRole('button', { name: 'Verwijderen: afzender 1' }));
+    expect(stored().afzenders).toEqual([{ naam: 'abn', triggers: ['abn amro'] }]);
+    expect(screen.getByRole('status').textContent).toContain('Verwijderd: ing.');
+
+    // Ongedaan maken zet de laatst verwijderde regel terug op zijn plek, en is dan weg.
+    fireEvent.click(screen.getByRole('button', { name: messages.nl.pages.undo }));
+    expect(stored().afzenders).toEqual([
+      { naam: 'ing', triggers: ['ing bank'] },
+      { naam: 'abn', triggers: ['abn amro'] },
+    ]);
+    expect(field('Herkenwoorden van afzender 1').value).toBe('ing bank');
+    expect(screen.queryByRole('button', { name: messages.nl.pages.undo })).toBeNull();
+  });
+
   it('importeren voegt samen; exporteren geeft het bestand van de HTML-tool', async () => {
     store({ afzenders: [{ naam: 'ing', triggers: ['nl99ingb'] }], onderwerpen: [] });
     setup();
