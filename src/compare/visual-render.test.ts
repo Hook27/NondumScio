@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { closeVisual, renderPage } from './visual';
+import { closeVisual, renderPage, shareVisual } from './visual';
 
 /**
  * Een nep-pdf.js-pagina: het tekenen blijft hangen tot de test het loslaat (`finish`), en `cancel`
@@ -13,35 +13,42 @@ const fake = vi.hoisted(() => ({
     finish: () => void;
   }>,
   closed: 0,
+  opened: 0,
 }));
 
 vi.mock('../pdf/loader', () => ({
-  openPdfFile: async () => ({
-    pageCount: 2,
-    pdf: {
-      numPages: 2,
-      getPage: async () => ({
-        getViewport: ({ scale }: { scale: number }) => ({
-          width: 595 * scale,
-          height: 842 * scale,
-        }),
-        render: ({ canvas }: { canvas: HTMLCanvasElement }) => {
-          let finish = () => {};
-          let fail: (error: Error) => void = () => {};
-          const promise = new Promise<void>((resolve, reject) => {
-            finish = resolve;
-            fail = reject;
-          });
-          const cancel = vi.fn(() => fail(new Error('Rendering cancelled')));
-          fake.renders.push({ canvas, cancel, finish });
-          return { promise, cancel };
-        },
-        cleanup: () => {},
-      }),
-    },
-  }),
+  openPdfFile: async () => {
+    fake.opened += 1;
+    return fakeLoaded();
+  },
   closePdf: () => {
     fake.closed += 1;
+  },
+}));
+
+/** Een geopende nep-PDF (zoals `openPdfFile` hem geeft). */
+const fakeLoaded = vi.hoisted(() => () => ({
+  pageCount: 2,
+  pdf: {
+    numPages: 2,
+    getPage: async () => ({
+      getViewport: ({ scale }: { scale: number }) => ({
+        width: 595 * scale,
+        height: 842 * scale,
+      }),
+      render: ({ canvas }: { canvas: HTMLCanvasElement }) => {
+        let finish = () => {};
+        let fail: (error: Error) => void = () => {};
+        const promise = new Promise<void>((resolve, reject) => {
+          finish = resolve;
+          fail = reject;
+        });
+        const cancel = vi.fn(() => fail(new Error('Rendering cancelled')));
+        fake.renders.push({ canvas, cancel, finish });
+        return { promise, cancel };
+      },
+      cleanup: () => {},
+    }),
   },
 }));
 
@@ -51,6 +58,7 @@ const tick = () => new Promise((resolve) => setTimeout(resolve, 0));
 beforeEach(() => {
   fake.renders = [];
   fake.closed = 0;
+  fake.opened = 0;
 });
 
 describe('renderPage: tekenen afbreken', () => {
@@ -101,6 +109,33 @@ describe('renderPage: tekenen afbreken', () => {
     stop.abort();
     expect(fake.renders[0]!.cancel).not.toHaveBeenCalled();
     expect(canvas?.width).toBe(400);
+    closeVisual(pdf);
+  });
+});
+
+describe('shareVisual: een al geopende PDF overnemen (audit E3)', () => {
+  it('tekenen gebruikt de gedeelde PDF zonder het bestand opnieuw te openen; sluiten sluit hem', async () => {
+    const pdf = file('gedeeld.pdf');
+    shareVisual(pdf, fakeLoaded().pdf as never);
+    const result = renderPage(pdf, 1, 400);
+    await vi.waitFor(() => expect(fake.renders).toHaveLength(1));
+    fake.renders[0]!.finish();
+    expect((await result)?.width).toBe(400);
+    expect(fake.opened).toBe(0);
+    closeVisual(pdf);
+    await tick();
+    expect(fake.closed).toBe(1);
+  });
+
+  it('staat dat bestand al open, dan blijft dat en gaat de nieuwe dicht', async () => {
+    const pdf = file('dubbel.pdf');
+    const first = renderPage(pdf, 1, 400);
+    await vi.waitFor(() => expect(fake.renders).toHaveLength(1));
+    fake.renders[0]!.finish();
+    await first;
+    shareVisual(pdf, fakeLoaded().pdf as never);
+    expect(fake.closed).toBe(1);
+    expect(fake.opened).toBe(1);
     closeVisual(pdf);
   });
 });

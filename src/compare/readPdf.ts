@@ -1,3 +1,4 @@
+import type { PDFDocumentProxy } from 'pdfjs-dist';
 import { fingerprintOf } from '../lib/fingerprint';
 import { renderPageImage } from '../pdf/images';
 import { closePdf, loadPdf, readPdfBytes } from '../pdf/loader';
@@ -13,23 +14,32 @@ const THUMB_DPI = 24;
  * pagina's er gelezen zijn. De PDF wordt daarna weer gesloten; het bestand zelf bewaart de tool.
  * Met `thumb: false` geen plaatje (bijvoorbeeld bij een batch van PDF → Platte tekst). Met
  * `fingerprint: true` ook een vingerafdruk van de inhoud (zie `lib/fingerprint.ts`), om te weten of
- * het dezelfde PDF is als eerder; null als dat niet kan.
+ * het dezelfde PDF is als eerder; null als dat niet kan. Met `keepOpen: true` blijft de PDF open en
+ * komt hij mee terug (`pdf`), zodat het voorbeeld het bestand niet opnieuw hoeft te lezen (zie
+ * `shareVisual`); wie hem krijgt, sluit hem ook. Mislukt het lezen, dan gaat hij altijd dicht.
  */
 export async function readPdf(
   file: File,
   onProgress?: (done: number, total: number) => void,
-  { thumb: withThumb = true, fingerprint: withFingerprint = false } = {},
+  {
+    thumb: withThumb = true,
+    fingerprint: withFingerprint = false,
+    keepOpen = false,
+  }: { thumb?: boolean; fingerprint?: boolean; keepOpen?: boolean } = {},
 ): Promise<{
   pageCount: number;
   pages: PageText[];
   info: DocInfo;
   thumb: Uint8Array | null;
   fingerprint: string | null;
+  /** De nog geopende PDF, alleen met `keepOpen`. */
+  pdf: PDFDocumentProxy | null;
 }> {
   const bytes = await readPdfBytes(file);
   // Vóór het openen: pdf.js neemt de bytes daarna over (en ze kunnen dan leeg zijn).
   const fingerprint = withFingerprint ? await fingerprintOf(bytes) : null;
   const { pdf, pageCount } = await loadPdf(bytes);
+  let kept = false;
   try {
     const pages: PageText[] = [];
     for (let no = 1; no <= pageCount; no += 1) {
@@ -67,8 +77,9 @@ export async function readPdf(
           .then((image) => image.bytes)
           .catch(() => null)
       : null;
-    return { pageCount, pages, info, thumb, fingerprint };
+    kept = keepOpen;
+    return { pageCount, pages, info, thumb, fingerprint, pdf: keepOpen ? pdf : null };
   } finally {
-    closePdf(pdf);
+    if (!kept) closePdf(pdf);
   }
 }

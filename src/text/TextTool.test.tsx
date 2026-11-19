@@ -6,7 +6,7 @@ import type { DocInfo } from '../compare/profile';
 import { unzipSync } from 'fflate';
 import { readPdf } from '../compare/readPdf';
 import { copyText } from '../compare/report';
-import { closeVisual, renderPage } from '../compare/visual';
+import { closeVisual, renderPage, shareVisual } from '../compare/visual';
 import { messages } from '../i18n';
 import { LanguageProvider } from '../i18n/LanguageContext';
 import { format } from '../i18n/format';
@@ -141,7 +141,7 @@ vi.mock('../compare/readPdf', () => ({
     async (
       file: File,
       onProgress?: (done: number, total: number) => void,
-      options?: { fingerprint?: boolean },
+      options?: { fingerprint?: boolean; keepOpen?: boolean },
     ) => {
       const pages = DOCS[file.name]!;
       if (!(pages instanceof Error)) onProgress?.(0, pages.length);
@@ -155,6 +155,10 @@ vi.mock('../compare/readPdf', () => ({
         info: INFO[file.name] ?? {},
         thumb: null,
         fingerprint,
+        // Een nep-PDF die open blijft (zie E3): het voorbeeld neemt hem over, of hij gaat dicht.
+        pdf: options?.keepOpen
+          ? { name: file.name, loadingTask: { destroy: vi.fn(async () => {}) } }
+          : null,
       };
     },
   ),
@@ -174,6 +178,7 @@ vi.mock('../compare/visual', async (importOriginal) => {
       return canvas;
     }),
     closeVisual: vi.fn(),
+    shareVisual: vi.fn(),
   };
 });
 
@@ -283,6 +288,7 @@ afterEach(() => {
   vi.mocked(readPdf).mockClear();
   vi.mocked(renderPage).mockClear();
   vi.mocked(closeVisual).mockClear();
+  vi.mocked(shareVisual).mockClear();
   vi.mocked(copyText).mockClear();
   vi.mocked(downloadFile).mockClear();
 });
@@ -351,6 +357,23 @@ describe('PDF → Platte tekst: beginnen', () => {
     await waitFor(() => expect(screen.getByRole('alert').textContent).toBe(c.errors.unreadable));
   });
 
+  it('leest de PDF één keer: dezelfde geopende PDF gaat door naar het voorbeeld (audit E3)', async () => {
+    setup();
+    choose('brief.pdf');
+    await waitFor(() => expect(button(p.extract).disabled).toBe(false));
+    expect(readPdf).toHaveBeenCalledTimes(1);
+    // Geen plaatje van de eerste pagina: dat wordt nergens getoond.
+    expect(vi.mocked(readPdf).mock.calls[0]![2]).toEqual({
+      fingerprint: true,
+      thumb: false,
+      keepOpen: true,
+    });
+    const { pdf } = await (vi.mocked(readPdf).mock.results[0]!.value as Promise<{ pdf: unknown }>);
+    expect(shareVisual).toHaveBeenCalledTimes(1);
+    expect(vi.mocked(shareVisual).mock.calls[0]![0].name).toBe('brief.pdf');
+    expect(vi.mocked(shareVisual).mock.calls[0]![1]).toBe(pdf);
+  });
+
   it('meer dan één PDF tegelijk: alleen de eerste, met een melding', async () => {
     setup();
     choose('brief.pdf', 'tweede.pdf');
@@ -370,6 +393,12 @@ describe('PDF → Platte tekst: beginnen', () => {
     await settle();
     fireEvent.click(button(p.extract));
     expect(output()!.value).toBe('De tweede PDF.');
+    // De te laat gelezen PDF gaat dicht en komt niet in het voorbeeld (E3).
+    const late = vi.mocked(readPdf).mock.results[0]!.value as Promise<{
+      pdf: { loadingTask: { destroy: ReturnType<typeof vi.fn> } };
+    }>;
+    expect((await late).pdf.loadingTask.destroy).toHaveBeenCalledTimes(1);
+    expect(vi.mocked(shareVisual).mock.calls.map(([file]) => file.name)).toEqual(['tweede.pdf']);
   });
 
   it('een PDF die nog gelezen wordt en dan mislukt, geeft geen melding bij een later gekozen PDF', async () => {
@@ -2443,6 +2472,7 @@ describe('PDF → Platte tekst: opruimen', () => {
     if (slot.status !== 'ready') throw new Error('niet geopend');
     const signal = vi.mocked(renderPage).mock.lastCall![3]!;
     vi.mocked(closeVisual).mockClear();
+    vi.mocked(shareVisual).mockClear();
     cleanup();
     // Preact ruimt een weggehaald scherm een tikje later op.
     await waitFor(() => expect(closeVisual).toHaveBeenCalledWith(slot.doc.file));

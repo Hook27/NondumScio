@@ -128,3 +128,22 @@ describe('readPdf: tekst staat waar je hem ziet', () => {
     expect(zoneItems(page!, TOP).map((item) => item.str)).toEqual(LINES);
   });
 });
+
+describe('readPdf: open houden voor het voorbeeld (audit E3)', () => {
+  it('met keepOpen blijft de PDF open en bruikbaar; zonder gaat hij dicht', async () => {
+    const bytes = await rotatedPdf(0);
+    const kept = await readPdf(new File([bytes], 'a.pdf'), undefined, {
+      thumb: false,
+      keepOpen: true,
+    });
+    expect(kept.pdf).not.toBeNull();
+    expect(kept.thumb).toBeNull();
+    // Nog open: een pagina ophalen lukt.
+    const page = await kept.pdf!.getPage(1);
+    expect(page.getViewport({ scale: 1 }).width).toBe(W);
+    await kept.pdf!.loadingTask.destroy();
+
+    const closed = await readPdf(new File([bytes], 'b.pdf'), undefined, { thumb: false });
+    expect(closed.pdf).toBeNull();
+  });
+});
