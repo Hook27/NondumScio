@@ -5,6 +5,7 @@ import { PageNav, ZoomBar } from '../components/PageBars';
 import { CanvasBox, useEdgeWheel, usePageSpace } from '../components/PageView';
 import { IncomingNote } from '../components/IncomingNote';
 import { PaneHead } from '../components/WorkspaceParts';
+import { withoutTextLayer } from './layout';
 import { useSaveDialog } from '../components/SaveDialog';
 import { useI18n } from '../i18n/LanguageContext';
 import { format, plural } from '../i18n/format';
@@ -161,7 +162,7 @@ const reportDoc = (doc: CompareDoc): ReportDoc => ({
   name: doc.file.name,
   size: doc.file.size,
   pageCount: doc.pageCount,
-  noText: doc.pages.filter((page) => page.items.length === 0).length,
+  noText: withoutTextLayer(doc.pages),
 });
 
 /**
@@ -697,7 +698,7 @@ type CompareTexts = ReturnType<typeof useI18n>['t']['compare'];
 /** "3 pagina's · 12 KB · 4.512 tekens", met het aantal pagina's zonder tekstlaag als dat er zijn. */
 function docMeta(doc: CompareDoc, c: CompareTexts, language: string) {
   const chars = doc.pages.reduce((total, page) => total + page.chars, 0);
-  const noText = doc.pages.filter((page) => page.items.length === 0).length;
+  const noText = withoutTextLayer(doc.pages);
   return [
     plural(doc.pageCount, c.pagesOne, c.pages),
     formatFileSize(doc.file.size, language),
@@ -1008,7 +1009,7 @@ function NoTextWarning({ a, b }: { a: CompareDoc; b: CompareDoc }) {
   let all = false;
   for (const side of SIDES) {
     const doc = docs[side];
-    const n = doc.pages.filter((page) => page.items.length === 0).length;
+    const n = withoutTextLayer(doc.pages);
     if (n === 0) continue;
     parts.push(format(c.noTextIn, { n, total: doc.pageCount, side: LETTER[side] }));
     if (n === doc.pageCount) all = true;

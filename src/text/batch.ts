@@ -1,4 +1,4 @@
-import type { PageText } from '../compare/layout';
+import { hasTextLayer, type PageText } from '../compare/layout';
 import type { DocInfo } from '../compare/profile';
 import { format } from '../i18n/format';
 import { exportName, extractText, type TextOptions } from './extract';
@@ -64,7 +64,7 @@ export function zipNames(names: readonly string[]): ZipName[] {
 }
 
 /** Heeft de PDF tekst (minstens één pagina met een tekstlaag)? */
-export const hasText = (doc: BatchDoc): boolean => doc.pages.some((page) => page.items.length > 0);
+export const hasText = (doc: BatchDoc): boolean => doc.pages.some(hasTextLayer);
 
 function textOf(doc: BatchDoc, opts: TextOptions, ctx: BatchContext): string {
   return extractText(doc.pages, opts, null, {

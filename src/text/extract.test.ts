@@ -440,3 +440,23 @@ describe('vakken per pagina', () => {
     expect(zonesFor(s, 3)).toEqual([]);
   });
 });
+
+describe('een pagina met alleen spaties (audit F15)', () => {
+  it('telt als pagina zonder tekst', () => {
+    const blank: PageText = {
+      no: 2,
+      w: 595,
+      h: 842,
+      items: [{ str: ' ', x: 50, y: 700, fh: 10, w: 5 }],
+      chars: 1,
+    };
+    const { pages } = extractText(
+      [page(1, [['Tekst op pagina een.']]), blank],
+      DEFAULT_TEXT_OPTIONS,
+    );
+    expect(pages.map((p) => [p.no, p.status])).toEqual([
+      [1, 'read'],
+      [2, 'notext'],
+    ]);
+  });
+});

@@ -102,6 +102,13 @@ describe('docText (voor de zip)', () => {
     expect(docText(NOTULEN, PLAIN)).toBe('De vergadering begint.\n\nEinde van de vergadering.');
     expect(hasText(NOTULEN)).toBe(true);
     expect(hasText(SCAN)).toBe(false);
+    // Alleen spaties is ook geen tekst (audit F15).
+    const spaces: PageText = {
+      ...empty(1),
+      items: [{ str: ' ', x: 50, y: 700, fh: 10, w: 5 }],
+      chars: 1,
+    };
+    expect(hasText({ ...SCAN, pages: [spaces] })).toBe(false);
     // Eén pagina met tekst is genoeg, ook als de rest een scan is.
     expect(hasText({ ...SCAN, pages: [empty(1), ...NOTULEN.pages, empty(4)] })).toBe(true);
     expect(docText(SCAN, PLAIN)).toBe('');
