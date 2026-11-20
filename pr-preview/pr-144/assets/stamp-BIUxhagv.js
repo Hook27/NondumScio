@@ -1,2 +1,0 @@
-function e(e=new Date){let t=e=>String(e).padStart(2,`0`);return`${e.getFullYear()}${t(e.getMonth()+1)}${t(e.getDate())}_${t(e.getHours())}${t(e.getMinutes())}`}export{e as t};
-//# sourceMappingURL=stamp-BIUxhagv.js.map
