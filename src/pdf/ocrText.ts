@@ -9,13 +9,18 @@ import type { PixelRect } from './paint';
 
 type PdfLib = typeof import('pdf-lib');
 
-/** Een herkend woord, met de plek in beeldpunten (linksboven begonnen). */
+/**
+ * Een herkend woord, met de plek in beeldpunten (linksboven begonnen). `line`: de boven- en
+ * onderkant van de regel waar de herkenning het woord in zag (voor PDF → Platte tekst: zo krijgen
+ * alle woorden van een regel dezelfde hoogte, ook een woord met een staart als "jong").
+ */
 export type OcrWord = {
   text: string;
   x0: number;
   y0: number;
   x1: number;
   y1: number;
+  line?: { y0: number; y1: number };
 };
 
 /** Een woord dat voor meer dan dit deel in een zwart vak ligt, of waarvan het midden erin ligt, valt weg. */

@@ -32,6 +32,11 @@ export type TextOptions = Required<LayoutOptions> & {
   header: boolean;
   /** Bovenaan een korte uitleg van de markeringen ({p#}, {H}). */
   conventions: boolean;
+  /**
+   * Pagina's zonder tekstlaag (scans) eerst laten herkennen met tekstherkenning (OCR). Herkende
+   * tekst krijgt {OCR} vooraan (zie `./pages`). Niet in de batch.
+   */
+  ocr: boolean;
 };
 
 /**
@@ -57,6 +62,8 @@ export const DEFAULT_TEXT_OPTIONS: TextOptions = {
   // Zoals in de extractor: geen documentkop en geen conventieblok.
   header: false,
   conventions: false,
+  // Nieuw (de extractor kende geen OCR): standaard uit, want herkennen kost tijd.
+  ocr: false,
 };
 
 /**
@@ -66,10 +73,18 @@ export const DEFAULT_TEXT_OPTIONS: TextOptions = {
 export type Zone = { x0: number; y0: number; x1: number; y1: number };
 
 /**
- * Een pagina is gelezen, had geen tekstlaag (een scan of alleen een afbeelding), of is
- * overgeslagen (leesvakken aan, maar geen vak voor deze pagina).
+ * Een pagina is gelezen, met tekstherkenning gelezen (`ocr`: een scan), had geen tekstlaag (een
+ * scan of alleen een afbeelding), of is overgeslagen (leesvakken aan, maar geen vak voor deze
+ * pagina).
  */
-export type PageStatus = 'read' | 'notext' | 'skipped';
+export type PageStatus = 'read' | 'ocr' | 'notext' | 'skipped';
+
+/** Een pagina voor de tekst; `ocr`: de stukjes komen uit tekstherkenning (zie `./ocr`). */
+export type TextPage = PageText & { ocr?: boolean };
+
+/** Is de pagina gelezen (uit de tekstlaag of met tekstherkenning)? */
+export const isRead = (page: { status: PageStatus }): boolean =>
+  page.status === 'read' || page.status === 'ocr';
 
 export type PageResult = { no: number; text: string; status: PageStatus };
 
@@ -143,7 +158,7 @@ export type Assemble = Assembly & { name: string; meta: Meta; head: HeadTexts };
  * extractor. Pagina's zonder tekst komen er niet in, ook geen witregel.
  */
 export function extractText(
-  pages: readonly PageText[],
+  pages: readonly TextPage[],
   opts: TextOptions,
   setup: ZoneSetup | null = null,
   assembly: Partial<Assemble> = {},
@@ -151,13 +166,13 @@ export function extractText(
   const running = setup === null && opts.strip ? analyseRunning(pages) : null;
   const results = pages.map((page, index): PageResult => {
     if (!hasTextLayer(page)) return { no: page.no, text: '', status: 'notext' };
+    const status = page.ocr ? 'ocr' : 'read';
     if (setup === null)
-      return { no: page.no, text: pageText(page, opts, running?.[index]), status: 'read' };
+      return { no: page.no, text: pageText(page, opts, running?.[index]), status };
     const zones = zonesFor(setup, page.no);
-    if (zones.length > 0)
-      return { no: page.no, text: zonesText(page, zones, opts), status: 'read' };
+    if (zones.length > 0) return { no: page.no, text: zonesText(page, zones, opts), status };
     if (!setup.readEmpty) return { no: page.no, text: '', status: 'skipped' };
-    return { no: page.no, text: layoutBlock(page.items, opts, opts.columns), status: 'read' };
+    return { no: page.no, text: layoutBlock(page.items, opts, opts.columns), status };
   });
   const body = assemble(results, opts, {
     printed: assembly.printed ?? printedPages(pages),
@@ -174,12 +189,14 @@ export function extractText(
 
 /** Wat opvalt aan de gelezen tekst: om te zien of de PDF wel een bruikbare tekstlaag heeft. */
 export type Quality = {
-  /** Het aantal gelezen pagina's (met een tekstlaag). */
+  /** Het aantal gelezen pagina's (met een tekstlaag of met tekstherkenning). */
   read: number;
   /** Gemiddeld aantal tekens per gelezen pagina, afgerond. */
   average: number;
   /** Pagina's zonder tekstlaag. */
   noText: number[];
+  /** Pagina's die met tekstherkenning (OCR) gelezen zijn. */
+  ocr: number[];
   /** Overgeslagen pagina's (geen leesvak). */
   skipped: number[];
   /** Gelezen pagina's met nauwelijks tekst. */
@@ -187,7 +204,7 @@ export type Quality = {
 };
 
 export function quality(pages: readonly PageResult[]): Quality {
-  const read = pages.filter((page) => page.status === 'read');
+  const read = pages.filter(isRead);
   const total = read.reduce((sum, page) => sum + page.text.trim().length, 0);
   const numbers = (status: PageStatus) =>
     pages.filter((page) => page.status === status).map((page) => page.no);
@@ -195,6 +212,7 @@ export function quality(pages: readonly PageResult[]): Quality {
     read: read.length,
     average: read.length > 0 ? Math.round(total / read.length) : 0,
     noText: numbers('notext'),
+    ocr: numbers('ocr'),
     skipped: numbers('skipped'),
     low: read.filter((page) => page.text.trim().length < LOW_TEXT).map((page) => page.no),
   };

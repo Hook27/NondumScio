@@ -9,6 +9,7 @@ import { Dropzone } from '../components/Dropzone';
 import { IconButton } from '../components/Icon';
 import { IncomingNote } from '../components/IncomingNote';
 import { PageNav, ZoomBar } from '../components/PageBars';
+import { SaveBusy } from '../components/SaveBusy';
 import { useSaveDialog } from '../components/SaveDialog';
 import {
   CanvasBox,
@@ -68,6 +69,7 @@ import {
   setView,
   setZones,
   setZoom,
+  stopRecognition,
   textAtRisk,
   undoZones,
   redoZones,
@@ -106,8 +108,11 @@ export function TextTool() {
   const { view, tooMany } = useTextState();
   // Weg uit Platte tekst: de PDF van het voorbeeld dicht, dan komen geheugen en worker vrij. De PDF
   // zelf, de vakken en de tekst blijven bewaard; terug opent het voorbeeld hem opnieuw.
+  // Een tekstherkenning die nog bezig is, stopt (die tekent met dezelfde PDF); wat al herkend is,
+  // blijft bewaard.
   useEffect(
     () => () => {
+      stopRecognition();
       const { slot } = getTextState();
       if (slot.status === 'ready') closeVisual(slot.doc.file);
     },
@@ -416,13 +421,14 @@ function ZoneSettings() {
 
 /** De aan- en uitzetters van de tekstopschoning. */
 type BooleanOption =
-  'joinLines' | 'dehyphen' | 'columns' | 'strip' | 'structure' | 'headingMarker' | 'tables';
+  'joinLines' | 'dehyphen' | 'columns' | 'strip' | 'structure' | 'headingMarker' | 'tables' | 'ocr';
 
 /** Bij welke vinkjes een uitleg staat (de naam van de tekst). */
 const HINTS = {
   structure: 'structureHint',
   headingMarker: 'headingMarkerHint',
   tables: 'tablesHint',
+  ocr: 'ocrHint',
 } as const satisfies Partial<Record<BooleanOption, string>>;
 
 /** Hoe de tekst wordt opgebouwd; het werkt bij de volgende keer extraheren. */
@@ -442,6 +448,7 @@ function Settings() {
     structure: !options.joinLines,
     headingMarker: !options.joinLines || !options.structure,
     tables: !options.joinLines,
+    ocr: false,
   };
   const check = (key: BooleanOption, extra = '') => (
     <label key={key} class={`compare-settings__check${extra}`}>
@@ -495,6 +502,8 @@ function Settings() {
       {hint('headingMarker', ' plaintext__sub')}
       {check('tables')}
       {hint('tables')}
+      {check('ocr')}
+      {hint('ocr')}
       {useZones && <p class="compare-settings__hint">{readEmpty ? s.zonesOffRead : s.zonesOff}</p>}
     </Block>
   );
@@ -963,28 +972,53 @@ function SaveSettings() {
 function ExtractBar() {
   const { t, language } = useI18n();
   const p = t.plainText;
-  const { slot, result } = useTextState();
+  const { slot, result, ocr } = useTextState();
   const [guard, dialog] = useDiscardGuard();
+  const busy = ocr.status === 'loading' || ocr.status === 'running';
   return (
     <div class="plaintext__extract">
       <button
         type="button"
         class="button"
-        disabled={slot.status !== 'ready'}
+        disabled={slot.status !== 'ready' || busy}
         onClick={() =>
-          guard('extract', () =>
-            extract({
-              concordance: p.concordance,
-              head: { fields: p.header.fields, conventions: p.conventions },
-            }),
+          guard(
+            'extract',
+            () =>
+              void extract({
+                concordance: p.concordance,
+                head: { fields: p.header.fields, conventions: p.conventions },
+              }),
           )
         }
       >
         {p.extract}
       </button>
-      {result && slot.status === 'ready' && (
+      {busy ? (
+        <SaveBusy
+          text={
+            ocr.status === 'loading'
+              ? format(p.ocrRun.loading, { percent: Math.round(ocr.progress * 100) })
+              : format(p.ocrRun.progress, { page: ocr.page, n: ocr.done + 1, total: ocr.total })
+          }
+          onStop={() => stopRecognition(true)}
+        />
+      ) : (
+        result &&
+        slot.status === 'ready' && (
+          <p class="plaintext__done" role="status">
+            {format(p.done, { summary: summary(result, slot.doc, t, language) })}
+          </p>
+        )
+      )}
+      {ocr.status === 'stopped' && (
         <p class="plaintext__done" role="status">
-          {format(p.done, { summary: summary(result, slot.doc, t, language) })}
+          {p.ocrRun.stopped}
+        </p>
+      )}
+      {ocr.status === 'failed' && (
+        <p class="plaintext__done plaintext__done--warning" role="alert">
+          {p.ocrRun.failed}
         </p>
       )}
       {dialog}
@@ -1455,7 +1489,7 @@ function pageList(pages: readonly number[], t: Texts) {
 function Output() {
   const { t, language } = useI18n();
   const p = t.plainText;
-  const { slot, result, edited, stale } = useTextState();
+  const { slot, result, edited, stale, options } = useTextState();
   // Wat er met de tekst gebeurd is (gekopieerd, gedownload), bij welke tekst: bij een andere tekst
   // hoort de melding er niet meer bij. (Geen effect om hem te wissen, zie PDF's vergelijken.)
   const [status, setStatus] = useState<{ result: Extraction | null; text: string } | null>(null);
@@ -1540,7 +1574,14 @@ function Output() {
           <p class="compare__note">{format(p.skippedPages, { list: pageList(q.skipped, t) })}</p>
         ))}
       {q.noText.length > 0 && (
-        <p class="compare__warning">{format(p.noTextPages, { list: pageList(q.noText, t) })}</p>
+        <p class="compare__warning">
+          {format(options.ocr ? p.noTextPagesOcr : p.noTextPages, {
+            list: pageList(q.noText, t),
+          })}
+        </p>
+      )}
+      {q.ocr.length > 0 && (
+        <p class="compare__warning">{format(p.ocrPages, { list: pageList(q.ocr, t) })}</p>
       )}
       {q.low.length > 0 && (
         <p class="compare__warning">{format(p.lowPages, { list: pageList(q.low, t) })}</p>

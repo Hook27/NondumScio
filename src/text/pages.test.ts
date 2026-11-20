@@ -225,6 +225,26 @@ describe('assemble', () => {
     const results = [{ no: 1, text: '', status: 'notext' }];
     expect(assemble(results, { ...opts, anchors: true }, plain)).toBe('');
   });
+
+  it('een pagina uit tekstherkenning doet mee, met {OCR} vooraan (na het anker)', () => {
+    const ocr = (no: number, text: string) => ({ no, text, status: 'ocr' });
+    const results = [read(1, 'Titel.'), ocr(2, 'Gescand.'), read(3, 'Weer tekst.')];
+    expect(assemble(results, opts, plain)).toBe('Titel.\n\n{OCR} Gescand.\n\nWeer tekst.');
+    expect(assemble(results, { ...opts, anchors: true }, plain).split('\n\n---')[0]).toBe(
+      '{p1} Titel.\n\n{p2}{OCR} Gescand.\n\n{p3} Weer tekst.',
+    );
+    // Als eerste pagina, en midden in een doorlopende zin (zoals het anker).
+    const both = { anchors: true, crossPage: true, dehyphen: true };
+    const running = [ocr(1, 'loopt door op de'), ocr(2, 'volgende verzeke-'), ocr(3, 'ring.')];
+    expect(assemble(running, both, plain).split('\n\n')[0]).toBe(
+      '{p1}{OCR} loopt door op de {p2}{OCR} volgende verzeke{p3}{OCR}ring.',
+    );
+    expect(assemble(running, { ...both, anchors: false }, plain)).toBe(
+      '{OCR} loopt door op de {OCR} volgende verzeke{OCR}ring.',
+    );
+    // Zonder tekst (ook niets herkend): niets, ook geen {OCR}.
+    expect(assemble([read(1, 'Een.'), ocr(2, '  ')], opts, plain)).toBe('Een.');
+  });
 });
 
 describe('afgedrukte paginanummers: alleen echte Romeinse cijfers tot 100 (audit F15)', () => {

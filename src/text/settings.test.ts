@@ -92,13 +92,26 @@ describe('fromSettings', () => {
     const out = toSettings('artikel.pdf', s);
     expect(out.joinOverride).toEqual({ 2: 'join' });
     expect(out.meta).toEqual(ORIGINAL.meta);
-    // Alle opties van de extractor staan er weer in, met dezelfde waarden; "strip" komt erbij.
-    expect(out.options).toEqual({ ...ORIGINAL.options, strip: true });
+    // Alle opties van de extractor staan er weer in, met dezelfde waarden; "strip" en "ocr" (uit)
+    // komen erbij.
+    expect(out.options).toEqual({ ...ORIGINAL.options, strip: true, ocr: false });
     // Ook in dezelfde volgorde als bij de extractor.
-    expect(Object.keys(out.options)).toEqual([...Object.keys(ORIGINAL.options), 'strip']);
+    expect(Object.keys(out.options)).toEqual([...Object.keys(ORIGINAL.options), 'strip', 'ocr']);
     expect(out.zones).toEqual({ d: [A], p: { 2: [B], 3: [] } });
     expect(out.v).toBe(2);
     expect(out.pdf).toBe('artikel.pdf');
+  });
+
+  it('leest en schrijft de tekstherkenning (OCR), die de extractor niet kent', () => {
+    const on = fromSettings({ options: { ocr: true } }, BASE)!;
+    expect(on.options).toEqual({ ...BASE.options, ocr: true });
+    expect(on.extra.options).toEqual({});
+    expect(toSettings('x.pdf', on).options).toMatchObject({ ocr: true });
+    // Niet in het bestand: zoals het was.
+    expect(
+      fromSettings({ options: {} }, { ...BASE, options: { ...BASE.options, ocr: true } })!.options
+        .ocr,
+    ).toBe(true);
   });
 
   it('leest en schrijft de documentkop, het conventieblok en de gegevens', () => {

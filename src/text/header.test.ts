@@ -143,6 +143,18 @@ describe('buildConventions', () => {
     );
   });
 
+  it('met tekstherkenning (OCR) aan ook een regel over {OCR}', () => {
+    const lines = (opts: typeof NONE & { ocr?: boolean }) => buildConventions(opts).split('\n');
+    expect(lines({ ...NONE, ocr: true })).toEqual([
+      '=== Conventies ===',
+      'Platte tekst geëxtraheerd uit een PDF; opmaak en afbeeldingen zijn weggelaten.',
+      '{OCR} = de tekst van deze pagina is herkend met tekstherkenning (OCR) en kan fouten bevatten.',
+      '==================',
+    ]);
+    expect(lines(NONE)).not.toContain(DUTCH_HEAD.conventions.ocr);
+    expect(lines({ ...NONE, ocr: false })).not.toContain(DUTCH_HEAD.conventions.ocr);
+  });
+
   it('met de kopmarkering ook een regel over {H}, maar alleen als {H} in de tekst kan staan', () => {
     const heading = DUTCH_HEAD.conventions.heading;
     const lines = (opts: typeof NONE) => buildConventions(opts).split('\n');

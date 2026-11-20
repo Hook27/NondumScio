@@ -20,14 +20,20 @@ import {
   type BatchContext,
   type BatchWords,
 } from './batch';
+import { hasTextLayer } from '../compare/layout';
+import type { OcrEngine } from '../pdf/redact';
 import {
   DEFAULT_TEXT_OPTIONS,
   extractText,
   hasOwnZones,
+  zonesFor,
   type Extraction,
   type TextOptions,
+  type TextPage,
   type Zone,
+  type ZoneSetup,
 } from './extract';
+import { recognizePage } from './ocr';
 import {
   fromSettings,
   isSettingsFile,
@@ -105,6 +111,18 @@ export type BatchStatus =
       problem: BatchProblem | null;
     };
 
+/**
+ * De tekstherkenning (OCR) bij "Tekst extraheren": niets, de herkenner laden (de eerste keer duurt
+ * even), bezig met pagina `page` (de `done`-ste van `total`), gestopt (met Stoppen; de tekst is
+ * niet opnieuw gemaakt), of mislukt (de tekst is gemaakt zonder herkenning).
+ */
+export type OcrRun =
+  | { status: 'idle' }
+  | { status: 'loading'; progress: number }
+  | { status: 'running'; done: number; total: number; page: number }
+  | { status: 'stopped' }
+  | { status: 'failed' };
+
 /** Hoeveel stappen terug "Ongedaan" kan, zoals in de extractor. */
 export const UNDO_LIMIT = 60;
 
@@ -156,6 +174,13 @@ export type TextState = {
   /** De tekst na "Tekst extraheren". */
   result: Extraction | null;
   /**
+   * De met tekstherkenning gelezen pagina's van deze PDF (paginanummer → tekst): een tweede keer
+   * extraheren herkent ze niet opnieuw. Hoort bij de PDF.
+   */
+  recognized: Readonly<Record<number, PageText>>;
+  /** De tekstherkenning bij het extraheren (zie `OcrRun`). */
+  ocr: OcrRun;
+  /**
    * De tekst zoals je hem in het resultaat hebt aangepast, of null (niet aangepast). Kopiëren en
    * downloaden nemen die mee; opnieuw extraheren zet hem terug, zoals in de extractor.
    */
@@ -203,6 +228,8 @@ const INITIAL: TextState = {
   fit: 'page',
   zoom: null,
   result: null,
+  recognized: {},
+  ocr: { status: 'idle' },
   edited: null,
   keptText: null,
   stale: false,
@@ -299,6 +326,8 @@ function setSlot(slot: TextSlot, extra: Partial<TextState> = {}) {
     fit: 'page',
     zoom: null,
     result: null,
+    recognized: {},
+    ocr: { status: 'idle' },
     edited: null,
     stale: false,
     ...extra,
@@ -309,6 +338,7 @@ function setSlot(slot: TextSlot, extra: Partial<TextState> = {}) {
 let lastRead = 0;
 
 async function load(file: File) {
+  stopRecognition();
   const token = ++lastRead;
   const current = () => lastRead === token;
   const put = (slot: TextSlot, extra?: Partial<TextState>) => {
@@ -393,6 +423,7 @@ export function openFiles(files: readonly File[]): Promise<void> {
  * blijven, en wat er voor deze PDF onthouden is ook; "Leesvakken gebruiken" gaat uit.
  */
 export function clearText(): void {
+  stopRecognition();
   lastRead++;
   release(state.slot);
   setSlot(EMPTY, { tooMany: false, useZones: false });
@@ -611,26 +642,121 @@ export function setZoom(zoom: Zoom): void {
 /** De woorden in de tekst, in de taal van de app: de paginaconcordantie, de kop en de conventies. */
 export type OutputTexts = { concordance: ConcordanceTexts; head: HeadTexts };
 
+/** De leesvakken van nu, of null als ze uit staan. */
+const zoneSetup = (): ZoneSetup | null =>
+  state.useZones ? { zones: state.zones, pages: state.pages, readEmpty: state.readEmpty } : null;
+
+/** Wordt deze pagina gelezen? Niet als de leesvakken aan staan en hij geen vak heeft (en overslaan). */
+const willRead = (setup: ZoneSetup | null, no: number): boolean =>
+  setup === null || setup.readEmpty || zonesFor(setup, no).length > 0;
+
+/** De tekstherkenning die nu bezig is: om te stoppen (met Stoppen, of bij een andere PDF). */
+let recognition: AbortController | null = null;
+
+/** Gestopt met de knop Stoppen (de rest: een andere PDF, Wissen of weg uit Platte tekst). */
+const STOPPED = 'stopped';
+
 /**
- * De tekst maken met de instellingen, vakken en gegevens van nu, en de tekst tonen. Zonder `texts`
- * in het Nederlands, zoals in de extractor.
+ * De tekstherkenning stoppen als die bezig is. Met `byUser` (de knop Stoppen) staat er daarna
+ * "Gestopt"; anders (een andere PDF, Wissen, weg uit Platte tekst) is er niets te melden. Wat al
+ * herkend is, blijft bewaard.
  */
-export function extract(texts?: OutputTexts): void {
-  if (state.slot.status !== 'ready') return;
-  const setup = state.useZones
-    ? { zones: state.zones, pages: state.pages, readEmpty: state.readEmpty }
-    : null;
+export function stopRecognition(byUser = false): void {
+  recognition?.abort(byUser ? STOPPED : 'left');
+}
+
+/**
+ * De pagina's zonder tekstlaag die gelezen worden en nog niet herkend zijn, laten herkennen. Geeft
+ * true als de tekst daarna gemaakt kan worden: alles herkend, of de herkenning werkte niet (dan
+ * zonder). Gestopt, of intussen een andere PDF: false.
+ */
+async function recognizeMissing(doc: TextDoc, todo: readonly PageText[]): Promise<boolean> {
+  const job = new AbortController();
+  recognition = job;
+  const { signal } = job;
+  let engine: OcrEngine | null = null;
+  setState({ ocr: { status: 'loading', progress: 0 } });
+  try {
+    const opening = import('../pdf/ocr').then(({ openOcr }) =>
+      openOcr((progress) => {
+        if (!signal.aborted) setState({ ocr: { status: 'loading', progress } });
+      }),
+    );
+    // Gestopt terwijl de herkenner nog laadt: daarna alsnog sluiten.
+    opening.then(
+      (opened) => {
+        if (signal.aborted) opened.close();
+      },
+      () => {},
+    );
+    engine = await new Promise<OcrEngine>((resolve, reject) => {
+      signal.addEventListener('abort', () => reject(signal.reason), { once: true });
+      opening.then(resolve, reject);
+    });
+    for (const [index, page] of todo.entries()) {
+      setState({ ocr: { status: 'running', done: index, total: todo.length, page: page.no } });
+      const text = await recognizePage(doc.file, page, engine, signal);
+      setState({ recognized: { ...state.recognized, [page.no]: text } });
+    }
+    setState({ ocr: { status: 'idle' } });
+    return true;
+  } catch {
+    if (signal.aborted) {
+      setState({ ocr: { status: signal.reason === STOPPED ? 'stopped' : 'idle' } });
+      return false;
+    }
+    setState({ ocr: { status: 'failed' } });
+    return true;
+  } finally {
+    engine?.close();
+    recognition = null;
+  }
+}
+
+/** De tekst maken uit de pagina's van nu (met wat al herkend is), en de tekst tonen. */
+function finishExtract(doc: TextDoc, texts?: OutputTexts) {
+  const recognized = state.recognized;
+  const pages: TextPage[] = doc.pages.map((page) =>
+    recognized[page.no] ? { ...recognized[page.no]!, ocr: true } : page,
+  );
   setState({
-    result: extractText(state.slot.doc.pages, state.options, setup, {
-      printed: state.slot.doc.printed,
+    // Zonder `printed`: de afgedrukte paginanummers worden opnieuw gezocht, want ook een herkende
+    // pagina kan er een hebben.
+    result: extractText(pages, state.options, zoneSetup(), {
       joins: state.joins,
-      name: state.slot.doc.file.name,
+      name: doc.file.name,
       meta: state.meta,
       ...(texts ? { texts: texts.concordance, head: texts.head } : {}),
     }),
     edited: null,
     view: 'result',
     stale: false,
+  });
+}
+
+/**
+ * De tekst maken met de instellingen, vakken en gegevens van nu, en de tekst tonen. Zonder `texts`
+ * in het Nederlands, zoals in de extractor. Met tekstherkenning aan worden eerst de pagina's zonder
+ * tekstlaag herkend die gelezen worden en nog niet herkend zijn (dat kan duren; zie `OcrRun`);
+ * anders gebeurt het meteen. Tijdens het herkennen doet een tweede keer niets.
+ */
+export function extract(texts?: OutputTexts): Promise<void> | void {
+  if (state.slot.status !== 'ready' || recognition) return;
+  const doc = state.slot.doc;
+  const setup = zoneSetup();
+  const todo = state.options.ocr
+    ? doc.pages.filter(
+        (page) => !hasTextLayer(page) && !state.recognized[page.no] && willRead(setup, page.no),
+      )
+    : [];
+  if (todo.length === 0) {
+    setState({ ocr: { status: 'idle' } });
+    finishExtract(doc, texts);
+    return;
+  }
+  // Een andere PDF of Wissen stopt het herkennen eerst (`go` is dan false).
+  return recognizeMissing(doc, todo).then((go) => {
+    if (go) finishExtract(doc, texts);
   });
 }
 
@@ -719,7 +845,8 @@ const encode = (text: string) => new TextEncoder().encode(text);
 export async function runBatch(texts?: BatchTexts, fileName?: string): Promise<void> {
   const files = state.batchFiles.map((entry) => entry.file);
   if (state.batch.status === 'running' || files.length === 0) return;
-  const opts = state.options;
+  // Zonder tekstherkenning: die kost per pagina seconden, en een batch kan groot zijn.
+  const opts = { ...state.options, ocr: false };
   const combine = state.batchCombine;
   const ctx: BatchContext = texts
     ? { concordance: texts.concordance, head: texts.head, words: texts.batch }
@@ -789,6 +916,7 @@ export async function runBatch(texts?: BatchTexts, fileName?: string): Promise<v
 
 /** Alleen voor tests: begin opnieuw. */
 export function resetTextState(): void {
+  stopRecognition();
   clearText();
   state = INITIAL;
 }

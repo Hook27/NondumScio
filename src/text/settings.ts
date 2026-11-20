@@ -49,6 +49,7 @@ const KNOWN = [
   'metaHeader',
   'conventions',
   'strip',
+  'ocr',
 ];
 
 const isObject = (value: unknown): value is Record<string, unknown> =>
@@ -155,6 +156,7 @@ export function fromSettings(raw: unknown, base: Settings): Settings | null {
       crossPage: flag('crossPage', base.options.crossPage),
       header: flag('metaHeader', base.options.header),
       conventions: flag('conventions', base.options.conventions),
+      ocr: flag('ocr', base.options.ocr),
     },
     useZones: flag('useCrop', base.useZones),
     zones: readZones(zones.d),
@@ -191,8 +193,9 @@ export function toSettings(pdf: string, settings: Settings) {
       conventions: options.conventions,
       tables: options.tables,
       ...extra.options,
-      // Alleen hier: de extractor kent dit niet en slaat het over.
+      // Alleen hier: de extractor kent deze niet en slaat ze over.
       strip: options.strip,
+      ocr: options.ocr,
     },
     // Zoals in de extractor: altijd alle vier de velden.
     meta: { ...settings.meta },

@@ -27,6 +27,8 @@ export type HeadTexts = {
     /** Bij een batch in één bestand: wat "Bestand N start/einde" betekent. */
     files: string;
     heading: string;
+    /** Wat {OCR} betekent (alleen met tekstherkenning aan). */
+    ocr: string;
   };
 };
 
@@ -50,6 +52,7 @@ export const DUTCH_HEAD: HeadTexts = {
       'Per brondocument staat een paginaconcordantie die fysieke PDF-pagina’s koppelt aan afgedrukte documentpaginanummers.',
     files: '"Bestand N start/einde: <naam>" markeert het begin en einde van elk brondocument.',
     heading: '{H} = begin van een herkende kop, zoals een hoofdstuk- of artikeltitel.',
+    ocr: '{OCR} = de tekst van deze pagina is herkend met tekstherkenning (OCR) en kan fouten bevatten.',
   },
 };
 
@@ -126,12 +129,14 @@ export type ConventionOptions = {
   joinLines: boolean;
   structure: boolean;
   headingMarker: boolean;
+  /** Tekstherkenning aan: dan kan {OCR} in de tekst staan. */
+  ocr?: boolean;
 };
 
 /**
  * Het conventieblok: wat de tekst is, en wat de markeringen betekenen. De regel over {H} staat er
- * alleen als {H} ook echt in de tekst kan staan (met regels samenvoegen en opsommingen en koppen);
- * die regel had de extractor nog niet. `batch`: voor een batch in één bestand, zoals in de
+ * alleen als {H} ook echt in de tekst kan staan (met regels samenvoegen en opsommingen en koppen),
+ * die over {OCR} alleen met tekstherkenning aan; die regels had de extractor nog niet. `batch`: voor een batch in één bestand, zoals in de
  * extractor: de concordantie staat dan per brondocument, en "Bestand N start/einde" wordt uitgelegd.
  */
 export function buildConventions(
@@ -145,6 +150,7 @@ export function buildConventions(
   if (opts.anchors) lines.push(c.anchors, batch ? c.concordanceBatch : c.concordance);
   if (batch) lines.push(c.files);
   if (opts.headingMarker && opts.structure && opts.joinLines) lines.push(c.heading);
+  if (opts.ocr) lines.push(c.ocr);
   // Even breed als de titelregel (in de extractor: 18 tekens, net als "=== Conventies ===").
   lines.push('='.repeat(title.length));
   return lines.join('\n');

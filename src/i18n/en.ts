@@ -866,6 +866,9 @@ export const en: Messages = {
       tables: 'Recognise tables',
       tablesHint:
         'Aligned cells as a table, with tabs in between. Works best with a reading zone around the table; recognising two columns is then off.',
+      ocr: 'Recognise scanned pages (OCR)',
+      ocrHint:
+        'Pages without a text layer (scans) are first read with text recognition (Dutch and English) when you extract the text, locally in your browser. That takes a few seconds per page; the first time, the recognition is loaded. Recognised text gets {OCR} in front and can contain mistakes. Not in the batch.',
       zonesOff: 'Columns and headers and footers: not with reading zones.',
       zonesOffRead:
         'Headers and footers: not with reading zones. Columns: only on pages without zones, which are read in full.',
@@ -918,6 +921,7 @@ export const en: Messages = {
         'For each source document there is a page concordance that links physical PDF pages to printed document page numbers.',
       files: '"File N start/end: <name>" marks the start and end of each source document.',
       heading: '{H} = start of a recognised heading, such as a chapter or article title.',
+      ocr: '{OCR} = the text of this page was recognised with text recognition (OCR) and can contain mistakes.',
     },
     batch: {
       title: 'Batch (several PDFs)',
@@ -1015,7 +1019,18 @@ export const en: Messages = {
     noZones:
       'Reading zones are on, but no zone has been drawn yet: nothing was read. Draw a zone on the preview, or turn the reading zones off.',
     noTextPages:
-      'No text layer on {list}: possibly a scan or an image. No text is recognised there (no OCR).',
+      'No text layer on {list}: possibly a scan or an image. Turn on “Recognise scanned pages (OCR)” to have the text recognised there.',
+    noTextPagesOcr: 'No text layer on {list}: possibly a scan or an image.',
+    ocrPages:
+      'Read with text recognition (OCR): {list}. That text follows {OCR} and can contain mistakes: check it extra carefully.',
+    ocrRun: {
+      loading: 'Loading text recognition… {percent}%',
+      progress: 'Recognising text (OCR): page {page} ({n} of {total})…',
+      stopped:
+        'Stopped. The text has not been made again; what has been recognised is kept for next time.',
+      failed:
+        'Text recognition (OCR) did not work. The text has been made without the pages without a text layer.',
+    },
     lowPages: 'Hardly any text on {list}.',
     skippedPages: 'Skipped (no zones): {list}.',
     pageOne: 'page {n}',
