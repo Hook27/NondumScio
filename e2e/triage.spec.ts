@@ -56,6 +56,18 @@ const canvas = (page: Page, n: number, lang: 'nl' | 'en' = 'nl') =>
 const pageNumber = (page: Page) => page.locator('.plaintext-bar .page-nav__page [aria-hidden]');
 
 /**
+ * De breedte van de getekende pagina. Wacht tot het canvas er is en een maat heeft: na bladeren of
+ * zoomen wordt het vervangen, en een meting op dat moment geeft geen maat (gebeurde in CI).
+ */
+async function shownWidth(page: Page, n: number, lang: 'nl' | 'en' = 'nl') {
+  let width = 0;
+  await expect
+    .poll(async () => (width = (await canvas(page, n, lang).boundingBox())?.width ?? 0), SLOW)
+    .toBeGreaterThan(0);
+  return width;
+}
+
+/**
  * Het aantal regels van de tekst op een knop: de bovenkanten van de stukjes tekst, waarbij een
  * verschil van minder dan een halve letterhoogte (een ✓ of een kleiner toetsje) dezelfde regel is.
  */
@@ -141,7 +153,7 @@ test.describe('Archief / Triage', () => {
     await open(page);
     await addThree(page);
     await expect(canvas(page, 1)).toBeVisible(SLOW);
-    const before = (await canvas(page, 1).boundingBox())!.width;
+    const before = await shownWidth(page, 1);
     await page.getByRole('button', { name: pb.zoomIn }).click();
     // Een vaste stap van de echte maat (een A4 van 595 punten: 595 × 96/72 × stap breed).
     const step = parseInt((await page.locator('.zoom-bar__value').textContent())!, 10);
@@ -401,8 +413,7 @@ for (const size of [
         const view = (await page.locator('.workspace__view').boundingBox())!;
         expect(view.width / viewport.width).toBeGreaterThan(0.55);
         // Zoals pdf-triage.html staat de pagina op de breedte van het vak: goed te lezen.
-        const shown = (await canvas(page, 1, lang).boundingBox())!;
-        expect(shown.width / view.width).toBeGreaterThan(0.8);
+        expect((await shownWidth(page, 1, lang)) / view.width).toBeGreaterThan(0.8);
       });
     }
 
