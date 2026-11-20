@@ -1618,3 +1618,44 @@ test.describe('PDF → Platte tekst: drie kolommen en kantlijnnoten', () => {
     );
   });
 });
+
+test.describe('PDF → Platte tekst: gemengde opmaak per pagina', () => {
+  test.skip(({ isMobile }) => isMobile, 'Geavanceerd is er alleen op de computer');
+
+  test('boven twee kolommen, onder drie: elk deel met zijn eigen kolommen', async ({ page }) => {
+    const doc = await PDFDocument.create();
+    const font = await doc.embedFont(StandardFonts.Helvetica);
+    const sheet = doc.addPage([595, 842]);
+    const line = (mark: string, i: number) => `${mark}${i} regel van deze kolom met wat tekst erin`;
+    ['a', 'b'].forEach((mark, col) => {
+      for (let i = 1; i <= 8; i++)
+        sheet.drawText(line(mark, i), { x: 50 + col * 265, y: 760 - i * 13, size: 10, font });
+    });
+    ['c', 'd', 'e'].forEach((mark, col) => {
+      for (let i = 1; i <= 8; i++)
+        sheet.drawText(line(mark, i).slice(0, 30), {
+          x: 50 + col * 175,
+          y: 560 - i * 12,
+          size: 9,
+          font,
+        });
+    });
+    await openPage(page, '/#/advanced/text', { lang: 'nl' });
+    await withoutPageMarks(page);
+    await page.locator('#plaintext-file').setInputFiles({
+      name: 'gemengd.pdf',
+      mimeType: 'application/pdf',
+      buffer: Buffer.from(await doc.save()),
+    });
+    await expect(page.locator('canvas.plaintext-preview__canvas')).toBeVisible(SLOW);
+    await page.getByRole('checkbox', { name: s.joinLines }).uncheck();
+    await extract(page);
+    const output = page.locator('textarea.plaintext__output');
+    await expect(output).not.toHaveValue('');
+    const marks = (await output.inputValue())
+      .split(/\n+/)
+      .map((text) => text.slice(0, 1))
+      .filter((mark, i, all) => mark !== all[i - 1]);
+    expect(marks).toEqual(['a', 'b', 'c', 'd', 'e']);
+  });
+});
