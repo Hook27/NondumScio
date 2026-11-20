@@ -257,9 +257,14 @@ function makeLine(items: Piece[], col: Column): LaidLine {
   };
 }
 
+/** Een stukje met alleen witruimte (zie `detectGutter`). */
+const isBlank = (piece: Piece): boolean => piece.str.trim() === '';
+
 /**
  * Zoekt de "goot" tussen twee kolommen: in tekst met twee kolommen heeft bijna elke regel een
- * brede witruimte rond dezelfde plek. Geeft die plek (x), of null.
+ * brede witruimte rond dezelfde plek. Geeft die plek (x), of null. Stukjes met alleen witruimte
+ * tellen niet mee: staan twee kolommen regel voor regel in het bestand, dan zet pdf.js een spatie
+ * die het hele gat overbrugt (audit F22).
  */
 function detectGutter(lines: readonly Line[], minX: number, maxX: number): number | null {
   const width = maxX - minX;
@@ -268,23 +273,32 @@ function detectGutter(lines: readonly Line[], minX: number, maxX: number): numbe
   const hi = minX + width * 0.75;
   const mids: number[] = [];
   let counted = 0;
+  // Regels met meer dan één breed gat: losse cellen van een tabel, geen twee kolommen tekst.
+  let cells = 0;
   for (const line of lines) {
-    const its = line.items;
+    const its = line.items.filter((i) => !isBlank(i));
     if (its.length < 2) continue;
     counted++;
     const fh = Math.max(...its.map((i) => i.fh)) || 10;
     let bestGap = 0;
     let mid: number | null = null;
+    let wide = 0;
     for (let i = 1; i < its.length; i++) {
       const before = its[i - 1]!;
       const gap = its[i]!.x - (before.x + before.w);
+      if (gap > fh * 2) wide++;
       if (gap > bestGap) {
         bestGap = gap;
         mid = (its[i]!.x + before.x + before.w) / 2;
       }
     }
+    if (wide > 1) cells++;
     if (bestGap > fh * 2 && mid !== null && mid > lo && mid < hi) mids.push(mid);
   }
+  // Een tabel heeft ook brede gaten op dezelfde plek. Bestaan de meeste regels uit losse cellen,
+  // dan blijft het een tabel, per rij in de tekst, zoals tot nu toe (de overbruggende spaties van
+  // audit F22 verborgen de gaten). Staat er maar een deel, dan is het geen tabel van de pagina.
+  if (cells * 2 > counted) return null;
   if (mids.length < Math.max(4, counted * 0.25)) return null;
   mids.sort((a, b) => a - b);
   return mids[Math.floor(mids.length / 2)]!;
@@ -476,7 +490,8 @@ export function layoutBlock(
   let lines: LaidLine[] = [];
   for (const r of raw) {
     if (gx !== null) {
-      const crossing = r.items.some((i) => i.x < gx && i.x + i.w > gx);
+      // Een spatie over de goot (audit F22) telt niet: die valt bij het splitsen weg.
+      const crossing = r.items.some((i) => !isBlank(i) && i.x < gx && i.x + i.w > gx);
       const left = r.items.filter((i) => i.x + i.w <= gx);
       const right = r.items.filter((i) => i.x >= gx);
       if (!crossing && left.length > 0 && right.length > 0) {
