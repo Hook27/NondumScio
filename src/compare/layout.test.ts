@@ -664,3 +664,119 @@ describe('gedraaide tekst (wens 20-11, deel B)', () => {
     expect(slant.y).toBeCloseTo(slant.x);
   });
 });
+
+describe('twee kolommen regel voor regel in het bestand (audit F22)', () => {
+  /**
+   * Zoals pdf.js het geeft als links en rechts om en om in het bestand staan: tussen de regel links
+   * en de regel rechts een spatie die het hele gat overbrugt (bij de proef van x 256 tot 315).
+   */
+  function interleaved(rows = 8): Piece[] {
+    const items: Piece[] = [];
+    for (let i = 0; i < rows; i++) {
+      const y = 700 - i * 12;
+      const left = piece(`links ${i + 1} van de kolom`, 60, y);
+      items.push(left, { str: ' ', x: left.x + left.w, y, fh: 10, w: 315 - (left.x + left.w) });
+      items.push(piece(`rechts ${i + 1} van de kolom`, 315, y));
+    }
+    return items;
+  }
+  const expected = (rows = 8) =>
+    [
+      ...Array.from({ length: rows }, (_, i) => `links ${i + 1} van de kolom`),
+      ...Array.from({ length: rows }, (_, i) => `rechts ${i + 1} van de kolom`),
+    ].join('\n');
+
+  it('leest eerst links helemaal, dan rechts, ook met de overbruggende spatie', () => {
+    expect(layoutBlock(interleaved(), { ...OPTS, joinLines: false }, true)).toBe(expected());
+  });
+
+  it('net zo als zonder die spatie (kolom voor kolom in het bestand)', () => {
+    const items = interleaved();
+    const withoutSpace = items.filter((i) => i.str.trim() !== '');
+    expect(layoutBlock(items, OPTS, true)).toBe(layoutBlock(withoutSpace, OPTS, true));
+  });
+
+  /**
+   * Een tabel zoals in golden-tést.pdf: drie kolommen cellen, met tussen de cellen spaties die het
+   * gat overbruggen, onder een kop.
+   */
+  function table(): Piece[] {
+    const rows = [
+      ['Omschrijving', 'Aantal', 'Bedrag'],
+      ['Detachering senior', '160 uur', 'EUR 14.400'],
+      ['Detachering junior', '120 uur', 'EUR 7.200'],
+      ['Reiskosten', '1 post', 'EUR 350'],
+      ['Overig', '2 posten', 'EUR 90'],
+      ['Totaal', '', 'EUR 22.040'],
+    ];
+    const items: Piece[] = [piece('Hoofdstuk 3 Voorbeeldtabel', 57, 757, 14)];
+    rows.forEach((row, r) => {
+      const y = 714 - r * 20;
+      const cells = row
+        .map((str, c) => (str ? piece(str, [62, 269, 425][c]!, y) : null))
+        .filter((cell): cell is Piece => cell !== null);
+      cells.forEach((cell, c) => {
+        items.push(cell);
+        const next = cells[c + 1];
+        if (next)
+          items.push({ str: ' ', x: cell.x + cell.w, y, fh: 10, w: next.x - cell.x - cell.w });
+      });
+    });
+    return items;
+  }
+
+  it('een tabel blijft rij voor rij, zoals voordat de spaties werden overgeslagen', () => {
+    expect(layoutBlock(table(), { ...OPTS, joinLines: false }, true).split('\n')).toEqual([
+      'Hoofdstuk 3 Voorbeeldtabel',
+      'Omschrijving Aantal Bedrag',
+      'Detachering senior 160 uur EUR 14.400',
+      'Detachering junior 120 uur EUR 7.200',
+      'Reiskosten 1 post EUR 350',
+      'Overig 2 posten EUR 90',
+      'Totaal EUR 22.040',
+    ]);
+  });
+
+  it('ook een smalle tabel, met gaten van drie keer de letterhoogte, blijft rij voor rij', () => {
+    const items: Piece[] = [];
+    for (let r = 0; r < 6; r++)
+      for (const [c, x] of [60, 150, 240].entries())
+        items.push({ str: `r${r}k${c}`, x, y: 700 - r * 14, fh: 10, w: 60 });
+    const text = layoutBlock(items, { ...OPTS, joinLines: false }, true);
+    expect(text.split('\n')[0]).toBe('r0k0 r0k1 r0k2');
+  });
+
+  it('staan er net zoveel regels met losse cellen als zonder, dan blijven het kolommen', () => {
+    // Acht regels in twee kolommen, en acht met drie stukjes ver uit elkaar (onderaan de pagina).
+    const items = interleaved();
+    for (let i = 0; i < 8; i++)
+      for (const x of [60, 230, 400]) items.push(piece(`cel ${x} ${i}`, x, 500 - i * 12));
+    const text = layoutBlock(items, { ...OPTS, joinLines: false }, true).split('\n');
+    expect(text.slice(0, 16)).toEqual(expected().split('\n'));
+    // Met één regel cellen meer is het een tabel: dan per rij, zoals voorheen.
+    for (const x of [60, 230, 400]) items.push(piece(`cel ${x} 8`, x, 500 - 8 * 12));
+    expect(layoutBlock(items, { ...OPTS, joinLines: false }, true).split('\n')[0]).toBe(
+      'links 1 van de kolom rechts 1 van de kolom',
+    );
+  });
+
+  it('een regel met echte tekst over de goot blijft een regel over de volle breedte', () => {
+    const items = interleaved();
+    // Een kop over de hele breedte, midden tussen de regels.
+    items.push(piece('Tussenkop die over de volle breedte van de pagina loopt', 60, 658, 10));
+    const text = layoutBlock(items, { ...OPTS, joinLines: false }, true).split('\n');
+    const kop = text.indexOf('Tussenkop die over de volle breedte van de pagina loopt');
+    // Erboven de vier regels links en rechts, eronder de rest.
+    expect(text.slice(0, kop)).toEqual([
+      'links 1 van de kolom',
+      'links 2 van de kolom',
+      'links 3 van de kolom',
+      'links 4 van de kolom',
+      'rechts 1 van de kolom',
+      'rechts 2 van de kolom',
+      'rechts 3 van de kolom',
+      'rechts 4 van de kolom',
+    ]);
+    expect(text.slice(kop + 1)).toHaveLength(8);
+  });
+});

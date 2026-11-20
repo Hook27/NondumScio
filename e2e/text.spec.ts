@@ -1528,3 +1528,38 @@ test.describe('PDF → Platte tekst: gedraaide tekst', () => {
     );
   });
 });
+
+test.describe('PDF → Platte tekst: kolommen regel voor regel in het bestand (audit F22)', () => {
+  test.skip(({ isMobile }) => isMobile, 'Geavanceerd is er alleen op de computer');
+
+  test('eerst de linkerkolom helemaal, dan de rechter', async ({ page }) => {
+    const doc = await PDFDocument.create();
+    const font = await doc.embedFont(StandardFonts.Helvetica);
+    const sheet = doc.addPage([595, 842]);
+    // Om en om links en rechts: zo zet pdf.js een spatie over het gat tussen de kolommen.
+    for (let i = 1; i <= 8; i++) {
+      sheet.drawText(`links ${i} van de eerste kolom`, { x: 60, y: 720 - i * 13, size: 10, font });
+      sheet.drawText(`rechts ${i} van de tweede kolom`, {
+        x: 315,
+        y: 720 - i * 13,
+        size: 10,
+        font,
+      });
+    }
+    await openPage(page, '/#/advanced/text', { lang: 'nl' });
+    await withoutPageMarks(page);
+    await page.locator('#plaintext-file').setInputFiles({
+      name: 'kolommen.pdf',
+      mimeType: 'application/pdf',
+      buffer: Buffer.from(await doc.save()),
+    });
+    await expect(page.locator('canvas.plaintext-preview__canvas')).toBeVisible(SLOW);
+    await page.getByRole('checkbox', { name: s.joinLines }).uncheck();
+    await extract(page);
+    const lines = (side: string, kolom: string) =>
+      Array.from({ length: 8 }, (_, i) => `${side} ${i + 1} van de ${kolom} kolom`);
+    await expect(page.locator('textarea.plaintext__output')).toHaveValue(
+      [...lines('links', 'eerste'), ...lines('rechts', 'tweede')].join('\n'),
+    );
+  });
+});
