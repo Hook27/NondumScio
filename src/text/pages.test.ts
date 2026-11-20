@@ -72,6 +72,18 @@ describe('detectPageNumber', () => {
   });
 });
 
+describe('detectPageNumber: geen gedraaid getal (wens 20-11, deel B)', () => {
+  it('een gedraaid getal in de onderrand is geen paginanummer', () => {
+    const items: Piece[] = [
+      { str: 'Tekst.', x: 50, y: 700, fh: 10, w: 30 },
+      { str: '7', x: 20, y: 30, fh: 10, w: 5, turn: 90 },
+    ];
+    expect(detectPageNumber({ no: 1, w: 595, h: 842, items, chars: 7 })).toBeNull();
+    const flat = items.map(({ str, x, y, fh, w }) => ({ str, x, y, fh, w }));
+    expect(detectPageNumber({ no: 1, w: 595, h: 842, items: flat, chars: 7 })?.value).toBe(7);
+  });
+});
+
 describe('printedPages', () => {
   it('Romeins, dan gewoon, en een pagina zonder nummer', () => {
     const pages = [

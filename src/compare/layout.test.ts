@@ -1,7 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import {
   RUNNING_MAX_SIZE,
+  TURN_TOLERANCE,
   analyseRunning,
+  centerOf,
   isBullet,
   isGenericHeading,
   hasTextLayer,
@@ -520,5 +522,145 @@ describe('voorzichtiger tekstregels (audit F15)', () => {
         page(3, [piece('x', 50, 700)]),
       ]),
     ).toBe(2);
+  });
+});
+
+describe('gedraaide tekst (wens 20-11, deel B)', () => {
+  /** Een pdf.js-stukje van `size` punten, gedraaid over `degrees` graden tegen de klok in. */
+  const turned = (str: string, x: number, y: number, degrees: number, size = 10) => {
+    const angle = (degrees * Math.PI) / 180;
+    const [cos, sin] = [Math.cos(angle), Math.sin(angle)];
+    return {
+      str,
+      transform: [size * cos, size * sin, -size * sin, size * cos, x, y],
+      width: str.length * size * 0.5,
+    };
+  };
+
+  it('piecesFrom: de richting in graden, alleen bij meer dan 5 graden scheef', () => {
+    const { items } = piecesFrom([
+      turned('recht', 50, 700, 0),
+      turned('iets scheef', 50, 680, 5),
+      turned('ook scheef', 50, 660, 355),
+      turned('net te scheef', 50, 640, 6),
+      turned('CONCEPT', 150, 400, 45, 60),
+      turned('omhoog', 40, 200, 90),
+      turned('omlaag', 560, 600, 270),
+      turned('ondersteboven', 300, 300, 180),
+    ]);
+    expect(items.map((i) => [i.str, i.turn])).toEqual([
+      ['recht', undefined],
+      ['iets scheef', undefined],
+      ['ook scheef', undefined],
+      ['net te scheef', 6],
+      ['CONCEPT', 45],
+      ['omhoog', 90],
+      ['omlaag', 270],
+      ['ondersteboven', 180],
+    ]);
+    expect(TURN_TOLERANCE).toBe(5);
+    // Net onder recht (een halve graad of minder) is recht.
+    expect(piecesFrom([turned('bijna', 50, 600, 359.6)]).items[0]!.turn).toBeUndefined();
+    // Een gewoon stukje heeft geen `turn` (en dus niets extra's).
+    expect(Object.keys(items[0]!)).toEqual(['str', 'x', 'y', 'fh', 'w']);
+    // De letterhoogte en de plek blijven zoals ze waren.
+    expect(items[4]).toMatchObject({ x: 150, y: 400 });
+    expect(items[4]!.fh).toBeCloseTo(60);
+  });
+
+  it('piecesFrom: de richting zoals je de pagina ziet, met de draaiing van de pagina', () => {
+    // Een pagina met /Rotate: tekst die in het bestand omhoog loopt, staat op het scherm recht.
+    const toPage = (x: number, y: number): [number, number] => [y, 595 - x];
+    const { items } = piecesFrom(
+      [turned('recht op het scherm', 100, 50, 90), turned('nu omhoog', 100, 50, 180)],
+      toPage,
+    );
+    expect(items.map((i) => i.turn)).toEqual([undefined, 90]);
+    expect(items[0]).toMatchObject({ x: 50, y: 495 });
+  });
+
+  /** Lopende tekst in één alinea van zes regels, met een regelafstand van 12. */
+  const BODY = [
+    'Het krediet is niet volledig besteed en van',
+    'het resterende bedrag is een deel teruggevloeid',
+    'naar de algemene reserve, zo blijkt uit de',
+    'bijlage bij het raadsvoorstel dat de raad',
+    'later heeft besproken en waar de raad mee',
+    'heeft ingestemd.',
+  ];
+  const BODY_TEXT = BODY.join(' ');
+
+  it('twee kolommen worden ook naast een watermerk herkend', () => {
+    const items: Piece[] = [];
+    for (let i = 0; i < 6; i++) {
+      items.push(piece(`links ${i + 1}`, 50, 700 - i * 12));
+      items.push(piece(`rechts ${i + 1}`, 320, 700 - i * 12));
+    }
+    const watermark = piecesFrom([turned('CONCEPT', 120, 664, 45, 60)]).items;
+    expect(layoutBlock([...items, ...watermark], { ...OPTS, joinLines: false }, true)).toBe(
+      [1, 2, 3, 4, 5, 6].map((n) => `links ${n}`).join('\n') +
+        '\n' +
+        [1, 2, 3, 4, 5, 6].map((n) => `rechts ${n}`).join('\n') +
+        '\n\nCONCEPT',
+    );
+  });
+
+  it('een watermerk midden in de tekst breekt geen zin: het komt als eigen blok erachter', () => {
+    const watermark = piecesFrom([turned('CONCEPT', 120, 664, 45, 60)]).items;
+    expect(layoutBlock([...lines(BODY, 700), ...watermark], OPTS, true)).toBe(
+      `${BODY_TEXT}\n\nCONCEPT`,
+    );
+    // Ook als het watermerk vóór de tekst in het bestand staat.
+    expect(layoutBlock([...watermark, ...lines(BODY, 700)], OPTS, true)).toBe(
+      `${BODY_TEXT}\n\nCONCEPT`,
+    );
+  });
+
+  it('een verticale strook van losse stukjes wordt één regel, in leesvolgorde', () => {
+    // Van onder naar boven (90 graden) en van boven naar beneden (270 graden).
+    const up = piecesFrom([
+      turned('[cs.CL]', 40, 300, 90),
+      turned('arXiv:2611.01234v1', 40, 200, 90),
+      turned('20 Nov 2026', 40, 340, 90),
+    ]).items;
+    const down = piecesFrom([
+      turned('2026/123', 560, 540, 270),
+      turned('Kenmerk', 560, 600, 270),
+    ]).items;
+    expect(layoutBlock([...down, ...lines(BODY, 700), ...up], OPTS, true)).toBe(
+      `${BODY_TEXT}\n\narXiv:2611.01234v1 [cs.CL] 20 Nov 2026\n\nKenmerk 2026/123`,
+    );
+  });
+
+  it('een pagina die helemaal gedraaid in het bestand staat, wordt gewoon gelezen', () => {
+    // Elke regel 90 graden gedraaid: de regels staan naast elkaar, van links naar rechts.
+    const raw = BODY.map((text, i) => turned(text, 100 + i * 12, 100, 90));
+    // Regels die van onder naar boven lopen, lees je met de pagina een kwartslag naar rechts: de
+    // regel het meest rechts is dan de eerste.
+    raw.reverse();
+    expect(layoutBlock(piecesFrom(raw).items, OPTS, true)).toBe(BODY_TEXT);
+  });
+
+  it('een gedraaide regel bovenaan elke pagina is geen kop die wegvalt', () => {
+    const pages = [1, 2, 3].map((no) =>
+      page(no, [
+        ...piecesFrom([turned('Kenmerk 2026/123', 50, 800, 90)]).items,
+        ...lines(['Eerste regel.', 'Tweede regel.', 'Derde regel.'], 700),
+      ]),
+    );
+    const running = analyseRunning(pages);
+    expect(running.map((r) => r.dropTop)).toEqual([false, false, false]);
+    expect(pageText(pages[0]!, OPTS, running[0])).toContain('Kenmerk 2026/123');
+  });
+
+  it('centerOf: het midden, ook van een gedraaid stukje', () => {
+    expect(centerOf(piece('Tekst', 50, 700))).toEqual({ x: 62.5, y: 705 });
+    const up = centerOf({ str: 'Kenmerk', x: 40, y: 200, fh: 10, w: 100, turn: 90 });
+    expect(up.x).toBeCloseTo(35);
+    expect(up.y).toBeCloseTo(250);
+    const slant = centerOf({ str: 'x', x: 0, y: 0, fh: 0, w: 20, turn: 45 });
+    // Halverwege de 20 punten langs 45 graden: 10 keer cos 45.
+    expect(slant.x).toBeCloseTo(10 * Math.SQRT1_2);
+    expect(slant.y).toBeCloseTo(slant.x);
   });
 });

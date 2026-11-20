@@ -5,8 +5,39 @@
  * drempels zijn daar op echte documenten afgesteld en hier bewust gelijk gehouden.
  */
 
-/** Eén tekststukje zoals pdf.js het geeft: tekst, plek (linksonder, in punten) en maat. */
-export type Piece = { str: string; x: number; y: number; fh: number; w: number };
+/**
+ * Eén tekststukje zoals pdf.js het geeft: tekst, plek (linksonder, in punten) en maat. `turn`: de
+ * richting van de tekst op de pagina zoals je die ziet, in graden tegen de klok in (90 = van onder
+ * naar boven), alleen als het stukje gedraaid staat (zie `TURN_TOLERANCE`); `w` is dan de lengte
+ * langs die richting.
+ */
+export type Piece = { str: string; x: number; y: number; fh: number; w: number; turn?: number };
+
+/**
+ * Hoeveel graden een stukje scheef mag staan en toch gewone tekst is: een tekstlaag van een iets
+ * scheve scan blijft dan gewoon lopende tekst. Een watermerk (meestal 30 tot 60 graden) of
+ * verticale tekst in de marge valt er ruim buiten.
+ */
+export const TURN_TOLERANCE = 5;
+
+/**
+ * De richting van een vector in hele graden, van 0 tot en met 360 (tegen de klok in). 360 komt
+ * alleen voor bij minder dan een halve graad onder recht, en dat telt toch als recht.
+ */
+function degreesOf(dx: number, dy: number): number {
+  return Math.round(((Math.atan2(dy, dx) * 180) / Math.PI + 360) % 360);
+}
+
+/** Het midden van een tekststukje, ook als het gedraaid staat. */
+export function centerOf(piece: Piece): { x: number; y: number } {
+  const angle = ((piece.turn ?? 0) * Math.PI) / 180;
+  const cos = Math.cos(angle);
+  const sin = Math.sin(angle);
+  return {
+    x: piece.x + (piece.w / 2) * cos - (piece.fh / 2) * sin,
+    y: piece.y + (piece.w / 2) * sin + (piece.fh / 2) * cos,
+  };
+}
 
 /** De tekst van één pagina, met de maat van de pagina. */
 export type PageText = { no: number; w: number; h: number; items: Piece[]; chars: number };
@@ -90,7 +121,11 @@ export function piecesFrom(
     const fh = Math.hypot(tr[1]!, tr[3]!) || item.height || 10;
     const w = item.width || item.str.length * fh * 0.5;
     const [x, y] = toPage ? toPage(tr[4]!, tr[5]!) : [tr[4]!, tr[5]!];
-    pieces.push({ str: item.str, x, y, fh, w });
+    // De richting zoals je de pagina ziet: met de draaiing en uitsnede van de pagina.
+    const [ax, ay] = toPage ? toPage(tr[4]! + tr[0]!, tr[5]! + tr[1]!) : [x + tr[0]!, y + tr[1]!];
+    const turn = degreesOf(ax - x, ay - y);
+    const flat = Math.min(turn, 360 - turn) <= TURN_TOLERANCE;
+    pieces.push(flat ? { str: item.str, x, y, fh, w } : { str: item.str, x, y, fh, w, turn });
     chars += item.str.length;
   }
   return { items: pieces, chars };
@@ -130,14 +165,16 @@ export type RunningLines = {
  */
 function runningCandidates(page: PageText): { top: Line | null; bot: Line | null } {
   const none = { top: null, bot: null };
-  if (page.items.length < 2) return none;
-  const body = median(page.items.map((i) => i.fh)) || 10;
+  // Gedraaide tekst (een watermerk, een strook in de marge) is geen kop- of voetregel.
+  const items = page.items.filter((i) => i.turn === undefined);
+  if (items.length < 2) return none;
+  const body = median(items.map((i) => i.fh)) || 10;
   const yTol = body * 0.5;
   // Een regel in een duidelijk grotere letter dan de lopende tekst is een titel, geen kop- of
   // voettekst: "Hoofdstuk 1", "Hoofdstuk 2"… bovenaan elke pagina zou anders (met de cijfers als #)
   // als terugkerende kop wegvallen. Een kop van 12 pt boven tekst van 11 pt telt nog wel als kop.
   const small = (line: Line) => Math.max(...line.items.map((i) => i.fh)) <= body * RUNNING_MAX_SIZE;
-  const lines = groupLines(page.items, yTol);
+  const lines = groupLines(items, yTol);
   if (lines.length < 3) return none;
   const gaps: number[] = [];
   for (let i = 1; i < lines.length; i++) gaps.push(lines[i - 1]!.y - lines[i]!.y);
@@ -389,12 +426,43 @@ function buildTable(rows: readonly Cell[][], fh: number): string {
     .join('\n');
 }
 
-/** De tekststukjes van één pagina als tekst met alinea's (of losse regels zonder `joinLines`). */
+/** Een gedraaid stukje teruggedraaid, zodat het horizontaal staat (draaien om de oorsprong). */
+function unturn(piece: Piece): Piece {
+  const angle = ((piece.turn ?? 0) * Math.PI) / 180;
+  const cos = Math.cos(angle);
+  const sin = Math.sin(angle);
+  return {
+    str: piece.str,
+    x: piece.x * cos + piece.y * sin,
+    y: piece.y * cos - piece.x * sin,
+    fh: piece.fh,
+    w: piece.w,
+  };
+}
+
+/**
+ * De tekststukjes van één pagina als tekst met alinea's (of losse regels zonder `joinLines`).
+ * Gedraaide tekst (een watermerk, een strook in de marge) doet niet mee met de lopende tekst: die
+ * komt per richting als eigen blok erachter, teruggedraaid en met dezelfde regels gelezen (zonder
+ * kolommen). Zo breekt "CONCEPT" geen zin meer, en wordt een verticale strook één regel.
+ */
 export function layoutBlock(
   input: readonly Piece[],
   opts: LayoutOptions,
   allowColumns: boolean,
 ): string {
+  if (input.some((i) => i.turn !== undefined)) {
+    const turns = [...new Set(input.flatMap((i) => (i.turn === undefined ? [] : [i.turn])))];
+    const flat = input.filter((i) => i.turn === undefined);
+    return [
+      layoutBlock(flat, opts, allowColumns),
+      ...turns
+        .sort((a, b) => a - b)
+        .map((turn) => layoutBlock(input.filter((i) => i.turn === turn).map(unturn), opts, false)),
+    ]
+      .filter((text) => text !== '')
+      .join('\n\n');
+  }
   if (input.length === 0) return '';
   const items = input.slice().sort((a, b) => b.y - a.y || a.x - b.x);
   const yTol = (median(items.map((i) => i.fh)) || 10) * 0.5;

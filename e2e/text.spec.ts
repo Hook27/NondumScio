@@ -1489,3 +1489,42 @@ test.describe('PDF → Platte tekst: gescande pagina’s herkennen (OCR)', () =>
     );
   });
 });
+
+test.describe('PDF → Platte tekst: gedraaide tekst', () => {
+  test.skip(({ isMobile }) => isMobile, 'Geavanceerd is er alleen op de computer');
+
+  test('een watermerk en een kenmerk in de marge breken geen zin meer', async ({ page }) => {
+    const doc = await PDFDocument.create();
+    const font = await doc.embedFont(StandardFonts.Helvetica);
+    const sheet = doc.addPage([595, 842]);
+    const lines = [
+      'Het krediet is niet volledig besteed en van het',
+      'resterende bedrag is een deel teruggevloeid naar',
+      'de algemene reserve, zo blijkt uit de bijlage.',
+    ];
+    lines.forEach((line, i) => sheet.drawText(line, { x: 72, y: 700 - i * 14.5, size: 11, font }));
+    // Het watermerk begint midden in de tekst; het kenmerk staat rechts, van boven naar beneden.
+    sheet.drawText('CONCEPT', {
+      x: 150,
+      y: 684,
+      // Klein genoeg om binnen de pagina te blijven (wat erbuiten valt, leest pdf.js niet).
+      size: 40,
+      font,
+      color: rgb(0.85, 0.85, 0.85),
+      rotate: degrees(45),
+    });
+    sheet.drawText('Kenmerk 2026/123', { x: 560, y: 720, size: 9, font, rotate: degrees(-90) });
+    await openPage(page, '/#/advanced/text', { lang: 'nl' });
+    await withoutPageMarks(page);
+    await page.locator('#plaintext-file').setInputFiles({
+      name: 'concept.pdf',
+      mimeType: 'application/pdf',
+      buffer: Buffer.from(await doc.save()),
+    });
+    await expect(page.locator('canvas.plaintext-preview__canvas')).toBeVisible(SLOW);
+    await extract(page);
+    await expect(page.locator('textarea.plaintext__output')).toHaveValue(
+      `${lines.join(' ')}\n\nCONCEPT\n\nKenmerk 2026/123`,
+    );
+  });
+});
