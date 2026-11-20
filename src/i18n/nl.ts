@@ -652,7 +652,7 @@ export const nl = {
         'Lager: sneller een nieuwe alinea. Hoger: meer regels samen in één alinea. Niet bij vergelijken per regel.',
       ignoreCase: 'Hoofdletters negeren',
       strip: 'Terugkerende kop- en voetteksten weglaten',
-      columns: 'Twee kolommen herkennen',
+      columns: 'Kolommen herkennen',
       dehyphen: 'Afgebroken woorden herstellen',
       onlyDiff: 'Alleen verschillen tonen',
     },
@@ -778,7 +778,7 @@ export const nl = {
         gap: 'alinea-gevoeligheid {n}',
         ignoreCase: 'hoofdletters genegeerd',
         strip: 'kop- en voetteksten weggelaten',
-        columns: 'twee kolommen herkend',
+        columns: 'kolommen herkend',
         dehyphen: 'afgebroken woorden hersteld',
       },
       fallback:
@@ -870,7 +870,7 @@ export const nl = {
       gapHint:
         'Lager: sneller een nieuwe alinea. Hoger: meer regels samen in één alinea. Alleen als regels worden samengevoegd.',
       dehyphen: 'Afgebroken woorden herstellen',
-      columns: 'Twee kolommen herkennen',
+      columns: 'Kolommen herkennen',
       strip: 'Terugkerende kop- en voetteksten weglaten',
       structure: 'Opsommingen en koppen herkennen',
       structureHint:
@@ -879,7 +879,7 @@ export const nl = {
       headingMarkerHint: 'Zet {H} vóór een herkende kop, als hint voor een taalmodel.',
       tables: 'Tabellen herkennen',
       tablesHint:
-        'Uitgelijnde cellen als tabel, met tabs ertussen. Werkt het best met een leesvak rond de tabel; twee kolommen herkennen gaat dan uit.',
+        'Uitgelijnde cellen als tabel, met tabs ertussen. Werkt het best met een leesvak rond de tabel; kolommen herkennen gaat dan uit.',
       ocr: 'Gescande pagina’s herkennen (OCR)',
       ocrHint:
         'Pagina’s zonder tekstlaag (scans) worden bij Tekst extraheren eerst gelezen met tekstherkenning (Nederlands en Engels), lokaal in je browser. Dat duurt een paar seconden per pagina; de eerste keer wordt de herkenning geladen. Herkende tekst krijgt {OCR} vooraan en kan fouten bevatten. Niet bij de batch.',
@@ -940,7 +940,7 @@ export const nl = {
       title: 'Batch (meerdere PDF’s)',
       hint: 'Verwerkt meerdere PDF’s achter elkaar met de huidige instellingen hierboven (zonder leesvakken). Resultaat: per bestand een .txt in een zip, of alles in één bestand.',
       zonesHint:
-        'Twee kolommen herkennen en kop- en voetteksten weglaten werken hier zoals ze aangevinkt staan, ook als ze grijs zijn door de leesvakken.',
+        'Kolommen herkennen en kop- en voetteksten weglaten werken hier zoals ze aangevinkt staan, ook als ze grijs zijn door de leesvakken.',
       combine: 'Combineer in één bestand',
       combineHint:
         'Aan: één .txt met per document een "Bestand N start/einde"-markering. Uit: losse .txt-bestanden in een .zip.',

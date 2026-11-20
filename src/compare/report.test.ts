@@ -56,7 +56,7 @@ describe('buildReport', () => {
         'Gemaakt: 01-11-2026, 14:30',
         'A: oud.pdf (2 pagina’s, 1,7 KB)',
         'B: nieuw.pdf (1 pagina, 2 KB)',
-        'Instellingen: per alinea, alinea-gevoeligheid 1,3, kop- en voetteksten weggelaten, twee kolommen herkend, afgebroken woorden hersteld',
+        'Instellingen: per alinea, alinea-gevoeligheid 1,3, kop- en voetteksten weggelaten, kolommen herkend, afgebroken woorden hersteld',
         '',
         '=== DOCUMENTPROFIEL ===',
         '≠ Bestandsnaam:',

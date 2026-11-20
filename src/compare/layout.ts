@@ -48,7 +48,7 @@ export type RawTextItem = { str?: string; transform?: number[]; width?: number; 
 export type LayoutOptions = {
   /** Terugkerende kop- en voetteksten weglaten. */
   strip: boolean;
-  /** Twee kolommen herkennen en na elkaar lezen. */
+  /** Kolommen herkennen (twee of meer, en kantlijnnoten) en na elkaar lezen. */
   columns: boolean;
   /** Een woord dat over twee regels is afgebroken weer aan elkaar zetten. */
   dehyphen: boolean;

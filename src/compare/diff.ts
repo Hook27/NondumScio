@@ -22,7 +22,7 @@ export type CompareOptions = {
   ignoreCase: boolean;
   /** Terugkerende kop- en voetteksten weglaten. */
   strip: boolean;
-  /** Twee kolommen herkennen. */
+  /** Kolommen herkennen (twee of meer, en kantlijnnoten). */
   columns: boolean;
   /** Afgebroken woorden herstellen. */
   dehyphen: boolean;
