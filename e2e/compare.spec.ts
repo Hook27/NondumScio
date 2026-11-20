@@ -335,7 +335,7 @@ test.describe('PDF’s vergelijken: rapport', () => {
     expect(text.startsWith('PDF-VERGELIJKING\nGemaakt: ')).toBe(true);
     expect(text).toContain('A: huur-oud.pdf (2 pagina’s, ');
     expect(text).toContain(
-      'Instellingen: per alinea, alinea-gevoeligheid 1,3, kop- en voetteksten weggelaten, twee kolommen herkend, afgebroken woorden hersteld',
+      'Instellingen: per alinea, alinea-gevoeligheid 1,3, kop- en voetteksten weggelaten, kolommen herkend, afgebroken woorden hersteld',
     );
     expect(text).toContain(
       '=== DOCUMENTPROFIEL ===\n≠ Bestandsnaam:\n    A: huur-oud.pdf\n    B: huur-nieuw.pdf',

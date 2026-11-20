@@ -562,7 +562,7 @@ describe('instellingen', () => {
     ).toBeTruthy();
   });
 
-  it('twee kolommen herkennen (aan: na elkaar) of niet (uit: regel voor regel door elkaar)', async () => {
+  it('kolommen herkennen (aan: na elkaar) of niet (uit: regel voor regel door elkaar)', async () => {
     setup();
     choose('a', 'kolommen.pdf', 'kolommen.pdf');
     await summary('1 pagina, 2 alinea’s', '1 pagina, 2 alinea’s');

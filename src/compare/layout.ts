@@ -48,7 +48,7 @@ export type RawTextItem = { str?: string; transform?: number[]; width?: number; 
 export type LayoutOptions = {
   /** Terugkerende kop- en voetteksten weglaten. */
   strip: boolean;
-  /** Twee kolommen herkennen en na elkaar lezen. */
+  /** Kolommen herkennen (twee of meer, en kantlijnnoten) en na elkaar lezen. */
   columns: boolean;
   /** Een woord dat over twee regels is afgebroken weer aan elkaar zetten. */
   dehyphen: boolean;
@@ -77,7 +77,8 @@ export type LayoutOptions = {
 export const GAP_FACTOR = { min: 1.1, max: 2.5, step: 0.1 } as const;
 
 type Line = { y: number; items: Piece[] };
-type Column = 'L' | 'R' | 'F' | null;
+/** De kolom van een regel: het nummer (0 = links), 'F' over de volle breedte, of null (geen kolommen). */
+type Column = number | 'F' | null;
 type LaidLine = {
   items: Piece[];
   col: Column;
@@ -454,6 +455,99 @@ function unturn(piece: Piece): Piece {
   };
 }
 
+/** Een verticale strook witruimte in een blok tekst: van `x0` tot `x1`. */
+type Strip = { x0: number; x1: number };
+
+/**
+ * De verticale stroken witruimte in een blok: plekken waar hooguit `maxCross` regels tekst hebben,
+ * minstens `minWidth` breed, met aan beide kanten tekst. Stukjes met alleen witruimte tellen niet
+ * (audit F22). Per punt bekeken, van links naar rechts.
+ */
+function whiteStrips(
+  lines: readonly Line[],
+  minX: number,
+  maxX: number,
+  maxCross: number,
+  minWidth: number,
+): Strip[] {
+  const spans = lines.map((line) =>
+    line.items.filter((i) => !isBlank(i)).map((i) => [i.x, i.x + i.w] as const),
+  );
+  const strips: Strip[] = [];
+  let start: number | null = null;
+  for (let x = Math.floor(minX); x <= Math.ceil(maxX); x++) {
+    const at = x + 0.5;
+    const cover = spans.filter((line) => line.some(([a, b]) => a < at && b > at)).length;
+    if (cover <= maxCross) start ??= x;
+    else if (start !== null) {
+      if (x - start >= minWidth && start > minX) strips.push({ x0: start, x1: x });
+      start = null;
+    }
+  }
+  return strips;
+}
+
+/** De mediaan van de lettergrootte van de stukjes met tekst. */
+const bodySize = (items: readonly Piece[]): number =>
+  median(items.filter((i) => !isBlank(i)).map((i) => i.fh)) || 10;
+
+/**
+ * Een smalle kolom aan de rand met kantlijnnoten (wens 20-11, deel C): links of rechts van de
+ * lopende tekst, hooguit 30 procent van de breedte, gescheiden door een strook witruimte, in een
+ * kleinere letter dan de lopende tekst, met woorden (geen losse nummers van een lijst) op minstens
+ * twee regels, naast minstens zes regels lopende tekst. Geeft de stukjes van die kolom, of null.
+ */
+function marginNotes(lines: readonly Line[], minX: number, maxX: number): Set<Piece> | null {
+  const items = lines.flatMap((line) => line.items.filter((i) => !isBlank(i)));
+  const fh = bodySize(items);
+  const width = maxX - minX;
+  for (const strip of whiteStrips(lines, minX, maxX, 0, fh * 1.5)) {
+    for (const left of [true, false]) {
+      if ((left ? strip.x0 - minX : maxX - strip.x1) > width * 0.3) continue;
+      // Het midden van de strook: de randen zijn op hele punten afgerond (zie `whiteStrips`).
+      const mid = (strip.x0 + strip.x1) / 2;
+      const side = items.filter((i) => (left ? i.x + i.w <= mid : i.x >= mid));
+      const body = items.filter((i) => !side.includes(i));
+      const sideLines = lines.filter((line) => line.items.some((i) => side.includes(i))).length;
+      const bodyLines = lines.filter((line) => line.items.some((i) => body.includes(i))).length;
+      if (sideLines < 2 || bodyLines < 6) continue;
+      if (bodySize(side) > bodySize(body) * 0.9) continue;
+      if (!side.some((i) => /\p{L}{2}/u.test(i.str))) continue;
+      return new Set(side);
+    }
+  }
+  return null;
+}
+
+/**
+ * Kolommen (wens 20-11, deel C): verticale stroken witruimte over het hele blok, waar ook (niet
+ * alleen in het midden), met hooguit een paar regels over de volle breedte (zoals een titel), en
+ * elke kolom ertussen gevuld met doorlopende tekst: minstens tien letters breed, de regels vullen
+ * hem voor minstens 60 procent, op minstens een kwart van de regels. Een tabel heeft ook zulke
+ * stroken, maar losse cellen vullen hun kolom niet; die blijft per rij. Geeft de plekken van de
+ * goten (x), of null; dan geldt de oudere herkenning van twee kolommen (`detectGutter`).
+ */
+function detectColumns(lines: readonly Line[], minX: number, maxX: number): number[] | null {
+  if (lines.length < 6) return null;
+  const fh = bodySize(lines.flatMap((line) => line.items));
+  const maxCross = Math.max(2, Math.ceil(lines.length * 0.15));
+  const gutters = whiteStrips(lines, minX, maxX, maxCross, fh * 1.5).map((s) => (s.x0 + s.x1) / 2);
+  if (gutters.length === 0) return null;
+  const edges = [minX, ...gutters, maxX];
+  for (let c = 0; c + 1 < edges.length; c++) {
+    const [from, to] = [edges[c]!, edges[c + 1]!];
+    if (to - from < fh * 10) return null;
+    const extents = lines.flatMap((line) => {
+      const inside = line.items.filter((i) => !isBlank(i) && i.x >= from && i.x + i.w <= to);
+      if (inside.length === 0) return [];
+      return [Math.max(...inside.map((i) => i.x + i.w)) - Math.min(...inside.map((i) => i.x))];
+    });
+    if (extents.length < Math.max(3, lines.length * 0.25)) return null;
+    if (median(extents) < (to - from) * 0.6) return null;
+  }
+  return gutters;
+}
+
 /**
  * De tekststukjes van één pagina als tekst met alinea's (of losse regels zonder `joinLines`).
  * Gedraaide tekst (een watermerk, een strook in de marge) doet niet mee met de lopende tekst: die
@@ -485,44 +579,61 @@ export function layoutBlock(
 
   const raw = groupLines(items, yTol);
   // Bij tabellen geen kolommen: de kolommen van een tabel zouden anders als goot tellen.
-  const gx = allowColumns && !opts.tables ? detectGutter(raw, minX, maxX) : null;
+  const columns = allowColumns && !opts.tables;
+  // Kantlijnnoten: als eigen blok na de lopende tekst, zodat ze geen zin onderbreken.
+  const notes = columns ? marginNotes(raw, minX, maxX) : null;
+  if (notes) {
+    return [
+      layoutBlock(
+        input.filter((i) => !notes.has(i)),
+        opts,
+        allowColumns,
+      ),
+      layoutBlock([...notes], opts, false),
+    ]
+      .filter((text) => text !== '')
+      .join('\n\n');
+  }
+  // Kolommen met gevulde tekst; anders twee zoals altijd, of geen.
+  const gx = columns ? detectGutter(raw, minX, maxX) : null;
+  const gutters = columns ? (detectColumns(raw, minX, maxX) ?? (gx === null ? [] : [gx])) : [];
 
   let lines: LaidLine[] = [];
   for (const r of raw) {
-    if (gx !== null) {
-      // Een spatie over de goot (audit F22) telt niet: die valt bij het splitsen weg.
-      const crossing = r.items.some((i) => !isBlank(i) && i.x < gx && i.x + i.w > gx);
-      const left = r.items.filter((i) => i.x + i.w <= gx);
-      const right = r.items.filter((i) => i.x >= gx);
-      if (!crossing && left.length > 0 && right.length > 0) {
-        lines.push(makeLine(left, 'L'));
-        lines.push(makeLine(right, 'R'));
-        continue;
-      }
-      lines.push(makeLine(r.items, crossing ? 'F' : right.length > 0 ? 'R' : 'L'));
-    } else {
+    if (gutters.length === 0) {
       lines.push(makeLine(r.items, null));
+      continue;
+    }
+    // Een spatie over een goot (audit F22) telt niet: die valt bij het splitsen weg.
+    const crossing = r.items.some(
+      (i) => !isBlank(i) && gutters.some((g) => i.x < g && i.x + i.w > g),
+    );
+    if (crossing) {
+      lines.push(makeLine(r.items, 'F'));
+      continue;
+    }
+    const edges = [-Infinity, ...gutters, Infinity];
+    for (let c = 0; c + 1 < edges.length; c++) {
+      const part = r.items.filter((i) => i.x >= edges[c]! && i.x + i.w <= edges[c + 1]!);
+      if (part.some((i) => !isBlank(i))) lines.push(makeLine(part, c));
     }
   }
   lines.sort((a, b) => b.y - a.y);
 
-  // Leesvolgorde: eerst de linkerkolom helemaal, dan de rechter; een regel over de volle breedte
+  // Leesvolgorde: de kolommen van links naar rechts, elk helemaal; een regel over de volle breedte
   // onderbreekt dat.
-  if (gx !== null) {
+  if (gutters.length > 0) {
     const ordered: LaidLine[] = [];
-    let left: LaidLine[] = [];
-    let right: LaidLine[] = [];
+    let parts: LaidLine[][] = gutters.map(() => []).concat([[]]);
     const flush = () => {
-      ordered.push(...left, ...right);
-      left = [];
-      right = [];
+      for (const part of parts) ordered.push(...part);
+      parts = parts.map(() => []);
     };
     for (const line of lines) {
       if (line.col === 'F') {
         flush();
         ordered.push(line);
-      } else if (line.col === 'L') left.push(line);
-      else right.push(line);
+      } else parts[line.col as number]!.push(line);
     }
     flush();
     lines = ordered;
@@ -548,11 +659,11 @@ export function layoutBlock(
   // doorgebroken regel maar het einde van een blok (een kop, de laatste regel van een alinea).
   const ends = new Map<string, number[]>();
   for (const line of lines) {
-    const key = line.col ?? '_';
+    const key = String(line.col ?? '_');
     ends.set(key, [...(ends.get(key) ?? []), line.x1]);
   }
   const edges = new Map([...ends].map(([key, x1s]) => [key, quantile(x1s, 0.9)]));
-  const endsShort = (line: LaidLine) => line.x1 < edges.get(line.col ?? '_')! - line.fh * 2;
+  const endsShort = (line: LaidLine) => line.x1 < edges.get(String(line.col ?? '_'))! - line.fh * 2;
 
   // Opsommingen en koppen: alleen als `structure` is opgegeven (Platte tekst); de vergelijker
   // houdt zijn eigen regels.

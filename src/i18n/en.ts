@@ -640,7 +640,7 @@ export const en: Messages = {
         'Lower: a new paragraph sooner. Higher: more lines together in one paragraph. Not when comparing by line.',
       ignoreCase: 'Ignore upper and lower case',
       strip: 'Leave out repeating headers and footers',
-      columns: 'Recognise two columns',
+      columns: 'Recognise columns',
       dehyphen: 'Join hyphenated words',
       onlyDiff: 'Only show differences',
     },
@@ -765,7 +765,7 @@ export const en: Messages = {
         gap: 'paragraph sensitivity {n}',
         ignoreCase: 'case ignored',
         strip: 'headers and footers left out',
-        columns: 'two columns recognised',
+        columns: 'columns recognised',
         dehyphen: 'hyphenated words joined',
       },
       fallback: 'NOTE: only compared in order (the documents are too large for a full comparison).',
@@ -856,7 +856,7 @@ export const en: Messages = {
       gapHint:
         'Lower: a new paragraph sooner. Higher: more lines together in one paragraph. Only when lines are joined.',
       dehyphen: 'Restore hyphenated words',
-      columns: 'Recognise two columns',
+      columns: 'Recognise columns',
       strip: 'Leave out recurring headers and footers',
       structure: 'Recognise lists and headings',
       structureHint:
@@ -865,7 +865,7 @@ export const en: Messages = {
       headingMarkerHint: 'Puts {H} before a recognised heading, as a hint for a language model.',
       tables: 'Recognise tables',
       tablesHint:
-        'Aligned cells as a table, with tabs in between. Works best with a reading zone around the table; recognising two columns is then off.',
+        'Aligned cells as a table, with tabs in between. Works best with a reading zone around the table; recognising columns is then off.',
       ocr: 'Recognise scanned pages (OCR)',
       ocrHint:
         'Pages without a text layer (scans) are first read with text recognition (Dutch and English) when you extract the text, locally in your browser. That takes a few seconds per page; the first time, the recognition is loaded. Recognised text gets {OCR} in front and can contain mistakes. Not in the batch.',
@@ -927,7 +927,7 @@ export const en: Messages = {
       title: 'Batch (several PDFs)',
       hint: 'Processes several PDFs one after another with the current settings above (without reading zones). Result: a .txt per file in a zip, or everything in one file.',
       zonesHint:
-        'Recognising two columns and leaving out headers and footers work here as they are ticked, even when they are greyed out by the reading zones.',
+        'Recognising columns and leaving out headers and footers work here as they are ticked, even when they are greyed out by the reading zones.',
       combine: 'Combine into one file',
       combineHint:
         'On: one .txt with a "File N start/end" marker per document. Off: separate .txt files in a .zip.',
