@@ -780,3 +780,230 @@ describe('twee kolommen regel voor regel in het bestand (audit F22)', () => {
     expect(text.slice(kop + 1)).toHaveLength(8);
   });
 });
+
+describe('meer kolommen en kantlijnnoten (wens 20-11, deel C2)', () => {
+  const NOJOIN = { ...OPTS, joinLines: false };
+  /** `rows` regels per kolom; kolom c begint op x[c], elke regel `width` punten breed (9 pt). */
+  function columns(xs: number[], rows = 12, width = 150): Piece[] {
+    const items: Piece[] = [];
+    xs.forEach((x, c) => {
+      for (let i = 0; i < rows; i++)
+        items.push({ str: `k${c} r${i}`, x, y: 700 - i * 12, fh: 9, w: width });
+    });
+    return items;
+  }
+  const order = (text: string) => text.split('\n').map((line) => line.split(' ')[0]);
+
+  it('drie kolommen: links helemaal, dan het midden, dan rechts', () => {
+    const text = layoutBlock(columns([50, 225, 400]), NOJOIN, true);
+    expect(order(text)).toEqual([
+      ...Array(12).fill('k0'),
+      ...Array(12).fill('k1'),
+      ...Array(12).fill('k2'),
+    ]);
+    expect(text.split('\n')[13]).toBe('k1 r1');
+  });
+
+  it('vier smallere kolommen ook', () => {
+    const text = layoutBlock(columns([40, 175, 310, 445], 10, 115), NOJOIN, true);
+    expect([...new Set(order(text))]).toEqual(['k0', 'k1', 'k2', 'k3']);
+  });
+
+  it('een titel over de volle breedte gaat voor, en onderbreekt de kolommen', () => {
+    const items = [
+      piece('Nieuwsbrief met een titel over de hele breedte van de pagina', 50, 730, 16),
+      ...columns([50, 225, 400]),
+    ];
+    const text = layoutBlock(items, NOJOIN, true).split('\n');
+    expect(text[0]).toBe('Nieuwsbrief met een titel over de hele breedte van de pagina');
+    expect(text[1]).toBe('k0 r0');
+    expect(text[13]).toBe('k1 r0');
+  });
+
+  it('zonder kolommen herkennen (of in een leesvak) blijft het per regel', () => {
+    expect(layoutBlock(columns([50, 225, 400]), NOJOIN, false).split('\n')[0]).toBe(
+      'k0 r0 k1 r0 k2 r0',
+    );
+    expect(layoutBlock(columns([50, 225, 400]), { ...NOJOIN, tables: true }, true)).not.toMatch(
+      /^k0 r0\nk0 r1/,
+    );
+  });
+
+  it('een kolom die de regels niet vullen (een tabel) maakt er geen drie kolommen van', () => {
+    // Dezelfde plekken, maar de regels vullen hun kolom maar voor een derde.
+    const text = layoutBlock(columns([50, 225, 400], 12, 55), NOJOIN, true);
+    expect(text.split('\n')[0]).toBe('k0 r0 k1 r0 k2 r0');
+  });
+
+  it('een te smalle kolom (minder dan tien letters) ook niet', () => {
+    const text = layoutBlock(columns([50, 135, 220], 12, 75), NOJOIN, true);
+    expect(text.split('\n')[0]).toBe('k0 r0 k1 r0 k2 r0');
+  });
+
+  it('een kolom met te weinig regels ook niet (minder dan een kwart)', () => {
+    const third = (n: number) =>
+      columns([50, 225], 20).concat(
+        Array.from({ length: n }, (_, i) => ({
+          str: `k2 r${i}`,
+          x: 400,
+          y: 700 - i * 12,
+          fh: 9,
+          w: 150,
+        })),
+      );
+    // Vier van de twintig regels: geen derde kolom (wel twee, met k2 rechts erbij).
+    expect(layoutBlock(third(4), NOJOIN, true).split('\n')).not.toContain('k2 r0');
+    // Vijf van de twintig (een kwart): wel.
+    expect(layoutBlock(third(5), NOJOIN, true).split('\n')).toContain('k2 r0');
+  });
+
+  it('minder dan zes regels: geen kolommen', () => {
+    expect(layoutBlock(columns([50, 225, 400], 5), NOJOIN, true).split('\n')[0]).toBe(
+      'k0 r0 k1 r0 k2 r0',
+    );
+    expect(layoutBlock(columns([50, 225, 400], 6), NOJOIN, true).split('\n')[0]).toBe('k0 r0');
+  });
+
+  it('twee kolommen ook als de goot niet in het midden ligt', () => {
+    // Een brede kolom links (x 50 tot 400) en een smallere rechts (x 420 tot 550), zelfde letter.
+    const items: Piece[] = [];
+    for (let i = 0; i < 10; i++) {
+      items.push({ str: `breed ${i}`, x: 50, y: 700 - i * 12, fh: 9, w: 345 });
+      items.push({ str: `smal ${i}`, x: 425, y: 700 - i * 12, fh: 9, w: 125 });
+    }
+    const text = layoutBlock(items, NOJOIN, true).split('\n');
+    expect(text.slice(0, 2)).toEqual(['breed 0', 'breed 1']);
+    expect(text[10]).toBe('smal 0');
+  });
+
+  it('ingesprongen regels links maken geen goot aan de rand', () => {
+    // De eerste kolom springt in (x 70), op twee regels na (x 50): geen strook vóór de tekst.
+    const items = columns([50, 225, 400]).map((i) =>
+      i.x === 50 && !/ r(0|6)$/.test(i.str) ? { ...i, x: 70, w: 130 } : i,
+    );
+    const text = layoutBlock(items, NOJOIN, true).split('\n');
+    expect(text.slice(0, 2)).toEqual(['k0 r0', 'k0 r1']);
+  });
+
+  it('een kolom met alleen een spatie maakt geen lege regel', () => {
+    const items = columns([50, 225, 400]);
+    const joined = layoutBlock(items, OPTS, true);
+    // Een losse spatie direct onder de middelste kolom, op een eigen regel.
+    items.push({ str: ' ', x: 230, y: 700 - 12 * 12, fh: 9, w: 3 });
+    expect(layoutBlock(items, OPTS, true)).toBe(joined);
+  });
+
+  /** Lopende tekst (11 pt) vanaf x 170, met kantlijnnoten (8 pt) links op x 50. */
+  function withNotes(noteSize = 8, noteX = 50): Piece[] {
+    const items: Piece[] = [];
+    for (let i = 0; i < 20; i++)
+      items.push({
+        str: `t${i} de lopende tekst van deze alinea`,
+        x: 170,
+        y: 740 - i * 14,
+        fh: 11,
+        w: 360,
+      });
+    const note = (str: string, y: number) =>
+      items.push({ str, x: noteX, y, fh: noteSize, w: str.length * noteSize * 0.5 });
+    note('Zie ook', 698);
+    note('artikel 3.', 688);
+    note('Vervallen.', 530);
+    return items;
+  }
+
+  it('kantlijnnoten in een kleinere letter: na de lopende tekst, niet erin', () => {
+    const text = layoutBlock(withNotes(), OPTS, true);
+    const body = Array.from({ length: 20 }, (_, i) => `t${i} de lopende tekst van deze alinea`);
+    expect(text).toBe(`${body.join(' ')}\n\nZie ook artikel 3.\n\nVervallen.`);
+  });
+
+  it('te dicht op de tekst (minder dan anderhalve letter) is het geen kantlijn', () => {
+    // De noten eindigen op x 100, de tekst begint op x 115: 15 punten, minder dan 1,5 × 11.
+    const items = withNotes().map((i) => (i.x === 170 ? { ...i, x: 115 } : { ...i, x: 100 - i.w }));
+    expect(layoutBlock(items, NOJOIN, true)).toContain('Zie ook t3');
+    // Met 20 punten wel.
+    const wider = withNotes().map((i) => (i.x === 170 ? { ...i, x: 120 } : { ...i, x: 100 - i.w }));
+    expect(layoutBlock(wider, NOJOIN, true)).not.toContain('Zie ook t3');
+  });
+
+  it('naast lopende tekst in twee kolommen: de noten erna, de kolommen blijven', () => {
+    // Twee kolommen van 11 pt (x 170 en 380) met de noten links.
+    const items = withNotes().flatMap((i) =>
+      i.x === 170
+        ? [
+            { ...i, str: i.str.replace('t', 'L'), w: 190 },
+            { ...i, str: i.str.replace('t', 'R'), x: 380, w: 170 },
+          ]
+        : [i],
+    );
+    const text = layoutBlock(items, NOJOIN, true).split('\n');
+    expect(text[0]).toBe('L0 de lopende tekst van deze alinea');
+    expect(text[20]).toBe('R0 de lopende tekst van deze alinea');
+    expect(text.slice(-3)).toEqual(['Zie ook', 'artikel 3.', 'Vervallen.']);
+  });
+
+  it('met "Tabellen herkennen" geen kantlijnnoten (zoals geen kolommen)', () => {
+    expect(layoutBlock(withNotes(), { ...NOJOIN, tables: true }, true)).toContain('Zie ook t3');
+  });
+
+  it('ook met breedtes in delen van een punt, zoals pdf.js ze geeft', () => {
+    // "artikel 3." eindigt op 80,23: net voorbij een heel punt.
+    const items = withNotes().map((i) =>
+      i.str === 'artikel 3.'
+        ? { ...i, w: 30.232 }
+        : i.str === 'Vervallen.'
+          ? { ...i, w: 28 }
+          : i.x === 170
+            ? { ...i, w: 253.143 }
+            : i,
+    );
+    const text = layoutBlock(items, NOJOIN, true).split('\n');
+    expect(text.slice(-3)).toEqual(['Zie ook', 'artikel 3.', 'Vervallen.']);
+  });
+
+  it('ook rechts van de tekst', () => {
+    const items = withNotes(8, 560);
+    expect(layoutBlock(items, OPTS, true).endsWith('\n\nZie ook artikel 3.\n\nVervallen.')).toBe(
+      true,
+    );
+  });
+
+  it('in dezelfde letter als de tekst (een kop in de kantlijn) blijven ze waar ze staan', () => {
+    const text = layoutBlock(withNotes(11), NOJOIN, true);
+    expect(text.split('\n').some((line) => line.startsWith('Zie ook t3'))).toBe(true);
+  });
+
+  it('hangende nummers van een lijst zijn geen kantlijnnoten', () => {
+    const items: Piece[] = [];
+    for (let i = 0; i < 8; i++) {
+      items.push({ str: `${i + 1}.`, x: 60, y: 700 - i * 14, fh: 9, w: 8 });
+      items.push({ str: `punt ${i + 1} van de lijst`, x: 90, y: 700 - i * 14, fh: 11, w: 300 });
+    }
+    expect(layoutBlock(items, NOJOIN, true).split('\n')[0]).toBe('1. punt 1 van de lijst');
+  });
+
+  it('één losse noot is nog geen kolom', () => {
+    const items = withNotes().filter((i) => i.str !== 'artikel 3.' && i.str !== 'Vervallen.');
+    expect(layoutBlock(items, NOJOIN, true)).toContain('Zie ook t3');
+  });
+
+  it('naast te weinig lopende tekst ook niet', () => {
+    // Vijf regels lopende tekst (t0 tot en met t4); met zes wel (zie hierboven, met twintig).
+    const items = withNotes().filter((i) => !/^t([5-9]|1\d)\b/.test(i.str));
+    expect(layoutBlock(items, NOJOIN, true)).toContain('Zie ook t3');
+    const six = withNotes().filter((i) => !/^t([6-9]|1\d)\b/.test(i.str));
+    expect(layoutBlock(six, NOJOIN, true)).not.toContain('Zie ook t3');
+  });
+
+  it('een brede kolom aan de rand is geen kantlijn', () => {
+    // De noten zijn hier 170 punten breed van de 500: meer dan 30 procent.
+    const wide = (items: Piece[], w: number) =>
+      items
+        .map((i) => (i.x === 50 ? { ...i, w } : i))
+        .map((i) => (i.x === 170 ? { ...i, x: 300, w: 250 } : i));
+    expect(layoutBlock(wide(withNotes(), 170), NOJOIN, true)).toContain('Zie ook t3');
+    // Net onder de 30 procent (140 van 500) wel.
+    expect(layoutBlock(wide(withNotes(), 140), NOJOIN, true)).not.toContain('Zie ook t3');
+  });
+});

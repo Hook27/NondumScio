@@ -1563,3 +1563,58 @@ test.describe('PDF → Platte tekst: kolommen regel voor regel in het bestand (a
     );
   });
 });
+
+test.describe('PDF → Platte tekst: drie kolommen en kantlijnnoten', () => {
+  test.skip(({ isMobile }) => isMobile, 'Geavanceerd is er alleen op de computer');
+
+  test('drie kolommen na elkaar, en de kantlijnnoten na de lopende tekst', async ({ page }) => {
+    const doc = await PDFDocument.create();
+    const font = await doc.embedFont(StandardFonts.Helvetica);
+    // Pagina 1: drie kolommen van acht regels, kolom voor kolom in het bestand.
+    const one = doc.addPage([595, 842]);
+    ['a', 'b', 'c'].forEach((mark, col) => {
+      for (let i = 1; i <= 8; i++)
+        one.drawText(`${mark}${i} regel van de kolom met wat tekst`, {
+          x: 50 + col * 175,
+          y: 740 - i * 12,
+          size: 9,
+          font,
+        });
+    });
+    // Pagina 2: lopende tekst (11 pt) met een kantlijnnoot (8 pt) links.
+    const two = doc.addPage([595, 842]);
+    for (let i = 1; i <= 10; i++)
+      two.drawText(`t${i} de lopende tekst van deze alinea gaat hier verder`, {
+        x: 170,
+        y: 740 - i * 14,
+        size: 11,
+        font,
+      });
+    two.drawText('Zie ook', { x: 50, y: 740 - 3 * 14, size: 8, font });
+    two.drawText('artikel 3.', { x: 50, y: 740 - 3 * 14 - 10, size: 8, font });
+    await openPage(page, '/#/advanced/text', { lang: 'nl' });
+    await withoutPageMarks(page);
+    await page.locator('#plaintext-file').setInputFiles({
+      name: 'kolommen.pdf',
+      mimeType: 'application/pdf',
+      buffer: Buffer.from(await doc.save()),
+    });
+    await expect(page.locator('canvas.plaintext-preview__canvas')).toBeVisible(SLOW);
+    await page.getByRole('checkbox', { name: s.joinLines }).uncheck();
+    await extract(page);
+    const column = (mark: string) =>
+      Array.from({ length: 8 }, (_, i) => `${mark}${i + 1} regel van de kolom met wat tekst`);
+    const body = Array.from(
+      { length: 10 },
+      (_, i) => `t${i + 1} de lopende tekst van deze alinea gaat hier verder`,
+    );
+    await expect(page.locator('textarea.plaintext__output')).toHaveValue(
+      [
+        [...column('a'), ...column('b'), ...column('c')].join('\n'),
+        body.join('\n'),
+        // De noten als eigen blok erna.
+        'Zie ook\nartikel 3.',
+      ].join('\n\n'),
+    );
+  });
+});
