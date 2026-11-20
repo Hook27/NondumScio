@@ -548,6 +548,56 @@ function detectColumns(lines: readonly Line[], minX: number, maxX: number): numb
   return gutters;
 }
 
+/** De goten van een blok: kolommen met gevulde tekst, anders twee zoals altijd, of geen. */
+function findGutters(lines: readonly Line[], minX: number, maxX: number): number[] {
+  const columns = detectColumns(lines, minX, maxX);
+  if (columns) return columns;
+  const gx = detectGutter(lines, minX, maxX);
+  return gx === null ? [] : [gx];
+}
+
+/**
+ * Een blok in delen gesneden bij grote witregels: meer dan drie keer de gewone regelafstand (het
+ * eerste kwartiel, zoals bij de alinea's), van boven naar beneden.
+ */
+function splitBands(lines: readonly Line[]): Line[][] {
+  const gaps = lines.slice(1).map((line, i) => lines[i]!.y - line.y);
+  const typical = quantile(gaps, 0.25) || 12;
+  const bands: Line[][] = [];
+  lines.forEach((line, i) => {
+    if (i === 0 || gaps[i - 1]! > typical * 3) bands.push([]);
+    bands[bands.length - 1]!.push(line);
+  });
+  return bands;
+}
+
+/** Twee rijen goten zijn gelijk: even veel, en elk op hooguit twee letters van de ander. */
+const sameGutters = (a: readonly number[], b: readonly number[], fh: number): boolean =>
+  a.length === b.length && a.every((x, i) => Math.abs(x - b[i]!) <= fh * 2);
+
+/**
+ * Gemengde opmaak (wens 20-11, deel C3), zoals twee kolommen boven en drie onder: hebben minstens
+ * twee delen van het blok (gescheiden door een grote witregel, elk minstens zes regels) een andere
+ * indeling in kolommen, dan geeft dit de delen, om elk apart te lezen. Anders null: dan blijft het
+ * blok één geheel, zoals altijd.
+ */
+function mixedBands(lines: readonly Line[]): Line[][] | null {
+  const bands = splitBands(lines);
+  const fh = bodySize(lines.flatMap((line) => line.items));
+  const layouts = bands
+    .filter((band) => band.length >= 6)
+    .map((band) => {
+      // De breedte zoals bij het hele blok (`layoutBlock`).
+      const items = band.flatMap((line) => line.items);
+      return findGutters(
+        band,
+        Math.min(...items.map((i) => i.x)),
+        Math.max(...items.map((i) => i.x + i.w)),
+      );
+    });
+  return layouts.some((gutters) => !sameGutters(gutters, layouts[0]!, fh)) ? bands : null;
+}
+
 /**
  * De tekststukjes van één pagina als tekst met alinea's (of losse regels zonder `joinLines`).
  * Gedraaide tekst (een watermerk, een strook in de marge) doet niet mee met de lopende tekst: die
@@ -594,9 +644,21 @@ export function layoutBlock(
       .filter((text) => text !== '')
       .join('\n\n');
   }
-  // Kolommen met gevulde tekst; anders twee zoals altijd, of geen.
-  const gx = columns ? detectGutter(raw, minX, maxX) : null;
-  const gutters = columns ? (detectColumns(raw, minX, maxX) ?? (gx === null ? [] : [gx])) : [];
+  // Gemengde opmaak: elk deel apart, met zijn eigen kolommen.
+  const bands = columns ? mixedBands(raw) : null;
+  if (bands) {
+    return bands
+      .map((band) =>
+        layoutBlock(
+          band.flatMap((line) => line.items),
+          opts,
+          allowColumns,
+        ),
+      )
+      .filter((text) => text !== '')
+      .join('\n\n');
+  }
+  const gutters = columns ? findGutters(raw, minX, maxX) : [];
 
   let lines: LaidLine[] = [];
   for (const r of raw) {

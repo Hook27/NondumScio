@@ -747,14 +747,15 @@ describe('twee kolommen regel voor regel in het bestand (audit F22)', () => {
   });
 
   it('staan er net zoveel regels met losse cellen als zonder, dan blijven het kolommen', () => {
-    // Acht regels in twee kolommen, en acht met drie stukjes ver uit elkaar (onderaan de pagina).
+    // Acht regels in twee kolommen, en direct daaronder (zonder grote witregel, dus één deel)
+    // acht met drie stukjes ver uit elkaar.
     const items = interleaved();
     for (let i = 0; i < 8; i++)
-      for (const x of [60, 230, 400]) items.push(piece(`cel ${x} ${i}`, x, 500 - i * 12));
+      for (const x of [60, 230, 400]) items.push(piece(`cel ${x} ${i}`, x, 604 - i * 12));
     const text = layoutBlock(items, { ...OPTS, joinLines: false }, true).split('\n');
     expect(text.slice(0, 16)).toEqual(expected().split('\n'));
     // Met één regel cellen meer is het een tabel: dan per rij, zoals voorheen.
-    for (const x of [60, 230, 400]) items.push(piece(`cel ${x} 8`, x, 500 - 8 * 12));
+    for (const x of [60, 230, 400]) items.push(piece(`cel ${x} 8`, x, 604 - 8 * 12));
     expect(layoutBlock(items, { ...OPTS, joinLines: false }, true).split('\n')[0]).toBe(
       'links 1 van de kolom rechts 1 van de kolom',
     );
@@ -1005,5 +1006,154 @@ describe('meer kolommen en kantlijnnoten (wens 20-11, deel C2)', () => {
     expect(layoutBlock(wide(withNotes(), 170), NOJOIN, true)).toContain('Zie ook t3');
     // Net onder de 30 procent (140 van 500) wel.
     expect(layoutBlock(wide(withNotes(), 140), NOJOIN, true)).not.toContain('Zie ook t3');
+  });
+});
+
+describe('gemengde opmaak per pagina (wens 20-11, deel C3)', () => {
+  const NOJOIN = { ...OPTS, joinLines: false };
+  /** Een deel met kolommen op `xs`, `rows` regels van 9 pt vanaf `top`, merkjes vanaf `mark`. */
+  function band(marks: string[], xs: number[], top: number, rows = 8, width = 150): Piece[] {
+    return xs.flatMap((x, c) =>
+      Array.from({ length: rows }, (_, i) => ({
+        str: `${marks[c]}${i + 1}`,
+        x,
+        y: top - i * 12,
+        fh: 9,
+        w: width,
+      })),
+    );
+  }
+  const order = (text: string) =>
+    text
+      .split(/\n+/)
+      .map((line) => line.replace(/\d+$/, ''))
+      .filter((mark, i, all) => mark !== all[i - 1]);
+
+  it('boven twee kolommen, onder drie: elk deel met zijn eigen kolommen', () => {
+    const items = [
+      ...band(['a', 'b'], [50, 315], 740, 8, 230),
+      ...band(['c', 'd', 'e'], [50, 225, 400], 600),
+    ];
+    const text = layoutBlock(items, NOJOIN, true);
+    expect(order(text)).toEqual(['a', 'b', 'c', 'd', 'e']);
+    // Tussen de delen een witregel.
+    expect(text).toContain('b8\n\nc1');
+  });
+
+  it('ook in de andere volgorde (drie boven, twee onder)', () => {
+    const items = [
+      ...band(['a', 'b', 'c'], [50, 225, 400], 740),
+      ...band(['d', 'e'], [50, 315], 600, 8, 230),
+    ];
+    expect(order(layoutBlock(items, NOJOIN, true))).toEqual(['a', 'b', 'c', 'd', 'e']);
+  });
+
+  it('dezelfde kolommen boven en onder een grote witregel: één geheel, zoals altijd', () => {
+    const items = [
+      ...band(['a', 'b'], [50, 315], 740, 8, 230),
+      ...band(['a', 'b'], [50, 315], 600, 8, 230).map((i) => ({ ...i, str: `${i.str}0` })),
+    ];
+    // Eerst de hele linkerkolom (boven en onder), dan de rechter.
+    expect(order(layoutBlock(items, NOJOIN, true))).toEqual(['a', 'b']);
+  });
+
+  it('een goot die een klein stukje verschuift, telt als dezelfde', () => {
+    const items = [
+      ...band(['a', 'b'], [50, 315], 740, 8, 230),
+      ...band(['a', 'b'], [55, 325], 600, 8, 225).map((i) => ({ ...i, str: `${i.str}0` })),
+    ];
+    expect(order(layoutBlock(items, NOJOIN, true))).toEqual(['a', 'b']);
+    // Ver verschoven (een brede kolom links en een smalle rechts): twee delen.
+    const shifted = [
+      ...band(['a', 'b'], [50, 315], 740, 8, 230),
+      ...band(['c', 'd'], [50, 435], 600, 8, 345).map((i) => (i.x === 435 ? { ...i, w: 115 } : i)),
+    ];
+    expect(order(layoutBlock(shifted, NOJOIN, true))).toEqual(['a', 'b', 'c', 'd']);
+  });
+
+  it('alleen bij een grote witregel: meer dan drie keer de gewone regelafstand', () => {
+    // De onderste drie kolommen beginnen 3 regels (36 punten) lager: geen grote witregel.
+    const close = [
+      ...band(['a', 'b'], [50, 315], 740, 8, 230),
+      ...band(['c', 'd', 'e'], [50, 225, 400], 740 - 7 * 12 - 36),
+    ];
+    // Zonder opdeling (en zonder samenvoegen) staat er nergens een witregel.
+    expect(layoutBlock(close, NOJOIN, true)).not.toContain('\n\n');
+    // Iets meer dan drie regels: wel.
+    const apart = [
+      ...band(['a', 'b'], [50, 315], 740, 8, 230),
+      ...band(['c', 'd', 'e'], [50, 225, 400], 740 - 7 * 12 - 37),
+    ];
+    expect(order(layoutBlock(apart, NOJOIN, true))).toEqual(['a', 'b', 'c', 'd', 'e']);
+  });
+
+  it('een deel met minder dan zes regels telt niet mee', () => {
+    const items = [
+      ...band(['a', 'b'], [50, 315], 740, 8, 230),
+      ...band(['c', 'd', 'e'], [50, 225, 400], 600, 5),
+    ];
+    // Het onderste deel heeft maar vijf regels: geen opdeling (geen witregel tussen delen).
+    expect(layoutBlock(items, NOJOIN, true)).not.toContain('\n\n');
+    const six = [
+      ...band(['a', 'b'], [50, 315], 740, 8, 230),
+      ...band(['c', 'd', 'e'], [50, 225, 400], 600, 6),
+    ];
+    expect(order(layoutBlock(six, NOJOIN, true))).toEqual(['a', 'b', 'c', 'd', 'e']);
+  });
+
+  it('een extra goot telt als andere opmaak, ook als de eerste gelijk is', () => {
+    // Boven een smalle kolom links en een brede rechts (goot rond x 212), onder drie kolommen
+    // (goten rond x 212 en 387).
+    const items = [
+      ...band(['a', 'b'], [50, 225], 740, 8, 150).map((i) => (i.x === 225 ? { ...i, w: 325 } : i)),
+      ...band(['c', 'd', 'e'], [50, 225, 400], 600),
+    ];
+    expect(order(layoutBlock(items, NOJOIN, true))).toEqual(['a', 'b', 'c', 'd', 'e']);
+  });
+
+  it('minder goten onder, met de eerste gelijk, is ook andere opmaak', () => {
+    // Boven drie kolommen (goten rond x 212 en 387), onder een smalle en een brede (rond x 212).
+    const items = [
+      ...band(['a', 'b', 'c'], [50, 225, 400], 740),
+      ...band(['d', 'e'], [50, 225], 600, 8, 150).map((i) => (i.x === 225 ? { ...i, w: 325 } : i)),
+    ];
+    expect(order(layoutBlock(items, NOJOIN, true))).toEqual(['a', 'b', 'c', 'd', 'e']);
+  });
+
+  it('de grote witregel naar de gewone regelafstand, ook met alinea-witregels ertussen', () => {
+    // Elke derde regel een alinea-witregel (24 in plaats van 12): de gewone afstand blijft 12, dus
+    // een witregel van 50 is groot genoeg.
+    const spaced = (items: Piece[], top: number) =>
+      items.map((i) => {
+        const row = Math.round((top - i.y) / 12);
+        return { ...i, y: i.y - Math.floor(row / 3) * 12 };
+      });
+    const top = spaced(band(['a', 'b'], [50, 315], 740, 8, 230), 740);
+    const lowest = Math.min(...top.map((i) => i.y));
+    const items = [
+      ...top,
+      ...spaced(band(['c', 'd', 'e'], [50, 225, 400], lowest - 50), lowest - 50),
+    ];
+    expect(order(layoutBlock(items, NOJOIN, true))).toEqual(['a', 'b', 'c', 'd', 'e']);
+  });
+
+  it('een los stukje witruimte ver onder de tekst geeft geen lege regels', () => {
+    const items = [
+      ...band(['a', 'b'], [50, 315], 740, 8, 230),
+      ...band(['c', 'd', 'e'], [50, 225, 400], 600),
+    ];
+    const text = layoutBlock(items, NOJOIN, true);
+    items.push({ str: ' ', x: 300, y: 200, fh: 9, w: 3 });
+    expect(layoutBlock(items, NOJOIN, true)).toBe(text);
+  });
+
+  it('zonder kolommen herkennen, of met tabellen, geen opdeling', () => {
+    const items = [
+      ...band(['a', 'b'], [50, 315], 740, 8, 230),
+      ...band(['c', 'd', 'e'], [50, 225, 400], 600),
+    ];
+    expect(layoutBlock(items, NOJOIN, false)).not.toContain('\n\n');
+    expect(layoutBlock(items, { ...NOJOIN, tables: true }, true)).not.toContain('\n\n');
+    expect(layoutBlock(items, NOJOIN, false).split('\n')[0]).toBe('a1 b1');
   });
 });
