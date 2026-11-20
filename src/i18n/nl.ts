@@ -880,6 +880,9 @@ export const nl = {
       tables: 'Tabellen herkennen',
       tablesHint:
         'Uitgelijnde cellen als tabel, met tabs ertussen. Werkt het best met een leesvak rond de tabel; twee kolommen herkennen gaat dan uit.',
+      ocr: 'Gescande pagina’s herkennen (OCR)',
+      ocrHint:
+        'Pagina’s zonder tekstlaag (scans) worden bij Tekst extraheren eerst gelezen met tekstherkenning (Nederlands en Engels), lokaal in je browser. Dat duurt een paar seconden per pagina; de eerste keer wordt de herkenning geladen. Herkende tekst krijgt {OCR} vooraan en kan fouten bevatten. Niet bij de batch.',
       zonesOff: 'Kolommen en kop- en voetteksten: niet bij leesvakken.',
       zonesOffRead:
         'Kop- en voetteksten: niet bij leesvakken. Kolommen: alleen op pagina’s zonder vakken, die helemaal gelezen worden.',
@@ -931,6 +934,7 @@ export const nl = {
         'Per brondocument staat een paginaconcordantie die fysieke PDF-pagina’s koppelt aan afgedrukte documentpaginanummers.',
       files: '"Bestand N start/einde: <naam>" markeert het begin en einde van elk brondocument.',
       heading: '{H} = begin van een herkende kop, zoals een hoofdstuk- of artikeltitel.',
+      ocr: '{OCR} = de tekst van deze pagina is herkend met tekstherkenning (OCR) en kan fouten bevatten.',
     },
     batch: {
       title: 'Batch (meerdere PDF’s)',
@@ -1029,7 +1033,18 @@ export const nl = {
     noZones:
       'Leesvakken staan aan, maar er is nog geen vak getekend: er is niets gelezen. Teken een vak op het voorbeeld, of zet de leesvakken uit.',
     noTextPages:
-      'Geen tekstlaag op {list}: mogelijk een scan of een afbeelding. Daar wordt geen tekst herkend (geen OCR).',
+      'Geen tekstlaag op {list}: mogelijk een scan of een afbeelding. Zet “Gescande pagina’s herkennen (OCR)” aan om de tekst daar te laten herkennen.',
+    noTextPagesOcr: 'Geen tekstlaag op {list}: mogelijk een scan of een afbeelding.',
+    ocrPages:
+      'Gelezen met tekstherkenning (OCR): {list}. Die tekst staat achter {OCR} en kan fouten bevatten: kijk hem extra goed na.',
+    ocrRun: {
+      loading: 'Tekstherkenning laden… {percent}%',
+      progress: 'Tekst herkennen (OCR): pagina {page} ({n} van {total})…',
+      stopped:
+        'Gestopt. De tekst is niet opnieuw gemaakt; wat al herkend is, blijft bewaard voor de volgende keer.',
+      failed:
+        'De tekstherkenning (OCR) werkte niet. De tekst is gemaakt zonder de pagina’s zonder tekstlaag.',
+    },
     lowPages: 'Nauwelijks tekst op {list}.',
     skippedPages: 'Overgeslagen (geen vakken): {list}.',
     pageOne: 'pagina {n}',

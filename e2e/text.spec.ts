@@ -1420,3 +1420,72 @@ test.describe('PDF → Platte tekst: leesvakken met vinger en toetsenbord', () =
     await expect(first).toBeFocused();
   });
 });
+
+test.describe('PDF → Platte tekst: gescande pagina’s herkennen (OCR)', () => {
+  test.skip(({ isMobile }) => isMobile, 'Geavanceerd is er alleen op de computer');
+
+  /**
+   * Een "scan": een A4 met alleen een afbeelding van tekst (150 dpi), zonder tekstlaag. De
+   * afbeelding wordt in de browser getekend, de PDF met pdf-lib gemaakt.
+   */
+  async function scan(page: Page): Promise<Buffer> {
+    const png = await page.evaluate(() => {
+      const canvas = document.createElement('canvas');
+      canvas.width = 1240;
+      canvas.height = 1754;
+      const ctx = canvas.getContext('2d')!;
+      ctx.fillStyle = '#ffffff';
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+      ctx.fillStyle = '#000000';
+      ctx.font = '40px Arial, Helvetica, sans-serif';
+      ctx.fillText('Geachte mevrouw De Vries,', 150, 300);
+      ctx.fillText('Hierbij sturen wij u de nieuwe', 150, 420);
+      ctx.fillText('huurovereenkomst voor de woning.', 150, 470);
+      return canvas.toDataURL('image/png');
+    });
+    const doc = await PDFDocument.create();
+    const image = await doc.embedPng(png);
+    doc.addPage([595, 842]).drawImage(image, { x: 0, y: 0, width: 595, height: 842 });
+    return Buffer.from(await doc.save());
+  }
+
+  test('een scan geeft met het vinkje aan tekst, met {OCR} en een waarschuwing', async ({
+    page,
+  }) => {
+    test.setTimeout(120_000);
+    await openPage(page, '/#/advanced/text', { lang: 'nl' });
+    const file = await scan(page);
+    await page.locator('#plaintext-file').setInputFiles({
+      name: 'scan.pdf',
+      mimeType: 'application/pdf',
+      buffer: file,
+    });
+    await expect(page.locator('canvas.plaintext-preview__canvas')).toBeVisible(SLOW);
+
+    // Zonder het vinkje: geen tekst, en de melding noemt het vinkje.
+    await extract(page);
+    await expect(page.getByText(p.empty)).toBeVisible();
+    await expect(page.getByText(format(p.noTextPages, { list: 'pagina 1' }))).toBeVisible();
+
+    // Met het vinkje: herkennen (lokaal; de herkenner komt van de eigen site), dan de tekst.
+    const requests: string[] = [];
+    page.on('request', (request) => requests.push(request.url()));
+    await page.getByRole('checkbox', { name: s.ocr }).check();
+    await extract(page);
+    const output = page.locator('textarea.plaintext__output');
+    await expect(output).toBeVisible({ timeout: 90_000 });
+    const text = await output.inputValue();
+    expect(text.startsWith('{p1}{OCR} Geachte mevrouw De Vries,')).toBe(true);
+    expect(text).toContain('Hierbij sturen wij u de nieuwe huurovereenkomst voor de woning.');
+    const warning = page.getByText(format(p.ocrPages, { list: 'pagina 1' }));
+    await expect(warning).toBeVisible();
+    expect(await warning.evaluate((el) => getComputedStyle(el).color)).toBe(
+      await warningColor(page),
+    );
+    // Alles van de eigen site: er gaat niets naar een andere server.
+    const origin = new URL(page.url()).origin;
+    expect(requests.filter((url) => !url.startsWith(origin) && !url.startsWith('blob:'))).toEqual(
+      [],
+    );
+  });
+});

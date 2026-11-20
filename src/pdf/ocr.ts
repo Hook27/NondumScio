@@ -47,6 +47,7 @@ export async function openOcr(onStatus?: (progress: number) => void): Promise<Oc
                 y0: word.bbox.y0,
                 x1: word.bbox.x1,
                 y1: word.bbox.y1,
+                line: { y0: line.bbox.y0, y1: line.bbox.y1 },
               });
             }
           }

@@ -6,6 +6,12 @@ import type { PageText } from '../compare/layout';
  * tekst samenstellen met pagina-ankers {p#} en een paginaconcordantie onderaan.
  */
 
+/**
+ * De markering voor tekst uit tekstherkenning (OCR), vooraan de pagina (na {p#}): zo blijft ook
+ * in de tekst zelf te zien dat die tekst fouten kan bevatten.
+ */
+export const OCR_MARK = '{OCR}';
+
 /** Hoe een pagina aansluit op de vorige: automatisch bepalen, altijd aaneen, of altijd gescheiden. */
 export type Join = 'auto' | 'join' | 'break';
 
@@ -194,18 +200,21 @@ export function assemble(
   opts: { anchors: boolean; crossPage: boolean; dehyphen: boolean },
   assembly: Assembly,
 ): string {
-  const read = results.filter((r) => r.status === 'read' && r.text.trim() !== '');
+  const read = results.filter(
+    (r) => (r.status === 'read' || r.status === 'ocr') && r.text.trim() !== '',
+  );
   let body = '';
   read.forEach((r, i) => {
-    const anchor = opts.anchors ? `{p${r.no}} ` : '';
+    // Na het anker (of zonder anker vooraan): {OCR} bij een pagina uit tekstherkenning.
+    const mark = `${opts.anchors ? `{p${r.no}}` : ''}${r.status === 'ocr' ? OCR_MARK : ''}`;
+    const anchor = mark === '' ? '' : `${mark} `;
     const text = r.text.trim();
     if (i === 0) {
       body = anchor + text;
       return;
     }
     const decision = boundary(read[i - 1]!.text, r.text, assembly.joins[r.no] ?? 'auto', opts);
-    if (decision === 'hyphen')
-      body = body.replace(/-\s*$/, '') + (opts.anchors ? `{p${r.no}}` : '') + text;
+    if (decision === 'hyphen') body = body.replace(/-\s*$/, '') + mark + text;
     else if (decision === 'space') body = `${body.replace(/\s+$/, '')} ${anchor}${text}`;
     else body += `\n\n${anchor}${text}`;
   });

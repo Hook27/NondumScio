@@ -107,6 +107,7 @@ describe('extractText', () => {
         concordanceBatch: 'B',
         files: 'F',
         heading: 'H',
+        ocr: 'O',
       },
     };
     const english = extractText(pages, { ...PLAIN, header: true, conventions: true }, null, {
@@ -217,7 +218,27 @@ describe('quality', () => {
       read: 3,
       average: Math.round((100 + 24 + 25) / 3),
       noText: [2],
+      ocr: [],
       skipped: [5],
+      low: [3],
+    });
+  });
+
+  it('telt een pagina uit tekstherkenning als gelezen, en noemt hem apart', () => {
+    const long = 'x'.repeat(100);
+    expect(
+      quality([
+        read(1, long),
+        { no: 2, text: 'y'.repeat(50), status: 'ocr' },
+        { no: 3, text: 'kort', status: 'ocr' },
+        { no: 4, text: '', status: 'notext' },
+      ]),
+    ).toEqual({
+      read: 3,
+      average: Math.round((100 + 50 + 4) / 3),
+      noText: [4],
+      ocr: [2, 3],
+      skipped: [],
       low: [3],
     });
   });
@@ -227,6 +248,7 @@ describe('quality', () => {
       read: 0,
       average: 0,
       noText: [1],
+      ocr: [],
       skipped: [],
       low: [],
     });
@@ -458,5 +480,42 @@ describe('een pagina met alleen spaties (audit F15)', () => {
       [1, 'read'],
       [2, 'notext'],
     ]);
+  });
+});
+
+describe('een pagina uit tekstherkenning (OCR)', () => {
+  const scanned = (no: number, lines: string[]) => ({ ...page(no, [lines]), ocr: true });
+
+  it('heet "ocr", krijgt {OCR} vooraan en doet verder mee als elke pagina', () => {
+    const { text, pages } = extractText(
+      [page(1, [['Tekst op pagina een.']]), scanned(2, ['Herkend op pagina twee.']), empty(3)],
+      { ...DEFAULT_TEXT_OPTIONS, crossPage: false },
+    );
+    expect(pages.map((p) => [p.no, p.status])).toEqual([
+      [1, 'read'],
+      [2, 'ocr'],
+      [3, 'notext'],
+    ]);
+    expect(text.split('\n\n---')[0]).toBe(
+      '{p1} Tekst op pagina een.\n\n{p2}{OCR} Herkend op pagina twee.',
+    );
+  });
+
+  it('een pagina waarop ook de herkenning niets vond, blijft zonder tekst', () => {
+    const { pages } = extractText([{ ...empty(1), ocr: true }], PLAIN);
+    expect(pages[0]!.status).toBe('notext');
+  });
+
+  it('ook met leesvakken: alleen wat in het vak staat, en overslaan zonder vak', () => {
+    const setup: ZoneSetup = {
+      zones: [{ x0: 0, y0: 0, x1: 1, y1: 0.15 }],
+      pages: { 2: [] },
+      readEmpty: false,
+    };
+    const scan = { ...page(1, [['Boven in het vak.']]), ocr: true };
+    scan.items.push({ str: 'Onderaan, buiten het vak.', x: 50, y: 100, fh: 10, w: 120 });
+    const { text, pages } = extractText([scan, scanned(2, ['Overgeslagen.'])], PLAIN, setup);
+    expect(text).toBe('{OCR} Boven in het vak.');
+    expect(pages.map((p) => p.status)).toEqual(['ocr', 'skipped']);
   });
 });

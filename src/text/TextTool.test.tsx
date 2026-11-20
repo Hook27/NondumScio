@@ -14,7 +14,9 @@ import { PdfLoadError } from '../pdf/loader';
 import { unsavedSources } from '../lib/unsavedWarning';
 import { downloadFile } from '../pdf/save';
 import { cancelSave, confirmSave, saveDialog } from '../components/testSave';
+import { openOcr } from '../pdf/ocr';
 import { TextTool } from './TextTool';
+import { recognizePage } from './ocr';
 import { DEFAULT_TEXT_OPTIONS } from './extract';
 import { SETTINGS_PREFIX } from './settings';
 import {
@@ -27,8 +29,10 @@ import {
   removeBatchFile,
   resetTextState,
   runBatch,
+  extract,
   setJoin,
   setOptions,
+  setReadEmpty,
   undoZones,
 } from './store';
 
@@ -202,6 +206,42 @@ vi.mock('../lib/zip', async (importOriginal) => {
       original.zipWriter(zip.tiny ? { bytes: 1, files: 1 } : limits),
   };
 });
+
+// De tekstherkenning nagebootst: de herkenner opent (of niet, met `ocr.fail`), en elke pagina
+// "herkent" de zin "Herkend op pagina N." Met `ocr.gate` blijft het herkennen hangen tot die
+// belofte klaar is (of tot er gestopt wordt).
+const ocr = vi.hoisted(() => ({
+  fail: false,
+  gate: null as Promise<void> | null,
+  close: null as unknown as () => void,
+}));
+vi.mock('../pdf/ocr', () => ({
+  openOcr: vi.fn(async (onStatus?: (progress: number) => void) => {
+    onStatus?.(0.5);
+    if (ocr.fail) throw new Error('geen herkenner');
+    return { recognize: vi.fn(), close: ocr.close };
+  }),
+}));
+vi.mock('./ocr', () => ({
+  recognizePage: vi.fn(
+    async (_file: File, page: PageText, _engine: unknown, signal: AbortSignal) => {
+      if (ocr.gate) {
+        await Promise.race([
+          ocr.gate,
+          new Promise((_, reject) =>
+            signal.addEventListener('abort', () => reject(signal.reason), { once: true }),
+          ),
+        ]);
+      }
+      const str = `Herkend op pagina ${page.no}.`;
+      return {
+        ...page,
+        items: [{ str, x: 50, y: 700, fh: 10, w: str.length * 5 }],
+        chars: str.length,
+      };
+    },
+  ),
+}));
 
 const p = messages.nl.plainText;
 const pb = messages.nl.pageBar;
@@ -2774,5 +2814,310 @@ describe('PDF → Platte tekst: leesvakken met vinger, pen en toetsenbord', () =
     // Enter op een vak voegt niets toe.
     fireEvent.keyDown(zone(2), { key: 'Enter' });
     expect(getTextState().zones).toHaveLength(2);
+  });
+});
+
+describe('PDF → Platte tekst: gescande pagina’s herkennen (OCR)', () => {
+  const close = vi.fn();
+  beforeEach(() => {
+    ocr.fail = false;
+    ocr.gate = null;
+    ocr.close = close;
+    close.mockClear();
+    vi.mocked(openOcr).mockClear();
+    vi.mocked(recognizePage).mockClear();
+  });
+
+  /** Het herkennen vasthouden; `release` laat het doorgaan. */
+  function hold() {
+    let release = () => {};
+    ocr.gate = new Promise((resolve) => (release = resolve));
+    return () => {
+      ocr.gate = null;
+      release();
+    };
+  }
+
+  const recognizedPages = () => vi.mocked(recognizePage).mock.calls.map(([, page]) => page.no);
+
+  it('staat standaard uit: geen herkenning, en de melding zegt hoe het aan kan', async () => {
+    await open('scan.pdf');
+    expect(check(p.settings.ocr).checked).toBe(false);
+    fireEvent.click(button(p.extract));
+    expect(output()!.value).toBe('Alleen hier staat een hele zin met tekst.');
+    expect(screen.getByText(format(p.noTextPages, { list: 'pagina’s 1 en 3' }))).toBeTruthy();
+    expect(openOcr).not.toHaveBeenCalled();
+    expect(recognizePage).not.toHaveBeenCalled();
+  });
+
+  it('aan: eerst de pagina’s zonder tekstlaag herkennen, met voortgang, dan de tekst met {OCR}', async () => {
+    await open('scan.pdf');
+    fireEvent.click(check(p.settings.ocr));
+    const release = hold();
+    fireEvent.click(button(p.extract));
+    await waitFor(() =>
+      expect(screen.getByText(format(p.ocrRun.progress, { page: 1, n: 1, total: 2 }))).toBeTruthy(),
+    );
+    expect(button(p.extract).disabled).toBe(true);
+    expect(output()).toBeNull();
+    release();
+    await waitFor(() => expect(output()).not.toBeNull());
+    expect(output()!.value).toBe(
+      '{OCR} Herkend op pagina 1.\n\nAlleen hier staat een hele zin met tekst.\n\n{OCR} Herkend op pagina 3.',
+    );
+    expect(recognizedPages()).toEqual([1, 3]);
+    expect(openOcr).toHaveBeenCalledTimes(1);
+    // De herkenner gaat weer dicht (die houdt veel geheugen vast).
+    expect(close).toHaveBeenCalledTimes(1);
+    expect(screen.getByText(format(p.ocrPages, { list: 'pagina’s 1 en 3' }))).toBeTruthy();
+    expect(screen.queryByText(/Geen tekstlaag/)).toBeNull();
+    expect(button(p.extract).disabled).toBe(false);
+    expect(screen.queryByRole('button', { name: messages.nl.pages.stop })).toBeNull();
+  });
+
+  it('laat zien dat de herkenner geladen wordt', async () => {
+    await open('scan.pdf');
+    fireEvent.click(check(p.settings.ocr));
+    let open2 = (): void => {};
+    vi.mocked(openOcr).mockImplementationOnce(async (onStatus) => {
+      onStatus?.(0.25);
+      await new Promise<void>((resolve) => (open2 = resolve));
+      return { recognize: vi.fn(), close };
+    });
+    fireEvent.click(button(p.extract));
+    await waitFor(() =>
+      expect(screen.getByText(format(p.ocrRun.loading, { percent: 25 }))).toBeTruthy(),
+    );
+    open2();
+    await waitFor(() => expect(output()).not.toBeNull());
+  });
+
+  it('herkent een pagina maar één keer: opnieuw extraheren gebruikt wat er al is', async () => {
+    await open('scan.pdf');
+    fireEvent.click(check(p.settings.ocr));
+    fireEvent.click(button(p.extract));
+    await waitFor(() => expect(output()).not.toBeNull());
+    fireEvent.click(check(p.settings.joinLines));
+    fireEvent.click(button(p.extract));
+    expect(output()!.value).toContain('{OCR} Herkend op pagina 3.');
+    expect(recognizePage).toHaveBeenCalledTimes(2);
+    expect(openOcr).toHaveBeenCalledTimes(1);
+  });
+
+  it('met pagina-ankers: {OCR} na het anker, en de concordantie telt mee', async () => {
+    setOptions({ anchors: true, ocr: true });
+    await open('scan.pdf');
+    fireEvent.click(button(p.extract));
+    await waitFor(() => expect(output()).not.toBeNull());
+    expect(output()!.value.split('\n\n---')[0]).toBe(
+      '{p1}{OCR} Herkend op pagina 1.\n\n{p2} Alleen hier staat een hele zin met tekst.\n\n{p3}{OCR} Herkend op pagina 3.',
+    );
+  });
+
+  it('Stoppen: geen nieuwe tekst, een melding, en wat al herkend is blijft bewaard', async () => {
+    await open('scan.pdf');
+    fireEvent.click(button(p.extract));
+    const before = output()!.value;
+    fireEvent.click(check(p.settings.ocr));
+    // Pagina 1 gaat vanzelf; pagina 3 blijft hangen.
+    vi.mocked(recognizePage).mockImplementationOnce(async (_file, page) => ({
+      ...page,
+      items: [{ str: 'Eerste.', x: 50, y: 700, fh: 10, w: 35 }],
+      chars: 7,
+    }));
+    hold();
+    fireEvent.click(button(p.extract));
+    await waitFor(() =>
+      expect(screen.getByText(format(p.ocrRun.progress, { page: 3, n: 2, total: 2 }))).toBeTruthy(),
+    );
+    fireEvent.click(button(messages.nl.pages.stop));
+    await waitFor(() => expect(screen.getByText(p.ocrRun.stopped)).toBeTruthy());
+    expect(output()!.value).toBe(before);
+    expect(close).toHaveBeenCalledTimes(1);
+    expect(button(p.extract).disabled).toBe(false);
+    // Opnieuw: alleen pagina 3 nog.
+    ocr.gate = null;
+    vi.mocked(recognizePage).mockClear();
+    fireEvent.click(button(p.extract));
+    await waitFor(() => expect(output()!.value).toContain('{OCR} Eerste.'));
+    expect(recognizedPages()).toEqual([3]);
+    expect(screen.queryByText(p.ocrRun.stopped)).toBeNull();
+  });
+
+  it('Stoppen terwijl de herkenner nog laadt: die gaat daarna alsnog dicht', async () => {
+    await open('scan.pdf');
+    fireEvent.click(check(p.settings.ocr));
+    let opened = (): void => {};
+    vi.mocked(openOcr).mockImplementationOnce(async (onStatus) => {
+      await new Promise<void>((resolve) => (opened = resolve));
+      // Een melding van het laden die pas na Stoppen binnenkomt.
+      onStatus?.(1);
+      return { recognize: vi.fn(), close };
+    });
+    fireEvent.click(button(p.extract));
+    // Het laden is echt begonnen.
+    await waitFor(() => expect(openOcr).toHaveBeenCalled());
+    fireEvent.click(button(messages.nl.pages.stop));
+    await waitFor(() => expect(screen.getByText(p.ocrRun.stopped)).toBeTruthy());
+    expect(close).not.toHaveBeenCalled();
+    opened();
+    await waitFor(() => expect(close).toHaveBeenCalledTimes(1));
+    expect(recognizePage).not.toHaveBeenCalled();
+    expect(output()).toBeNull();
+    expect(screen.getByText(p.ocrRun.stopped)).toBeTruthy();
+    expect(button(p.extract).disabled).toBe(false);
+  });
+
+  it('werkt de herkenning niet: de tekst zonder de gescande pagina’s, en een waarschuwing', async () => {
+    ocr.fail = true;
+    await open('scan.pdf');
+    fireEvent.click(check(p.settings.ocr));
+    fireEvent.click(button(p.extract));
+    await waitFor(() => expect(screen.getByRole('alert').textContent).toBe(p.ocrRun.failed));
+    expect(output()!.value).toBe('Alleen hier staat een hele zin met tekst.');
+    expect(screen.getByText(format(p.noTextPagesOcr, { list: 'pagina’s 1 en 3' }))).toBeTruthy();
+    // Zonder herkenning opnieuw: de waarschuwing hoort daar niet meer bij.
+    fireEvent.click(check(p.settings.ocr));
+    fireEvent.click(button(p.extract));
+    expect(screen.queryByText(p.ocrRun.failed)).toBeNull();
+  });
+
+  it('nog een keer extraheren terwijl het herkennen bezig is, doet niets', async () => {
+    await open('scan.pdf');
+    fireEvent.click(check(p.settings.ocr));
+    const release = hold();
+    fireEvent.click(button(p.extract));
+    await waitFor(() => button(messages.nl.pages.stop));
+    act(() => void extract());
+    release();
+    await waitFor(() => expect(output()).not.toBeNull());
+    expect(openOcr).toHaveBeenCalledTimes(1);
+    expect(recognizedPages()).toEqual([1, 3]);
+  });
+
+  it('een afgedrukt paginanummer op een herkende pagina komt in de concordantie', async () => {
+    setOptions({ anchors: true, ocr: true });
+    await open('scan.pdf');
+    // Pagina 1 en 3 worden herkend, met een paginanummer onderaan.
+    const numbered = async (_file: File, page: PageText) => ({
+      ...page,
+      items: [
+        { str: `Tekst ${page.no}.`, x: 50, y: 700, fh: 10, w: 40 },
+        { str: `${page.no + 10} `, x: 290, y: 30, fh: 10, w: 10 },
+      ],
+      chars: 10,
+    });
+    vi.mocked(recognizePage).mockImplementationOnce(numbered).mockImplementationOnce(numbered);
+    fireEvent.click(button(p.extract));
+    await waitFor(() => expect(output()).not.toBeNull());
+    expect(output()!.value).toContain('PDF-pagina 1 = documentpagina 11');
+    expect(output()!.value).toContain('PDF-pagina 3 = documentpagina 13');
+  });
+
+  it('met leesvakken: een pagina die overgeslagen wordt, wordt niet herkend', async () => {
+    await open('scan.pdf');
+    fireEvent.click(check(p.settings.ocr));
+    act(() => {
+      importSettings({
+        options: { useCrop: true },
+        zones: { d: [{ x0: 0, y0: 0, x1: 1, y1: 1 }], p: { 3: [] } },
+      });
+    });
+    fireEvent.click(button(p.extract));
+    await waitFor(() => expect(output()).not.toBeNull());
+    expect(recognizedPages()).toEqual([1]);
+    expect(output()!.value).toBe(
+      '{OCR} Herkend op pagina 1.\n\nAlleen hier staat een hele zin met tekst.',
+    );
+    // Pagina's zonder vakken toch lezen: dan ook pagina 3.
+    act(() => setReadEmpty(true));
+    fireEvent.click(button(p.extract));
+    await waitFor(() => expect(output()!.value).toContain('{OCR} Herkend op pagina 3.'));
+    expect(recognizedPages()).toEqual([1, 3]);
+  });
+
+  it('een andere PDF tijdens het herkennen: stoppen zonder melding, en de oude tekst komt niet', async () => {
+    await open('scan.pdf');
+    fireEvent.click(check(p.settings.ocr));
+    hold();
+    fireEvent.click(button(p.extract));
+    await waitFor(() => button(messages.nl.pages.stop));
+    choose('brief.pdf');
+    await waitFor(() => expect(close).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect(button(p.extract).disabled).toBe(false));
+    expect(getTextState().result).toBeNull();
+    expect(getTextState().ocr.status).toBe('idle');
+    expect(screen.queryByText(p.ocrRun.stopped)).toBeNull();
+    // Wat er van de vorige PDF herkend was, hoort niet bij deze.
+    expect(getTextState().recognized).toEqual({});
+  });
+
+  it('wat herkend is, hoort bij de PDF: een andere PDF wordt zelf herkend', async () => {
+    await open('scan.pdf');
+    fireEvent.click(check(p.settings.ocr));
+    fireEvent.click(button(p.extract));
+    await waitFor(() => expect(output()).not.toBeNull());
+    choose('twee-scans.pdf');
+    await waitFor(() => expect(getTextState().result).toBeNull());
+    vi.mocked(recognizePage).mockClear();
+    fireEvent.click(button(p.extract));
+    await waitFor(() => expect(output()).not.toBeNull());
+    expect(recognizedPages()).toEqual([1, 2]);
+  });
+
+  it('Wissen tijdens het herkennen stopt het ook', async () => {
+    await open('scan.pdf');
+    fireEvent.click(check(p.settings.ocr));
+    hold();
+    fireEvent.click(button(p.extract));
+    await waitFor(() => button(messages.nl.pages.stop));
+    fireEvent.click(button(p.clear));
+    await waitFor(() => expect(close).toHaveBeenCalledTimes(1));
+    expect(getTextState().ocr.status).toBe('idle');
+  });
+
+  it('Platte tekst verlaten stopt het herkennen; terug kan het opnieuw', async () => {
+    await open('scan.pdf');
+    fireEvent.click(check(p.settings.ocr));
+    hold();
+    fireEvent.click(button(p.extract));
+    await waitFor(() => button(messages.nl.pages.stop));
+    cleanup();
+    await waitFor(() => expect(close).toHaveBeenCalledTimes(1));
+    expect(getTextState().ocr.status).toBe('idle');
+    ocr.gate = null;
+    setup();
+    fireEvent.click(button(p.extract));
+    await waitFor(() => expect(output()).not.toBeNull());
+    expect(output()!.value).toContain('{OCR} Herkend op pagina 3.');
+  });
+
+  it('de instelling wordt per PDF onthouden en staat in het conventieblok', async () => {
+    setOptions({ conventions: true });
+    await open('scan.pdf');
+    fireEvent.click(check(p.settings.ocr));
+    expect(JSON.parse(localStorage.getItem(`${SETTINGS_PREFIX}scan.pdf`)!)).toMatchObject({
+      options: { ocr: true },
+    });
+    fireEvent.click(button(p.extract));
+    await waitFor(() => expect(output()).not.toBeNull());
+    expect(output()!.value).toContain(p.conventions.ocr);
+  });
+
+  it('niet in de batch: die herkent niets, ook met de instelling aan', async () => {
+    setOptions({ ocr: true, conventions: true });
+    setup();
+    act(() => clearBatchFiles());
+    fireEvent.change(document.querySelector('#plaintext-batch-files')!, {
+      target: { files: [pdf('scan.pdf')] },
+    });
+    await act(() => runBatch());
+    expect(recognizePage).not.toHaveBeenCalled();
+    expect(openOcr).not.toHaveBeenCalled();
+    const [data] = vi.mocked(downloadFile).mock.calls.at(-1)!;
+    const files = unzipSync(new Uint8Array(await (data as Blob).arrayBuffer()));
+    const text = new TextDecoder().decode(Object.values(files)[0]!);
+    expect(text).not.toContain('{OCR}');
+    expect(text).not.toContain(p.conventions.ocr);
   });
 });
