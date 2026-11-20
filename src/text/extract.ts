@@ -1,5 +1,6 @@
 import {
   analyseRunning,
+  centerOf,
   layoutBlock,
   hasTextLayer,
   pageText,
@@ -98,8 +99,9 @@ export type Extraction = {
 export const LOW_TEXT = 25;
 
 /**
- * De tekststukjes in een vak: een stukje telt mee als zijn midden in het vak ligt. De tekst staat
- * in punten vanaf linksonder, het vak als deel van de pagina vanaf linksboven.
+ * De tekststukjes in een vak: een stukje telt mee als zijn midden in het vak ligt (ook als het
+ * gedraaid staat). De tekst staat in punten vanaf linksonder, het vak als deel van de pagina vanaf
+ * linksboven.
  */
 export function zoneItems(page: PageText, zone: Zone): Piece[] {
   const x0 = zone.x0 * page.w;
@@ -107,8 +109,7 @@ export function zoneItems(page: PageText, zone: Zone): Piece[] {
   const top = page.h - zone.y0 * page.h;
   const bottom = page.h - zone.y1 * page.h;
   return page.items.filter((item) => {
-    const cx = item.x + item.w / 2;
-    const cy = item.y + item.fh / 2;
+    const { x: cx, y: cy } = centerOf(item);
     return cx >= x0 && cx <= x1 && cy <= top && cy >= bottom;
   });
 }

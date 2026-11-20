@@ -85,7 +85,8 @@ export function detectPageNumber(page: PageText): Candidate | null {
   let best: (Candidate & { y: number }) | null = null;
   for (const item of page.items) {
     const s = item.str.trim();
-    if (!s) continue;
+    // Een gedraaid getal (in een strook of tabelkop) is geen paginanummer.
+    if (!s || item.turn !== undefined) continue;
     if (item.y >= band && item.y <= page.h - band) continue;
     let found: Candidate | null = null;
     if (/^\d{1,4}$/.test(s)) found = { raw: s, value: Number(s), roman: false };

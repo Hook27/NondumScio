@@ -519,3 +519,16 @@ describe('een pagina uit tekstherkenning (OCR)', () => {
     expect(pages.map((p) => p.status)).toEqual(['ocr', 'skipped']);
   });
 });
+
+describe('leesvakken en gedraaide tekst (wens 20-11, deel B)', () => {
+  it('een verticale strook in de marge hoort bij het vak rond de marge, niet bij de tekst', () => {
+    const strip: Piece = { str: 'arXiv:2611.01234v1', x: 40, y: 200, fh: 10, w: 400, turn: 90 };
+    const body = page(1, [['Lopende tekst rechts van de strook.']]);
+    const scan: PageText = { ...body, items: [...body.items, strip] };
+    // Een vak over de linkermarge (x tot 50 punten) en een vak over de tekst.
+    const margin: Zone = { x0: 0, y0: 0, x1: 50 / 595, y1: 1 };
+    const text: Zone = { x0: 50 / 595, y0: 0, x1: 1, y1: 1 };
+    expect(zoneItems(scan, margin)).toEqual([strip]);
+    expect(zoneItems(scan, text)).not.toContain(strip);
+  });
+});
