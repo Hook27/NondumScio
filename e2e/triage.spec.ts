@@ -166,10 +166,11 @@ test.describe('Archief / Triage', () => {
     await expect(canvas(page, 2)).toBeVisible(SLOW);
 
     await page.getByRole('button', { name: tr.keep, exact: true }).click();
-    await expect(page.getByRole('button', { name: tr.keep, exact: true })).toHaveAttribute(
-      'aria-pressed',
-      'true',
-    );
+    // Het besluit staat in de lijst. Niet aan de knop Bewaren kijken: na 200 ms hoort die al bij
+    // het volgende bestand (onder belasting soms al vóór de eerste controle).
+    await expect(
+      list(page).getByRole('button', { name: `brief.pdf, ${tr.states.keep}`, exact: true }),
+    ).toBeVisible();
     await expect(active(page)).toContainText('factuur.pdf');
     await page.getByRole('button', { name: tr.previousFile }).click();
     await expect(active(page)).toContainText('brief.pdf');
@@ -352,6 +353,11 @@ for (const size of [
         }
         await page.keyboard.press('ArrowLeft');
         await page.keyboard.press('ArrowLeft');
+        // Elke nieuwe map verplaatst het eerste bestand meteen; ← blijft daar (ook binnen de 200 ms
+        // waarna Triage anders vanzelf verder gaat). Pas meten als het eerste bestand in beeld is.
+        await expect(
+          page.getByRole('list', { name: t.files }).locator('[aria-current="true"]'),
+        ).toContainText('brief.pdf');
         await expect(canvas(page, 1, lang)).toBeVisible(SLOW);
         const viewport = page.viewportSize()!;
         for (const name of [
@@ -767,4 +773,27 @@ test.describe('Archief / Triage: Map opruimen', () => {
       await check();
     });
   }
+});
+
+test.describe('Archief / Triage: ← direct na een besluit', () => {
+  test.skip(({ isMobile }) => isMobile, 'Geavanceerd is er alleen op de computer');
+
+  test('op het eerste bestand blijf je staan, ook binnen de 200 ms', async ({ page }) => {
+    await open(page);
+    await addThree(page);
+    await expect(canvas(page, 1)).toBeVisible(SLOW);
+    const keep = page.getByRole('button', { name: tr.keep, exact: true });
+    // Bewaren en meteen ←, zonder wachttijd ertussen (in de pagina zelf).
+    await keep.evaluate((button) => {
+      button.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+      document.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowLeft', bubbles: true }));
+    });
+    // Bewust een vaste wachttijd (langer dan de 200 ms waarna Triage verder zou gaan): er mag
+    // níets gebeuren, en daar is geen teken voor om op te wachten.
+    await page.waitForTimeout(500);
+    await expect(active(page)).toContainText('brief.pdf');
+    await expect(
+      list(page).getByRole('button', { name: `brief.pdf, ${tr.states.keep}`, exact: true }),
+    ).toBeVisible();
+  });
 });

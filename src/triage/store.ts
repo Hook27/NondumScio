@@ -206,8 +206,10 @@ export function addTriageFiles(files: readonly File[]): void {
  * bij een lange lijst blijven ze anders allemaal open.
  */
 export function select(index: number): void {
-  if (index < 0 || index >= state.files.length) return;
+  // Zelf naar een ander bestand (ook ← op het eerste of → op het laatste): het vanzelf verder gaan
+  // na een besluit stopt, zodat je blijft waar je bent.
   stopAdvance();
+  if (index < 0 || index >= state.files.length) return;
   const before = state.files[state.cur];
   if (before && index !== state.cur) closeVisual(before.file);
   setState({ cur: index, view: 'review' });
