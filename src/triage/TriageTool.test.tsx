@@ -371,6 +371,18 @@ describe('TriageTool', () => {
     expect(names()[1]![1]).toBe('remove');
   });
 
+  it('← direct na een besluit op het eerste bestand: je blijft, Triage gaat niet vanzelf verder', async () => {
+    setup();
+    choose(pdf('a.pdf'), pdf('b.pdf'));
+    await settle();
+    await key('k');
+    // Binnen de 200 ms: ← (er is geen vorig bestand).
+    await key('ArrowLeft');
+    await pause(ADVANCE_MS + 100);
+    expect(current()?.textContent).toContain('a.pdf');
+    expect(names()[0]![1]).toBe('keep');
+  });
+
   it('een ingedrukt gehouden besluittoets beslist niet (bladeren mag wel herhalen)', async () => {
     setup();
     choose(pdf('a.pdf'), pdf('b.pdf'));
