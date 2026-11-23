@@ -194,11 +194,21 @@ export function triageTxt(list: readonly TriageFile[], texts: ExportTexts): stri
 }
 
 /**
+ * Een cel die Excel als formule zou lezen (begint met =, +, - of @, of met een tab of een
+ * regelterugloop): met een ' ervoor, dan is het gewone tekst (audit R6, "CSV-injectie"). Excel laat
+ * die ' in de cel zien; alle andere namen blijven precies zoals ze zijn.
+ */
+export function csvText(text: string): string {
+  return /^[=+\-@\t\r]/.test(text) ? `'${text}` : text;
+}
+
+/**
  * De lijst als CSV, zoals triage.csv van pdf-triage.html: elke cel tussen aanhalingstekens
  * (aanhalingstekens erin verdubbeld), in de volgorde van de lijst. Met een derde kolom voor de map,
  * alleen ingevuld bij verplaatsen. Zo dat een dubbelklik hem in Excel goed opent: het
  * coderingsteken (BOM) vooraan, zodat letters als ö en é kloppen; het scheidingsteken van de taal
- * (een Nederlandse Excel verwacht puntkomma's); en Windows-regeleinden.
+ * (een Nederlandse Excel verwacht puntkomma's); en Windows-regeleinden. Een naam die Excel als
+ * formule zou lezen, krijgt een ' ervoor (zie `csvText`).
  */
 export function triageCsv(list: readonly TriageFile[], texts: ExportTexts): string {
   const rows = [[texts.columnName, texts.columnDecision, texts.columnFolder]];
@@ -209,7 +219,9 @@ export function triageCsv(list: readonly TriageFile[], texts: ExportTexts): stri
     else rows.push([name, texts.decisions[decision ?? 'none'], '']);
   }
   const csv = rows
-    .map((row) => row.map((cell) => `"${cell.replace(/"/g, '""')}"`).join(texts.csvSeparator))
+    .map((row) =>
+      row.map((cell) => `"${csvText(cell).replace(/"/g, '""')}"`).join(texts.csvSeparator),
+    )
     .join('\r\n');
   return `\uFEFF${csv}`;
 }

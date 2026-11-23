@@ -797,3 +797,29 @@ test.describe('Archief / Triage: ← direct na een besluit', () => {
     ).toBeVisible();
   });
 });
+
+test.describe('Archief / Triage: CSV zonder formules (audit R6)', () => {
+  test.skip(({ isMobile }) => isMobile, 'Geavanceerd is er alleen op de computer');
+
+  test('een naam die Excel als formule zou lezen, krijgt een apostrof vooraan', async ({
+    page,
+  }) => {
+    await open(page);
+    await page
+      .locator('#triage-files')
+      .setInputFiles([
+        await pdf('=SOM(1;2).pdf', 1),
+        await pdf('-scan 3.pdf', 1),
+        await pdf('brief.pdf', 1),
+      ]);
+    await expect(canvas(page, 1)).toBeVisible(SLOW);
+    await page.getByRole('button', { name: tr.views.overview }).click();
+    const csv = await downloadVia(page, page.getByRole('button', { name: tr.overview.csv }));
+    expect(readFileSync(await csv.path(), 'utf8')).toBe(
+      '﻿"Bestandsnaam";"Besluit";"Map"\r\n' +
+        `"'=SOM(1;2).pdf";"niet beoordeeld";""\r\n` +
+        `"'-scan 3.pdf";"niet beoordeeld";""\r\n` +
+        '"brief.pdf";"niet beoordeeld";""',
+    );
+  });
+});
