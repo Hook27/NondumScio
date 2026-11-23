@@ -1,6 +1,7 @@
 import {
   analyseRunning,
   centerOf,
+  documentLineGaps,
   layoutBlock,
   hasTextLayer,
   pageText,
@@ -119,9 +120,14 @@ export function zoneItems(page: PageText, zone: Zone): Piece[] {
  * witregel ertussen. Binnen een vak geen kolommen (een vak is al één kolom) en geen kop- en
  * voetteksten weglaten (wat buiten de vakken staat, vervalt al).
  */
-function zonesText(page: PageText, zones: readonly Zone[], opts: TextOptions): string {
+function zonesText(
+  page: PageText,
+  zones: readonly Zone[],
+  opts: TextOptions,
+  lineGaps: ReadonlyMap<number, number>,
+): string {
   return zones
-    .map((zone) => layoutBlock(zoneItems(page, zone), opts, false).trim())
+    .map((zone) => layoutBlock(zoneItems(page, zone), opts, false, lineGaps).trim())
     .filter((text) => text !== '')
     .join('\n\n');
 }
@@ -165,15 +171,18 @@ export function extractText(
   assembly: Partial<Assemble> = {},
 ): Extraction {
   const running = setup === null && opts.strip ? analyseRunning(pages) : null;
+  // Voor een pagina (of vak) met weinig regels: de regelafstand van de rest van het document.
+  const lineGaps = documentLineGaps(pages);
   const results = pages.map((page, index): PageResult => {
     if (!hasTextLayer(page)) return { no: page.no, text: '', status: 'notext' };
     const status = page.ocr ? 'ocr' : 'read';
     if (setup === null)
-      return { no: page.no, text: pageText(page, opts, running?.[index]), status };
+      return { no: page.no, text: pageText(page, opts, running?.[index], lineGaps), status };
     const zones = zonesFor(setup, page.no);
-    if (zones.length > 0) return { no: page.no, text: zonesText(page, zones, opts), status };
+    if (zones.length > 0)
+      return { no: page.no, text: zonesText(page, zones, opts, lineGaps), status };
     if (!setup.readEmpty) return { no: page.no, text: '', status: 'skipped' };
-    return { no: page.no, text: layoutBlock(page.items, opts, opts.columns), status };
+    return { no: page.no, text: layoutBlock(page.items, opts, opts.columns, lineGaps), status };
   });
   const body = assemble(results, opts, {
     printed: assembly.printed ?? printedPages(pages),

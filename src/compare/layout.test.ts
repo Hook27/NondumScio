@@ -1,8 +1,10 @@
 import { describe, expect, it } from 'vitest';
 import {
   RUNNING_MAX_SIZE,
+  FEW_GAPS,
   TURN_TOLERANCE,
   analyseRunning,
+  documentLineGaps,
   centerOf,
   isBullet,
   isGenericHeading,
@@ -1155,5 +1157,191 @@ describe('gemengde opmaak per pagina (wens 20-11, deel C3)', () => {
     expect(layoutBlock(items, NOJOIN, false)).not.toContain('\n\n');
     expect(layoutBlock(items, { ...NOJOIN, tables: true }, true)).not.toContain('\n\n');
     expect(layoutBlock(items, NOJOIN, false).split('\n')[0]).toBe('a1 b1');
+  });
+});
+
+describe('een pagina met weinig regels (audit F15 deel B)', () => {
+  // Zoals Platte tekst en Vergelijken (1,3; `OPTS` heeft de 1,6 van de oude extractor).
+  const O = { ...OPTS, gapFactor: 1.3 };
+  /**
+   * Alinea's onder elkaar zoals Word ze zet: regels `line` uit elkaar, en tussen alinea's `gap`
+   * (11 pt, 14,5 en 22,4).
+   */
+  function paragraphs(texts: string[][], { size = 11, line = 14.5, gap = 22.4, top = 740 } = {}) {
+    const items: Piece[] = [];
+    let y = top;
+    for (const lines of texts) {
+      for (const str of lines) {
+        items.push({ str, x: 71, y, fh: size, w: str.length * size * 0.5 });
+        y -= line;
+      }
+      y += line - gap;
+    }
+    return items;
+  }
+  /** Een volle pagina: vijf alinea's van drie regels. */
+  const full = (no: number, size = 11) =>
+    page(
+      no,
+      paragraphs(
+        Array.from({ length: 5 }, (_, a) => [`a${a} een`, `a${a} twee`, `a${a} drie`]),
+        { size },
+      ),
+    );
+  /** Een slotpagina: vier losse regels en één alinea van twee regels. */
+  const CLOSING = [
+    ['Wij hopen u te hebben geïnformeerd.'],
+    ['Met vriendelijke groet,'],
+    ['De Vries'],
+    ['Afdeling', 'Verhuur'],
+  ];
+
+  it('documentLineGaps: de gewone regelafstand per lettergrootte, alleen van pagina’s met genoeg regels', () => {
+    const gaps = documentLineGaps([full(1), page(2, paragraphs(CLOSING)), full(3, 9)]);
+    expect([...gaps.keys()].sort()).toEqual([11, 9].sort());
+    expect(gaps.get(11)).toBeCloseTo(14.5);
+    expect(FEW_GAPS).toBe(6);
+    // Alleen de slotpagina: te weinig regels, dus geen schatting.
+    expect(documentLineGaps([page(2, paragraphs(CLOSING))]).size).toBe(0);
+  });
+
+  it('documentLineGaps: gedraaide tekst en witruimte tellen niet mee', () => {
+    const p = full(1);
+    p.items.push({ str: 'CONCEPT', x: 100, y: 500, fh: 60, w: 200, turn: 45 });
+    p.items.push({ str: ' ', x: 100, y: 300, fh: 11, w: 5 });
+    expect(documentLineGaps([p]).get(11)).toBeCloseTo(14.5);
+  });
+
+  it('met de regelafstand van het document: losse alinea’s blijven los', () => {
+    const items = paragraphs(CLOSING);
+    // Zelf geschat (vier afstanden, vooral alinea-afstanden): één alinea.
+    expect(layoutBlock(items, O, true).split('\n\n')).toHaveLength(1);
+    const gaps = new Map([[11, 14.5]]);
+    expect(layoutBlock(items, O, true, gaps).split('\n\n')).toEqual([
+      'Wij hopen u te hebben geïnformeerd.',
+      'Met vriendelijke groet,',
+      'De Vries',
+      'Afdeling Verhuur',
+    ]);
+  });
+
+  it('alleen bij dezelfde lettergrootte', () => {
+    const items = paragraphs(CLOSING);
+    expect(layoutBlock(items, O, true, new Map([[9, 14.5]])).split('\n\n')).toHaveLength(1);
+    // Op een halve punt afgerond: 11,2 telt als 11.
+    const close = items.map((i) => ({ ...i, fh: 11.2 }));
+    expect(layoutBlock(close, O, true, new Map([[11, 14.5]])).split('\n\n')).toHaveLength(4);
+  });
+
+  it('alleen bij weinig regelafstanden: met zes of meer telt de eigen schatting', () => {
+    // Een letter van 8 pt, regels 14,5 uit elkaar; het document zegt 8.
+    const gaps = new Map([[8, 8]]);
+    // Zes regels in één alinea (vijf afstanden): met de veel kleinere afstand van het document
+    // wordt elke regel een eigen alinea.
+    const five = paragraphs([['r1', 'r2', 'r3', 'r4', 'r5', 'r6']], { size: 8 });
+    expect(layoutBlock(five, O, true, gaps).split('\n\n')).toHaveLength(6);
+    // Zeven regels (zes afstanden): de eigen schatting, dus één alinea.
+    const six = paragraphs([['r1', 'r2', 'r3', 'r4', 'r5', 'r6', 'r7']], { size: 8 });
+    expect(layoutBlock(six, O, true, gaps).split('\n\n')).toHaveLength(1);
+  });
+
+  it('nooit een grotere regelafstand dan de eigen schatting: er verdwijnen geen alinea’s', () => {
+    // Regels 12 uit elkaar, alinea's 24: dat breekt zelf al goed af.
+    const items = paragraphs([['een', 'twee'], ['drie'], ['vier']], { line: 12, gap: 24 });
+    const own = layoutBlock(items, O, true);
+    expect(own.split('\n\n')).toHaveLength(3);
+    // Het document heeft een ruimere regelafstand (20): de eigen schatting (12) blijft.
+    expect(layoutBlock(items, O, true, new Map([[11, 20]]))).toBe(own);
+  });
+
+  it('documentLineGaps: het eerste kwartiel, ook als de meeste afstanden alinea-afstanden zijn', () => {
+    // Drie alinea's van twee regels en vier losse regels: 3× 14,5 en 6× 22,4.
+    const p = page(1, paragraphs([['a', 'b'], ['c', 'd'], ['e', 'f'], ['g'], ['h'], ['i'], ['j']]));
+    expect(documentLineGaps([p]).get(11)).toBeCloseTo(14.5);
+  });
+
+  it('documentLineGaps: gedraaide tekst en witruimte maken van weinig regels geen genoeg', () => {
+    const turned = page(2, paragraphs(CLOSING));
+    const blank = page(3, paragraphs(CLOSING));
+    for (const y of [300, 250, 200]) {
+      turned.items.push({ str: 'X', x: 300, y, fh: 11, w: 10, turn: 90 });
+      blank.items.push({ str: ' ', x: 300, y, fh: 11, w: 5 });
+    }
+    expect(documentLineGaps([turned]).size).toBe(0);
+    expect(documentLineGaps([blank]).size).toBe(0);
+  });
+
+  it('dezelfde lettergrootte op een halve punt: 10,4 en 10,6 zijn allebei 10,5', () => {
+    const gaps = documentLineGaps([full(1, 10.4)]);
+    const items = paragraphs(CLOSING, { size: 10.6 });
+    expect(layoutBlock(items, O, true, gaps).split('\n\n')).toHaveLength(4);
+  });
+
+  it('ook naast een watermerk, naast kantlijnnoten en in een klein deel van gemengde opmaak', () => {
+    const gaps = new Map([[11, 14.5]]);
+    // Naast een watermerk (gedraaide tekst).
+    const watermark: Piece = { str: 'CONCEPT', x: 150, y: 600, fh: 60, w: 300, turn: 45 };
+    expect(
+      layoutBlock([...paragraphs(CLOSING), watermark], O, true, gaps).split('\n\n'),
+    ).toHaveLength(5);
+    // Naast kantlijnnoten (8 pt links): zes losse regels lopende tekst, vijf afstanden.
+    const body = paragraphs(
+      ['een', 'twee', 'drie', 'vier', 'vijf', 'zes'].map((w) => [`regel ${w} van de tekst`]),
+    ).map((i) => ({ ...i, x: 170, w: 300 }));
+    const notes = [
+      { str: 'Zie ook', x: 50, y: 740, fh: 8, w: 28 },
+      { str: 'artikel 3.', x: 50, y: 730, fh: 8, w: 40 },
+    ];
+    const withNotes = layoutBlock([...body, ...notes], O, true, gaps).split('\n\n');
+    expect(withNotes.slice(0, 6)).toEqual(body.map((i) => i.str));
+    // Een klein deel (drie losse regels, 9 pt) boven twee delen met verschillende kolommen.
+    const small = gaps.set(9, 12);
+    const column = (x: number, top: number, w: number, mark: string) =>
+      Array.from({ length: 8 }, (_, i) => ({ str: `${mark}${i}`, x, y: top - i * 12, fh: 9, w }));
+    const mixed = [
+      ...['t1', 't2', 't3'].map((str, i) => ({ str, x: 50, y: 760 - i * 22, fh: 9, w: 30 })),
+      ...column(50, 600, 230, 'a'),
+      ...column(315, 600, 230, 'b'),
+      ...column(50, 460, 150, 'c'),
+      ...column(225, 460, 150, 'd'),
+      ...column(400, 460, 150, 'e'),
+    ];
+    expect(layoutBlock(mixed, O, true, small).split('\n\n').slice(0, 3)).toEqual([
+      't1',
+      't2',
+      't3',
+    ]);
+  });
+
+  it('ook voor gedraaide tekst in dezelfde letter, zoals gedraaide tabelcellen', () => {
+    // Zoals in "test document tabel.pdf": cellen 90 graden gedraaid, per kolom onder elkaar; na
+    // terugdraaien twee rijen ("Wit Oud Zout" en "Bruin Jong Zoet") ver uit elkaar.
+    const cell = (str: string, x: number, y: number): Piece => ({
+      str,
+      x,
+      y,
+      fh: 11,
+      w: 22,
+      turn: 90,
+    });
+    const cells = [
+      cell('Zout', 301.6, 717.9),
+      cell('Zoet', 341.7, 717.9),
+      cell('Oud', 301.6, 661.4),
+      cell('Jong', 341.7, 659.9),
+      cell('Wit', 301.6, 606.7),
+      cell('Bruin', 341.7, 601.8),
+    ];
+    expect(layoutBlock(cells, O, true).split('\n\n')).toHaveLength(1);
+    expect(layoutBlock(cells, O, true, new Map([[11, 14.5]])).split('\n\n')).toEqual([
+      'Wit Oud Zout',
+      'Bruin Jong Zoet',
+    ]);
+  });
+
+  it('ook de laagste grens blijft: niet kleiner dan de letter zelf', () => {
+    // Het document zegt 5 (veel kleiner dan de letter van 11): dan geldt 11 × 1,05.
+    const items = paragraphs([['een', 'twee']], { line: 12 });
+    expect(layoutBlock(items, O, true, new Map([[11, 5]])).split('\n\n')).toHaveLength(1);
   });
 });

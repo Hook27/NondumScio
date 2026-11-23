@@ -599,7 +599,42 @@ function mixedBands(lines: readonly Line[]): Line[][] | null {
 }
 
 /**
+ * Minder regelafstanden dan dit op een pagina (of in een leesvak): dan is de eigen schatting van de
+ * gewone regelafstand niet te vertrouwen (audit F15). Met vooral losse alinea's van één regel landt
+ * hij op de alinea-afstand, en wordt de hele pagina één alinea.
+ */
+export const FEW_GAPS = 6;
+
+/** De lettergrootte van een stel tekststukjes als sleutel: de mediaan, op een halve punt. */
+const sizeKey = (items: readonly Piece[]): number => Math.round(bodySize(items) * 2) / 2;
+
+/**
+ * De gewone regelafstand van een document, per lettergrootte (zie `sizeKey`): het eerste kwartiel
+ * van de afstanden tussen de regels op de pagina's met genoeg regels (`FEW_GAPS`), zonder gedraaide
+ * tekst en zonder kolommen (regels naast elkaar staan op dezelfde hoogte). Voor een pagina met
+ * weinig regels (audit F15, keuze 5a: de regelafstand van de rest van hetzelfde document, als de
+ * letter daar even groot is).
+ */
+export function documentLineGaps(pages: readonly PageText[]): Map<number, number> {
+  const bySize = new Map<number, number[]>();
+  for (const page of pages) {
+    const items = page.items.filter((i) => i.turn === undefined && !isBlank(i));
+    if (items.length === 0) continue;
+    const lines = groupLines(items, (median(items.map((i) => i.fh)) || 10) * 0.5);
+    const gaps = lines.slice(1).map((line, i) => lines[i]!.y - line.y);
+    if (gaps.length < FEW_GAPS) continue;
+    const key = sizeKey(items);
+    bySize.set(key, [...(bySize.get(key) ?? []), ...gaps]);
+  }
+  return new Map([...bySize].map(([key, gaps]) => [key, quantile(gaps, 0.25)]));
+}
+
+/**
  * De tekststukjes van één pagina als tekst met alinea's (of losse regels zonder `joinLines`).
+ * `lineGaps`: de gewone regelafstand van het hele document (zie `documentLineGaps`), voor als dit
+ * blok zelf te weinig regels heeft om die te schatten. Ook voor gedraaide tekst (zoals gedraaide
+ * cellen van een tabel, in dezelfde letter), niet voor kantlijnnoten: die hebben per definitie een
+ * kleinere letter (zie `marginNotes`), dus nooit dezelfde lettergrootte.
  * Gedraaide tekst (een watermerk, een strook in de marge) doet niet mee met de lopende tekst: die
  * komt per richting als eigen blok erachter, teruggedraaid en met dezelfde regels gelezen (zonder
  * kolommen). Zo breekt "CONCEPT" geen zin meer, en wordt een verticale strook één regel.
@@ -608,15 +643,18 @@ export function layoutBlock(
   input: readonly Piece[],
   opts: LayoutOptions,
   allowColumns: boolean,
+  lineGaps?: ReadonlyMap<number, number>,
 ): string {
   if (input.some((i) => i.turn !== undefined)) {
     const turns = [...new Set(input.flatMap((i) => (i.turn === undefined ? [] : [i.turn])))];
     const flat = input.filter((i) => i.turn === undefined);
     return [
-      layoutBlock(flat, opts, allowColumns),
+      layoutBlock(flat, opts, allowColumns, lineGaps),
       ...turns
         .sort((a, b) => a - b)
-        .map((turn) => layoutBlock(input.filter((i) => i.turn === turn).map(unturn), opts, false)),
+        .map((turn) =>
+          layoutBlock(input.filter((i) => i.turn === turn).map(unturn), opts, false, lineGaps),
+        ),
     ]
       .filter((text) => text !== '')
       .join('\n\n');
@@ -638,6 +676,7 @@ export function layoutBlock(
         input.filter((i) => !notes.has(i)),
         opts,
         allowColumns,
+        lineGaps,
       ),
       layoutBlock([...notes], opts, false),
     ]
@@ -653,6 +692,7 @@ export function layoutBlock(
           band.flatMap((line) => line.items),
           opts,
           allowColumns,
+          lineGaps,
         ),
       )
       .filter((text) => text !== '')
@@ -715,7 +755,13 @@ export function layoutBlock(
     const gap = lines[i - 1]!.y - lines[i]!.y;
     if (gap > 0) gaps.push(gap);
   }
-  const typGap = Math.max(quantile(gaps, 0.25), median(lines.map((l) => l.fh)) * 1.05) || 12;
+  const floor = median(lines.map((l) => l.fh)) * 1.05;
+  let typGap = Math.max(quantile(gaps, 0.25), floor) || 12;
+  // Te weinig regels om het zelf te schatten: dan de regelafstand van de rest van het document, bij
+  // dezelfde lettergrootte. Nooit groter dan de eigen schatting (dan zouden er alinea's verdwijnen).
+  const documentGap = lineGaps?.get(sizeKey(items));
+  if (gaps.length < FEW_GAPS && documentGap !== undefined)
+    typGap = Math.min(typGap, Math.max(documentGap, floor));
 
   // De rechtermarge per kolom. Een regel die duidelijk vóór die marge eindigt, is geen
   // doorgebroken regel maar het einde van een blok (een kop, de laatste regel van een alinea).
@@ -829,7 +875,12 @@ export function layoutBlock(
 }
 
 /** De tekst van een pagina, zonder de meelopende kop- en voetregel als `strip` aanstaat. */
-export function pageText(page: PageText, opts: LayoutOptions, running?: RunningLines): string {
+export function pageText(
+  page: PageText,
+  opts: LayoutOptions,
+  running?: RunningLines,
+  lineGaps?: ReadonlyMap<number, number>,
+): string {
   let items = page.items;
   if (opts.strip && running && (running.dropTop || running.dropBot)) {
     const drop = new Set<Piece>();
@@ -837,5 +888,5 @@ export function pageText(page: PageText, opts: LayoutOptions, running?: RunningL
     if (running.dropBot) running.bot!.items.forEach((i) => drop.add(i));
     items = items.filter((i) => !drop.has(i));
   }
-  return layoutBlock(items, opts, opts.columns);
+  return layoutBlock(items, opts, opts.columns, lineGaps);
 }
