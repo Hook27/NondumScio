@@ -532,3 +532,46 @@ describe('leesvakken en gedraaide tekst (wens 20-11, deel B)', () => {
     expect(zoneItems(scan, text)).not.toContain(strip);
   });
 });
+
+describe('een pagina met weinig regels (audit F15 deel B)', () => {
+  const CLOSING = [
+    ['Wij hopen u te hebben geïnformeerd.'],
+    ['Met vriendelijke groet,'],
+    ['De Vries'],
+  ];
+  /** Regels 12 uit elkaar, alinea's 24 (zie `page`). */
+  const letter = () => [
+    page(
+      1,
+      Array.from({ length: 4 }, (_, a) => [`a${a} een`, `a${a} twee`, `a${a} drie`]),
+    ),
+    page(2, CLOSING),
+  ];
+
+  it('gebruikt de regelafstand van de rest van het document', () => {
+    const { pages } = extractText(letter(), PLAIN);
+    expect(pages[1]!.text).toBe(
+      'Wij hopen u te hebben geïnformeerd.\n\nMet vriendelijke groet,\n\nDe Vries',
+    );
+  });
+
+  it('ook in een leesvak met weinig regels', () => {
+    const setup: ZoneSetup = {
+      zones: [{ x0: 0, y0: 0, x1: 1, y1: 1 }],
+      pages: {},
+      readEmpty: false,
+    };
+    const { pages } = extractText(letter(), PLAIN, setup);
+    expect(pages[1]!.text.split('\n\n')).toHaveLength(3);
+  });
+
+  it('en met pagina’s zonder vakken die toch gelezen worden', () => {
+    const setup: ZoneSetup = {
+      zones: [],
+      pages: { 1: [{ x0: 0, y0: 0, x1: 1, y1: 1 }] },
+      readEmpty: true,
+    };
+    const { pages } = extractText(letter(), PLAIN, setup);
+    expect(pages[1]!.text.split('\n\n')).toHaveLength(3);
+  });
+});

@@ -1,5 +1,5 @@
 import { boundary } from '../text/pages';
-import { analyseRunning, pageText, type PageText } from './layout';
+import { analyseRunning, documentLineGaps, pageText, type PageText } from './layout';
 
 export { GAP_FACTOR } from './layout';
 
@@ -109,9 +109,11 @@ export function buildUnits(pages: readonly PageText[], opts: CompareOptions): Un
     gapFactor: opts.gapFactor,
   };
   const running = opts.strip ? analyseRunning(pages) : null;
+  // Voor een pagina met weinig regels: de regelafstand van de rest van het document (audit F15).
+  const lineGaps = documentLineGaps(pages);
   const units: Unit[] = [];
   pages.forEach((page, index) => {
-    const text = pageText(page, layout, running?.[index]);
+    const text = pageText(page, layout, running?.[index], lineGaps);
     if (!text.trim()) return;
     const parts =
       opts.level === 'line'

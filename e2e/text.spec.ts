@@ -1659,3 +1659,28 @@ test.describe('PDF → Platte tekst: gemengde opmaak per pagina', () => {
     expect(marks).toEqual(['a', 'b', 'c', 'd', 'e']);
   });
 });
+
+test.describe('PDF → Platte tekst: een pagina met weinig regels (audit F15 deel B)', () => {
+  test.skip(({ isMobile }) => isMobile, 'Geavanceerd is er alleen op de computer');
+
+  test('losse alinea’s op een slotpagina blijven los', async ({ page }) => {
+    await openPage(page, '/#/advanced/text', { lang: 'nl' });
+    await withoutPageMarks(page);
+    // Pagina 1 zoals de brief van PAGES, pagina 2 alleen de slotregels (elk een eigen alinea).
+    await page
+      .locator('#plaintext-file')
+      .setInputFiles(
+        await letter('slot.pdf', [
+          PAGES[0]!,
+          [['Met vriendelijke groet,'], ['De directie'], ['A. de Vries']],
+        ]),
+      );
+    await expect(page.locator('canvas.plaintext-preview__canvas')).toBeVisible(SLOW);
+    await extract(page);
+    const output = page.locator('textarea.plaintext__output');
+    await expect(output).not.toHaveValue('');
+    expect(
+      (await output.inputValue()).endsWith('Met vriendelijke groet,\n\nDe directie\n\nA. de Vries'),
+    ).toBe(true);
+  });
+});

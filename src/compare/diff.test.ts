@@ -452,3 +452,21 @@ describe('displayList', () => {
     expect(displayList(rows, false, new Set())).toHaveLength(rows.length);
   });
 });
+
+describe('buildUnits: een pagina met weinig regels (audit F15 deel B)', () => {
+  it('losse alinea’s van één regel blijven losse stukken, met de regelafstand van het document', () => {
+    const full = page(1, [
+      'De eerste alinea loopt over twee regels.',
+      'De tweede alinea loopt ook over twee regels.',
+      'En de derde alinea net zo goed.',
+      'De vierde alinea sluit de pagina af.',
+    ]);
+    const closing = page(2, ['Ja.', 'Nee.', 'Misschien.']);
+    const units = buildUnits([full, closing], DEFAULT_OPTIONS).filter((u) => u.page === 2);
+    expect(units.map((u) => u.val)).toEqual(['Ja.', 'Nee.', 'Misschien.']);
+    // Alleen de slotpagina: geen document om op terug te vallen, dus één stuk zoals voorheen.
+    expect(buildUnits([closing], DEFAULT_OPTIONS).map((u) => u.val)).toEqual([
+      'Ja. Nee. Misschien.',
+    ]);
+  });
+});
