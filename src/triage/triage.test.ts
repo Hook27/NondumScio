@@ -14,6 +14,7 @@ import {
   sameDecision,
   sortFolders,
   toggle,
+  csvText,
   triageCsv,
   triageTxt,
   type Decision,
@@ -278,6 +279,42 @@ describe('triageCsv', () => {
     expect(triageCsv(files, en)).toBe(
       `${BOM}"File name","Decision","Folder"\r\n"brief ""oud"", 2024.pdf","keep",""\r\n"b.pdf","move","map ""x"", y"`,
     );
+  });
+
+  it('een naam of map die Excel als formule zou lezen, krijgt een apostrof vooraan (audit R6)', () => {
+    const files = list('keep', 'remove', { move: '@archief' }, null, 'keep', 'keep', 'keep');
+    const names = [
+      '=SOM(1;2).pdf',
+      '+31 brief.pdf',
+      '-scan 3.pdf',
+      '@thuis.pdf',
+      '\ttab.pdf',
+      '\rcr.pdf',
+    ];
+    names.forEach((name, i) => (files[i] = { ...files[i]!, name }));
+    files[6] = { ...files[6]!, name: 'gewoon - met = en @ erin.pdf' };
+    expect(triageCsv(files, nl).split('\r\n').slice(1)).toEqual([
+      `"'=SOM(1;2).pdf";"bewaren";""`,
+      `"'+31 brief.pdf";"verwijderen";""`,
+      `"'-scan 3.pdf";"verplaatsen";"'@archief"`,
+      `"'@thuis.pdf";"niet beoordeeld";""`,
+      `"'\ttab.pdf";"bewaren";""`,
+      `"'\rcr.pdf";"bewaren";""`,
+      // Alleen vooraan telt: midden in een naam is het gewone tekst.
+      `"gewoon - met = en @ erin.pdf";"bewaren";""`,
+    ]);
+  });
+
+  it('csvText: alleen een riskant eerste teken, en een aanhalingsteken blijft verdubbeld', () => {
+    expect(csvText('=1')).toBe("'=1");
+    expect(csvText('a=1')).toBe('a=1');
+    // De rest van de naam blijft precies zoals hij was, ook spaties aan het eind.
+    expect(csvText('-scan ')).toBe("'-scan ");
+    expect(csvText('')).toBe('');
+    expect(csvText("'al met apostrof.pdf")).toBe("'al met apostrof.pdf");
+    const files = list('keep');
+    files[0] = { ...files[0]!, name: '="x".pdf' };
+    expect(triageCsv(files, nl).split('\r\n')[1]).toBe(`"'=""x"".pdf";"bewaren";""`);
   });
 
   it('letters als ö en é, en een puntkomma in een naam, blijven in één cel', () => {
