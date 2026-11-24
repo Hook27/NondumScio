@@ -1,2 +1,0 @@
-async function e(e){let t=await crypto.subtle.digest(`SHA-256`,e);return[...new Uint8Array(t)].map(e=>e.toString(16).padStart(2,`0`)).join(``)}async function t(t){try{return await e(t)}catch{return null}}export{e as n,t};
-//# sourceMappingURL=fingerprint-DrrUZrdc.js.map
