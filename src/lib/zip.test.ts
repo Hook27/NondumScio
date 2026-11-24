@@ -32,6 +32,33 @@ describe('zipWriter', () => {
     ]);
   });
 
+  it('hoofdletters tellen niet: Windows ziet "A.pdf" en "a.pdf" als hetzelfde bestand (audit F17)', async () => {
+    const zip = await zipWriter();
+    for (const name of ['Brief.pdf', 'brief.pdf', 'BRIEF.PDF', 'brief (2).pdf']) {
+      zip.add(name, text(name));
+    }
+    const files = await unzip(zip.finish());
+    expect(Object.keys(files)).toEqual([
+      'Brief.pdf',
+      'brief (2).pdf',
+      'BRIEF (3).PDF',
+      'brief (2) (2).pdf',
+    ]);
+    // Elk bestand houdt zijn eigen inhoud.
+    expect(strFromU8(files['BRIEF (3).PDF']!)).toBe('BRIEF.PDF');
+  });
+
+  it('zonder extensie, of met een punt vooraan, komt het volgnummer achteraan', async () => {
+    const zip = await zipWriter();
+    for (const name of ['zonder', 'Zonder', '.notities', '.Notities']) zip.add(name, text(name));
+    expect(Object.keys(await unzip(zip.finish()))).toEqual([
+      'zonder',
+      'Zonder (2)',
+      '.notities',
+      '.Notities (2)',
+    ]);
+  });
+
   it('houdt een bestand na het inpakken niet meer vast: wat daarna gebeurt, raakt de ZIP niet', async () => {
     const zip = await zipWriter();
     const first = text('eerste bestand');

@@ -30,7 +30,7 @@ const END = 22;
  * Pakt bestanden in één ZIP, bijvoorbeeld alle delen na splitsen: één download in plaats van
  * tientallen (browsers vragen bij veel downloads tegelijk om toestemming). Zonder compressie:
  * PDF's en afbeeldingen zijn al gecomprimeerd, en zo blijft het snel. fflate wordt pas geladen
- * als het nodig is. Dubbele namen krijgen een volgnummer: "a.pdf", "a (2).pdf".
+ * als het nodig is. Dubbele namen krijgen een volgnummer: "a.pdf", "a (2).pdf" (zie `uniqueName`).
  *
  * Bestand voor bestand: na elk bestand gaan de nieuwe stukken van de ZIP in een Blob en worden ze
  * losgelaten. Zo staan niet eerst alle bestanden en daarna nog eens de hele ZIP in het geheugen;
@@ -68,7 +68,7 @@ export async function zipWriter(limits = ZIP_LIMITS): Promise<ZipWriter> {
       const nameLength = new TextEncoder().encode(unique).length;
       const total = written + LOCAL + nameLength + data.length + central + CENTRAL + nameLength;
       if (taken.size + 1 > limits.files || total > limits.bytes) throw new ZipTooLargeError();
-      taken.add(unique);
+      taken.add(unique.toLowerCase());
       central += CENTRAL + nameLength;
       const file = new ZipPassThrough(unique);
       zip.add(file);
@@ -83,12 +83,18 @@ export async function zipWriter(limits = ZIP_LIMITS): Promise<ZipWriter> {
   };
 }
 
-function uniqueName(name: string, taken: ReadonlySet<string>) {
-  if (!taken.has(name)) return name;
+/**
+ * Een naam die nog niet in `taken` staat: anders "naam (2).pdf", "naam (3).pdf", …. Hoofdletters
+ * tellen niet, want Windows ziet "A.pdf" en "a.pdf" als hetzelfde bestand: bij het uitpakken zou
+ * de een de ander overschrijven. `taken` bevat de namen in kleine letters; de nieuwe naam komt er
+ * niet vanzelf bij.
+ */
+export function uniqueName(name: string, taken: ReadonlySet<string>): string {
+  if (!taken.has(name.toLowerCase())) return name;
   const dot = name.lastIndexOf('.');
   const [base, extension] = dot > 0 ? [name.slice(0, dot), name.slice(dot)] : [name, ''];
   for (let n = 2; ; n += 1) {
     const candidate = `${base} (${n})${extension}`;
-    if (!taken.has(candidate)) return candidate;
+    if (!taken.has(candidate.toLowerCase())) return candidate;
   }
 }
