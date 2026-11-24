@@ -1,6 +1,7 @@
 import type { FunctionComponent } from 'preact';
-import { useEffect, useState } from 'preact/hooks';
+import { useEffect, useRef, useState } from 'preact/hooks';
 import { useI18n } from '../i18n/LanguageContext';
+import { useDesktop } from '../lib/useDesktop';
 import { ADVANCED_IDS, hrefFor, type AdvancedId } from '../router';
 
 /**
@@ -42,6 +43,12 @@ export function AdvancedToolPage({ id }: { id: AdvancedId }) {
   const { t } = useI18n();
   const a = t.advanced;
   const tool = a.tools[id];
+  // Op een smal scherm niet laden en starten: het zou toch verborgen blijven. Wordt het venster
+  // breder, dan alsnog; eenmaal geladen blijft het staan als het weer smaller wordt (alleen
+  // verborgen), zodat lopend werk niet stopt.
+  const desktop = useDesktop();
+  const opened = useRef(desktop);
+  if (desktop) opened.current = true;
   return (
     <>
       <div class="task-head">
@@ -56,9 +63,7 @@ export function AdvancedToolPage({ id }: { id: AdvancedId }) {
       <p class="lead mobile-only">{a.desktopOnly}</p>
       {/* Op een breed scherm telt dit omhulsel niet mee voor de opmaak: dan vult het werkvak de
           ruimte en scrolt elk vak zelf, zoals bij de taken. */}
-      <div class="desktop-only advanced-tool">
-        <Tool id={id} />
-      </div>
+      <div class="desktop-only advanced-tool">{opened.current && <Tool id={id} />}</div>
     </>
   );
 }

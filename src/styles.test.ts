@@ -1,5 +1,6 @@
 import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
+import { DESKTOP_QUERY } from './lib/useDesktop';
 import { THEME_STORAGE_KEY } from './theme';
 
 const css = readFileSync(new URL('./styles.css', import.meta.url), 'utf-8');
@@ -86,6 +87,39 @@ describe('kleuren', () => {
       });
     });
   }
+});
+
+describe('grens tussen een smal en een breed scherm', () => {
+  const queries = [...css.matchAll(/@media ([^{]+)\{/g)].map((match) => match[1]!.trim());
+  const widths = (kind: 'min' | 'max') =>
+    queries.flatMap((query) =>
+      [...query.matchAll(new RegExp(`\\(${kind}-width:\\s*([\\d.]+)rem\\)`, 'g'))].map((match) => ({
+        query,
+        rem: Number(match[1]),
+      })),
+    );
+
+  it('laat geen gat tussen een max-width en een min-width (audit F17)', () => {
+    // `max-width: 56.2rem` naast `min-width: 56.25rem` laat 899,2–900 px open: daar geldt geen
+    // van beide (bijvoorbeeld bij in- of uitzoomen). Het precieze omgekeerde van een min-width is
+    // `not all and (min-width: …)`.
+    const gaps = widths('max').flatMap((max) =>
+      widths('min')
+        .filter((min) => min.rem > max.rem && min.rem - max.rem < 1)
+        .map((min) => `${max.query} / ${min.query}`),
+    );
+    expect(gaps).toEqual([]);
+  });
+
+  it('smal en breed zijn precies elkaars omgekeerde, met dezelfde grens als useDesktop', () => {
+    const narrow = `not all and ${DESKTOP_QUERY}`;
+    expect(queries).toContain(DESKTOP_QUERY);
+    expect(queries).toContain(narrow);
+    // Alle grenzen op schermbreedte: deze twee, en de compacte kop op een telefoon. Komt er een
+    // grens bij, zet hem dan hier, en kijk of hij met een andere een gat of overlap geeft.
+    const byWidth = queries.filter((query) => query.includes('-width'));
+    expect(new Set(byWidth)).toEqual(new Set([DESKTOP_QUERY, narrow, '(max-width: 40rem)']));
+  });
 });
 
 describe('script tegen het oplichten bij laden', () => {

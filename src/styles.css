@@ -3292,7 +3292,7 @@ rect.handle {
 
 /* Smal scherm: alles onder elkaar. De vakken doen niet mee in de opbouw (display: contents),
    zodat de knoppenbalk blijft hangen boven de pagina's, niet alleen boven het gereedschap. */
-@media (max-width: 56.2rem) {
+@media not all and (min-width: 56.25rem) {
   .workspace__tools,
   .workspace__tools > .page-editor,
   .workspace__tools > .merge {
@@ -3588,8 +3588,9 @@ rect.handle {
 }
 
 /* Alleen op een breed scherm (zoals Geavanceerd), of juist alleen op een smal scherm. Zelfde grens
-   als het splitscherm hieronder. */
-@media (max-width: 56.2rem) {
+   als het splitscherm hieronder; `not all and` is daar precies het omgekeerde van, zonder gat
+   (een max-width net eronder liet 899,2–900 px open). */
+@media not all and (min-width: 56.25rem) {
   .desktop-only {
     display: none !important;
   }
