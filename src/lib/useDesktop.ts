@@ -1,11 +1,11 @@
 import { useEffect, useState } from 'preact/hooks';
 
 /** Dezelfde grens als `.desktop-only` en het splitscherm in `styles.css` (56,25rem). */
-const QUERY = '(min-width: 56.25rem)';
+export const DESKTOP_QUERY = '(min-width: 56.25rem)';
 
 function media(): MediaQueryList | null {
   return typeof window !== 'undefined' && typeof window.matchMedia === 'function'
-    ? window.matchMedia(QUERY)
+    ? window.matchMedia(DESKTOP_QUERY)
     : null;
 }
 
