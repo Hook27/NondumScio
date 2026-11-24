@@ -1,3 +1,4 @@
+import { uniqueName } from '../lib/zip';
 import { placeOutline, type OutlineEntry } from '../outline/outline';
 import type { PageItem } from '../pages/plan';
 
@@ -222,13 +223,7 @@ export function duplicateNames(names: readonly (string | null)[]): Set<number> {
 export function uniqueNames(names: readonly string[]): string[] {
   const taken = new Set<string>();
   return names.map((name) => {
-    let unique = name;
-    if (taken.has(name.toLowerCase())) {
-      const dot = name.lastIndexOf('.');
-      const [base, extension] = dot > 0 ? [name.slice(0, dot), name.slice(dot)] : [name, ''];
-      for (let n = 2; taken.has(unique.toLowerCase()); n += 1)
-        unique = `${base} (${n})${extension}`;
-    }
+    const unique = uniqueName(name, taken);
     taken.add(unique.toLowerCase());
     return unique;
   });
