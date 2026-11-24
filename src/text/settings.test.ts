@@ -1,7 +1,9 @@
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
+import { limitedStorage } from '../lib/testStorage';
 import { DEFAULT_TEXT_OPTIONS } from './extract';
 import { EMPTY_META } from './header';
 import {
+  MAX_STORED,
   SETTINGS_PREFIX,
   forgetStored,
   fromSettings,
@@ -393,5 +395,111 @@ describe('onthouden in de browser', () => {
     expect(forgetStored(store)).toBe(2);
     expect([...store.data.keys()]).toEqual(['nondumscio:lang', 'nondumscio:theme']);
     expect(forgetStored(store)).toBe(0);
+  });
+});
+
+describe('onthouden in de browser: begrensd, en plaatsmaken als de opslag vol is (audit F17)', () => {
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+  const key = (pdf: string) => `${SETTINGS_PREFIX}${pdf}`;
+  const remembered = (store: { data: Map<string, string> }) =>
+    [...store.data.keys()].filter((k) => k.startsWith(SETTINGS_PREFIX));
+
+  it('bewaart wanneer; de instellingen zelf blijven zoals in de extractor', () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(1_700_000_000_000);
+    const store = limitedStorage();
+    saveStored('a.pdf', { ...BASE, zones: [A] }, 'abc', store);
+    const raw = loadStored('a.pdf', store) as { saved: unknown };
+    expect(raw.saved).toBe(1_700_000_000_000);
+    expect(fromSettings(raw, BASE)!.zones).toEqual([A]);
+    expect(storedFingerprint(raw)).toBe('abc');
+    expect(isSettingsFile(raw)).toBe(true);
+  });
+
+  it(`hooguit ${MAX_STORED} PDF's; daarboven gaan de oudst bewaarde weg, die van vóór de tijdstempel eerst`, () => {
+    vi.useFakeTimers();
+    const store = limitedStorage(Infinity, {
+      'nondumscio:lang': 'nl',
+      [key('oud.pdf')]: JSON.stringify(toSettings('oud.pdf', BASE)),
+    });
+    for (let i = 0; i < MAX_STORED; i++) {
+      vi.setSystemTime(1000 + i);
+      saveStored(`${i}.pdf`, BASE, null, store);
+    }
+    expect(remembered(store)).toHaveLength(MAX_STORED);
+    expect(store.data.has(key('oud.pdf'))).toBe(false);
+    expect(store.data.has(key('0.pdf'))).toBe(true);
+
+    // Opnieuw bewaren maakt een PDF weer de nieuwste: dan gaat de volgende oudste weg.
+    vi.setSystemTime(5000);
+    saveStored('0.pdf', BASE, null, store);
+    vi.setSystemTime(5001);
+    saveStored('nieuw.pdf', BASE, null, store);
+    expect(remembered(store)).toHaveLength(MAX_STORED);
+    expect(store.data.has(key('0.pdf'))).toBe(true);
+    expect(store.data.has(key('1.pdf'))).toBe(false);
+    expect(store.data.has(key('nieuw.pdf'))).toBe(true);
+    // Iets anders dan onthouden instellingen blijft altijd staan.
+    expect(store.data.get('nondumscio:lang')).toBe('nl');
+  });
+
+  it('wie nu al meer dan het maximum onthoudt: bij de volgende keer in één keer terug tot het maximum', () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(9000);
+    const legacy = Object.fromEntries(
+      Array.from({ length: MAX_STORED + 5 }, (_, i) => [
+        key(`${i}.pdf`),
+        JSON.stringify(toSettings(`${i}.pdf`, BASE)),
+      ]),
+    );
+    const store = limitedStorage(Infinity, legacy);
+    saveStored('nieuw.pdf', BASE, null, store);
+    expect(remembered(store)).toHaveLength(MAX_STORED);
+    expect(store.data.has(key('nieuw.pdf'))).toBe(true);
+  });
+
+  it('is de klok teruggezet, dan blijft wat net bewaard is toch staan', () => {
+    vi.useFakeTimers();
+    const store = limitedStorage();
+    for (let i = 0; i < MAX_STORED; i++) {
+      vi.setSystemTime(10_000 + i);
+      saveStored(`${i}.pdf`, BASE, null, store);
+    }
+    // Nu "eerder" dan alles wat er staat: toch de nieuwste, en die blijft.
+    vi.setSystemTime(500);
+    saveStored('nu.pdf', BASE, null, store);
+    expect(remembered(store)).toHaveLength(MAX_STORED);
+    expect(store.data.has(key('nu.pdf'))).toBe(true);
+    expect(store.data.has(key('0.pdf'))).toBe(false);
+  });
+
+  it('is de opslag vol, dan eerst de oudst bewaarde weg, tot het past', () => {
+    vi.useFakeTimers();
+    const store = limitedStorage();
+    for (const [i, pdf] of ['a.pdf', 'b.pdf', 'c.pdf'].entries()) {
+      vi.setSystemTime(100 + i);
+      saveStored(pdf, BASE, null, store);
+    }
+    const one = store.data.get(key('a.pdf'))!.length + key('a.pdf').length;
+    // Nog plaats voor ongeveer drie, plus de taal: een vierde past pas als er één weg is.
+    const full = limitedStorage(3.5 * one, Object.fromEntries(store.data));
+    full.setItem('nondumscio:lang', 'nl');
+    vi.setSystemTime(200);
+    saveStored('d.pdf', BASE, null, full);
+    expect(remembered(full)).toEqual([key('b.pdf'), key('c.pdf'), key('d.pdf')]);
+    expect(full.data.get('nondumscio:lang')).toBe('nl');
+    // Opnieuw bewaren in een volle opslag: de nieuwe versie staat er.
+    vi.setSystemTime(300);
+    saveStored('d.pdf', { ...BASE, zones: [A] }, null, full);
+    expect(fromSettings(loadStored('d.pdf', full), BASE)!.zones).toEqual([A]);
+  });
+
+  it('past het helemaal niet, dan niet bewaard en de rest weg, zonder fout; de rest van de opslag blijft', () => {
+    const store = limitedStorage(60, { 'nondumscio:lang': 'nl', [key('x.pdf')]: '{}' });
+    expect(() => saveStored('a.pdf', { ...BASE, zones: [A, B] }, null, store)).not.toThrow();
+    expect(remembered(store)).toEqual([]);
+    expect(store.data.get('nondumscio:lang')).toBe('nl');
   });
 });

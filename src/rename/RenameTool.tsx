@@ -32,6 +32,7 @@ import {
   setRenameDb,
   setRenameState,
   useRenameDb,
+  useRenameDbUnsaved,
   useRenameState,
   type RenameDoc,
   type RenameView,
@@ -170,12 +171,21 @@ function rememberAll(docs: readonly RenameDoc[]) {
  * samenvoegen en naar de database met afzenders en onderwerpen.
  */
 export function RenameTool() {
+  const { t } = useI18n();
   const { view } = useRenameState();
+  const unsaved = useRenameDbUnsaved();
   return (
     <>
-      {/* Op een vaste plek boven het werkvak, zodat hij niet verspringt (en de focus houdt). */}
+      {/* Op een vaste plek boven het werkvak, zodat hij niet verspringt (en de focus houdt). De
+          melding staat erbij, zodat je hem ziet in elke weergave: de database verandert ook bij
+          Hernoemen en bij het downloaden. */}
       <div class="rename-mode">
         <ViewToggle view={view} />
+        {unsaved && (
+          <p class="compare__warning rename-mode__warning" role="alert">
+            {t.rename.db.unsaved}
+          </p>
+        )}
       </div>
       {view === 'merge' ? <RenameMerge /> : view === 'database' ? <DatabaseView /> : <RenameList />}
     </>

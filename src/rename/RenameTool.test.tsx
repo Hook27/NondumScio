@@ -7,6 +7,7 @@ import { format } from '../i18n/format';
 import { LanguageProvider } from '../i18n/LanguageContext';
 import { held, makeFlaky } from '../lib/testFiles';
 import { PdfSaveError, buildPdf, downloadFile, downloadPdf } from '../pdf/save';
+import { SETTINGS_PREFIX } from '../lib/storage';
 import { DB_STORAGE_KEY, type RenameDb } from './database';
 import { cancelSave, confirmSave, saveDialog } from '../components/testSave';
 import { openScanReader } from './readText';
@@ -575,6 +576,60 @@ describe('Slim hernoemen: de database', () => {
     importFile(json('{"afzenders": []}'));
     expect((await screen.findByRole('alert')).textContent).toBe(d.importError);
     expect(stored().afzenders).toHaveLength(2);
+  });
+
+  it('kan de database niet bewaard worden (opslag vol), dan een melding in elke weergave, tot het weer lukt (audit F17)', async () => {
+    const warning = () => screen.queryByText(d.unsaved);
+    const full = vi.spyOn(Storage.prototype, 'setItem').mockImplementation(() => {
+      throw new DOMException('De opslag is vol', 'QuotaExceededError');
+    });
+    try {
+      setup();
+      await open('gemeente.pdf');
+      expect(warning()).toBeNull();
+      // Bij Hernoemen: wat je invult, gaat naar de database; dat lukt nu niet.
+      fireEvent.change(field('Afzender van gemeente.pdf'), { target: { value: 'Gemeente' } });
+      expect(warning()?.getAttribute('role')).toBe('alert');
+      expect(warning()?.classList.contains('compare__warning')).toBe(true);
+      toView(r.views.database);
+      expect(warning()).toBeTruthy();
+      toView(r.views.merge);
+      expect(warning()).toBeTruthy();
+      toView(r.views.database);
+    } finally {
+      full.mockRestore();
+    }
+    // Lukt bewaren weer, dan verdwijnt de melding.
+    fireEvent.click(screen.getByRole('button', { name: d.kinds.afzenders.add }));
+    expect(warning()).toBeNull();
+    expect(stored().afzenders.map((entry) => entry.naam)).toEqual(['Gemeente', '']);
+  });
+
+  it('opslag vol door onthouden instellingen van Platte tekst: die maken plaats, zonder melding (audit F17)', async () => {
+    const remembered = `${SETTINGS_PREFIX}oud.pdf`;
+    window.localStorage.setItem(remembered, JSON.stringify({ zones: {}, saved: 1 }));
+    const original = Storage.prototype.setItem;
+    // "Vol" zolang er nog onthouden instellingen staan.
+    const full = vi.spyOn(Storage.prototype, 'setItem').mockImplementation(function (
+      this: Storage,
+      key: string,
+      value: string,
+    ) {
+      if (Object.keys(this).some((k) => k.startsWith(SETTINGS_PREFIX))) {
+        throw new DOMException('De opslag is vol', 'QuotaExceededError');
+      }
+      original.call(this, key, value);
+    });
+    try {
+      setup();
+      toView(r.views.database);
+      fireEvent.click(screen.getByRole('button', { name: d.kinds.afzenders.add }));
+      expect(screen.queryByText(d.unsaved)).toBeNull();
+      expect(window.localStorage.getItem(remembered)).toBeNull();
+      expect(stored().afzenders).toHaveLength(1);
+    } finally {
+      full.mockRestore();
+    }
   });
 });
 

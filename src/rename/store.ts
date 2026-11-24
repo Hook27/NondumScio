@@ -152,17 +152,27 @@ export function useRenameState(): RenameState {
 export function resetRenameState(): void {
   setRenameState(() => INITIAL);
   db = null;
+  dbUnsaved = false;
 }
 
 export function getRenameDb(): RenameDb {
   return (db ??= loadDb());
 }
 
+/** Kon de database de laatste keer niet in de browser bewaard worden (vol of geblokkeerd)? */
+let dbUnsaved = false;
+
 export function setRenameDb(next: RenameDb): void {
   if (next === db) return;
   db = next;
-  saveDb(next);
+  dbUnsaved = !saveDb(next);
   notify();
+}
+
+/** Of de database niet bewaard kon worden (dan een melding), en opnieuw tekenen als dat verandert. */
+export function useRenameDbUnsaved(): boolean {
+  useRedraw();
+  return dbUnsaved;
 }
 
 /** De database, en opnieuw tekenen als die verandert. */

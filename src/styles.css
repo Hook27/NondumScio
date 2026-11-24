@@ -1002,6 +1002,10 @@ rect.handle {
   margin: 0;
 }
 
+.rename-mode__warning {
+  margin: 0.75rem 0 0;
+}
+
 /* Database: afzenders en onderwerpen naast elkaar als er ruimte is. */
 .rename-db {
   display: grid;

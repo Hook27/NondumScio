@@ -575,6 +575,8 @@ export const nl = {
       exported: 'Geëxporteerd: {senders}, {subjects}.',
       imported: 'Geïmporteerd en samengevoegd: +{senders}, +{subjects}.',
       importError: 'Importeren lukte niet: dit is geen database-export.',
+      unsaved:
+        'De database kon niet in deze browser bewaard worden: de opslag is vol of geblokkeerd. Exporteer hem bij Database, anders ben je de laatste wijzigingen kwijt als je de pagina sluit.',
       kinds: {
         afzenders: {
           title: 'Afzenders',

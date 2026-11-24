@@ -1,5 +1,12 @@
 import { GAP_FACTOR } from '../compare/layout';
-import { browserStorage } from '../lib/storage';
+import {
+  SETTINGS_PREFIX,
+  browserStorage,
+  forgetOldestSettings,
+  settingsKeys,
+  writeItem,
+  type KeyedStorage,
+} from '../lib/storage';
 import { clampZone, type TextOptions, type Zone } from './extract';
 import { META_FIELDS, type Meta } from './header';
 import { JOINS, type Join } from './pages';
@@ -208,17 +215,17 @@ export function settingsFileName(pdf: string): string {
 }
 
 /** Het begin van de sleutels in de opslag van de browser. */
-export const SETTINGS_PREFIX = 'nondumscio:plaintext:';
+export { SETTINGS_PREFIX };
+
+/** Zoveel PDF's worden onthouden; daarboven gaan de oudst bewaarde weg. */
+export const MAX_STORED = 100;
 
 const keyFor = (pdf: string) => SETTINGS_PREFIX + pdf;
 
 /** Het deel van de opslag dat we gebruiken; in tests een nep-opslag. */
-export type SettingsStorage = Pick<
-  Storage,
-  'getItem' | 'setItem' | 'removeItem' | 'key' | 'length'
->;
+export type SettingsStorage = KeyedStorage;
 
-const storage = (): SettingsStorage | null => browserStorage() as SettingsStorage | null;
+const storage = (): SettingsStorage | null => browserStorage();
 
 /** De onthouden instellingen van een PDF, of null. Een kapotte waarde telt als niets. */
 export function loadStored(pdf: string, store = storage()): unknown {
@@ -232,8 +239,10 @@ export function loadStored(pdf: string, store = storage()): unknown {
 
 /**
  * De instellingen van een PDF onthouden, met de vingerafdruk van de inhoud (`fingerprint`), zodat
- * ze later alleen vanzelf terugkomen bij precies dezelfde PDF. Lukt onthouden niet (vol,
- * geblokkeerd), dan niet.
+ * ze later alleen vanzelf terugkomen bij precies dezelfde PDF, en wanneer (`saved`). Hooguit
+ * `MAX_STORED` PDF's: daarboven gaan de oudst bewaarde weg. Is de opslag vol, dan eerst de oudst
+ * bewaarde weg, tot het past (de eigen oude versie mag ook: die wordt toch overschreven). Lukt onthouden niet (geblokkeerd), dan niet: het is een gemak, geen
+ * voorwaarde.
  */
 export function saveStored(
   pdf: string,
@@ -241,10 +250,15 @@ export function saveStored(
   fingerprint: string | null,
   store = storage(),
 ): void {
+  if (!store) return;
+  const key = keyFor(pdf);
+  const value = JSON.stringify({ ...toSettings(pdf, settings), fingerprint, saved: Date.now() });
+  if (!writeItem(key, value, store, () => forgetOldestSettings(store))) return;
   try {
-    store?.setItem(keyFor(pdf), JSON.stringify({ ...toSettings(pdf, settings), fingerprint }));
+    let count = settingsKeys(store).length;
+    while (count > MAX_STORED && forgetOldestSettings(store, key)) count--;
   } catch {
-    // Bewust genegeerd: onthouden is een gemak, geen voorwaarde.
+    // Bewust genegeerd: dan blijft er één te veel staan.
   }
 }
 

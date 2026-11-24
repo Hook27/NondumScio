@@ -4,7 +4,13 @@
  * uit Jörgs `pdf-hernoemer.html`; de vorm van de export is dezelfde, zodat een bestand in beide werkt.
  */
 
-import { readItem, writeItem, type StorageLike, browserStorage } from '../lib/storage';
+import {
+  browserStorage,
+  forgetOldestSettings,
+  readItem,
+  writeItem,
+  type StorageLike,
+} from '../lib/storage';
 import { stamp } from './stamp';
 
 /** Een afzender of onderwerp: de naam in de bestandsnaam, en woorden waaraan hij te herkennen is. */
@@ -65,8 +71,17 @@ export function loadDb(storage: StorageLike | null = browserStorage()): RenameDb
   return emptyDb();
 }
 
-export function saveDb(db: RenameDb, storage: StorageLike | null = browserStorage()): void {
-  writeItem(DB_STORAGE_KEY, JSON.stringify(db), storage);
+/**
+ * Bewaart de database in de browser; geeft of dat gelukt is. Is de opslag vol, dan maken eerst de
+ * onthouden instellingen van Platte tekst plaats (`makeRoom`, oudste eerst): die zijn een gemak,
+ * de database is eigen werk.
+ */
+export function saveDb(
+  db: RenameDb,
+  storage: StorageLike | null = browserStorage(),
+  makeRoom: () => boolean = () => forgetOldestSettings(),
+): boolean {
+  return writeItem(DB_STORAGE_KEY, JSON.stringify(db), storage, makeRoom);
 }
 
 /** De database als export-bestand (zoals de HTML-tool hem schrijft). */

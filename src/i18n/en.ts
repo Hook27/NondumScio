@@ -563,6 +563,8 @@ export const en: Messages = {
       exported: 'Exported: {senders}, {subjects}.',
       imported: 'Imported and merged: +{senders}, +{subjects}.',
       importError: 'Import failed: this is not a database export.',
+      unsaved:
+        'The database could not be saved in this browser: storage is full or blocked. Export it under Database, or you will lose the latest changes when you close the page.',
       kinds: {
         afzenders: {
           title: 'Senders',
