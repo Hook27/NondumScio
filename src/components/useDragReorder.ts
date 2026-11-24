@@ -134,6 +134,12 @@ export function useDragReorder<T>({ list, itemSelector, direction, onStart, onDr
     const current = drag.current;
     if (!current || current.pointerId !== event.pointerId) return;
     if (!current.active) {
+      // Is de knop (of vinger) al los, dan was het loslaten ergens anders: vóór het slepen is er
+      // nog niets gevangen, dus dat loslaten kwam hier niet aan. Dan wordt het geen slepen meer.
+      if ((event.buttons & 1) === 0) {
+        drag.current = null;
+        return;
+      }
       const distance = Math.hypot(event.clientX - current.x, event.clientY - current.y);
       if (distance < DRAG_THRESHOLD) return;
       current.active = true;
