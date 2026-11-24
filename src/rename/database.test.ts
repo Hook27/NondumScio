@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import type { StorageLike } from '../lib/storage';
+import { SETTINGS_PREFIX, forgetOldestSettings, type StorageLike } from '../lib/storage';
+import { limitedStorage } from '../lib/testStorage';
 import {
   DB_STORAGE_KEY,
   dbFileName,
@@ -190,6 +191,32 @@ describe('loadDb en saveDb: bewaren in de browser', () => {
     expect(loadDb(storage)).toEqual(emptyDb());
     expect(loadDb(null)).toEqual(emptyDb());
     expect(() => saveDb(emptyDb(), null)).not.toThrow();
+  });
+
+  it('geeft of bewaren gelukt is; is de opslag vol, dan maken onthouden instellingen plaats (audit F17)', () => {
+    const db = importInto(emptyDb(), EXPORT).db;
+    const size = DB_STORAGE_KEY.length + JSON.stringify(db).length;
+    const settings = (saved: number) =>
+      JSON.stringify({ zones: {}, saved, opvulling: 'x'.repeat(50) });
+    const store = limitedStorage(size + 150, {
+      'nondumscio:lang': 'nl',
+      [`${SETTINGS_PREFIX}nieuw.pdf`]: settings(2),
+      [`${SETTINGS_PREFIX}oud.pdf`]: settings(1),
+    });
+    expect(saveDb(db, store, () => forgetOldestSettings(store))).toBe(true);
+    expect(loadDb(store)).toEqual(db);
+    // Alleen de oudste is weg; dat was genoeg.
+    expect([...store.data.keys()]).toEqual([
+      'nondumscio:lang',
+      `${SETTINGS_PREFIX}nieuw.pdf`,
+      DB_STORAGE_KEY,
+    ]);
+
+    // Niets meer om weg te halen en het past niet: niet bewaard, en dat zegt saveDb.
+    const tiny = limitedStorage(10);
+    expect(saveDb(db, tiny, () => forgetOldestSettings(tiny))).toBe(false);
+    expect(saveDb(db, null)).toBe(false);
+    expect(saveDb(db, memory())).toBe(true);
   });
 
   it('rare regels worden rechtgezet, zodat de rest van de tool erop kan rekenen', () => {
